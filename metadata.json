@@ -1,0 +1,5 @@
+{
+  "name": "WooCommerce Order Manager",
+  "description": "An application to view WooCommerce orders, group them by product category, and track the purchase status of each item. It features a login screen and a responsive interface for managing order items efficiently.",
+  "requestFramePermissions": []
+}

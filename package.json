@@ -1,0 +1,25 @@
+{
+  "name": "woocommerce-order-manager",
+  "version": "1.0.0",
+  "description": "WooCommerce Order Manager Frontend",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.9",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "serve": "^14.2.3",
+    "typescript": "^5.5.3",
+    "vite": "^5.3.3"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "start": "serve -s dist"
+  }
+}

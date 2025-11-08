@@ -1,0 +1,26 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL") // Carga la URL desde tu archivo .env
+}
+
+// --- NUESTRO MODELO DE DATOS ---
+// Esta tabla guardará el estado de progreso de cada artículo de línea
+model PurchaseStatus {
+  id          Int      @id @default(autoincrement()) // ID único de esta fila
+
+  lineItemId  Int      @unique // El ID del artículo de línea de WooCommerce (¡debe ser único!)
+  orderId     Int      // El ID del pedido al que pertenece (para referencia)
+
+  isPurchased Boolean  @default(false) // Marcado como comprado (true/false)
+  quantityPurchased Int @default(0)   // Cantidad parcial comprada
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt // Se actualiza automáticamente
+}

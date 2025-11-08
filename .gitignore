@@ -1,0 +1,20 @@
+# Archivos de Sistema
+.DS_Store
+
+# Archivos de Log
+npm-debug.log*
+
+# Archivos de Entorno
+# ¡NUNCA subas tus secretos!
+.env
+
+# Dependencias (se instalan con npm install)
+node_modules/
+
+# Carpetas de Build (se generan)
+dist/
+
+# Archivos de tu backend que deben ignorarse
+backend/node_modules/
+backend/dist/
+backend/.env
