@@ -60,25 +60,31 @@ app.post('/api/item-status', async (req, res) => {
  */
 app.get('/api/orders', async (req, res) => {
 
-    // 1. Cargar las claves seguras desde las variables de entorno de Railway
+    // 1. Cargar las claves seguras
     const { WOO_URL, WOO_KEY, WOO_SECRET } = process.env;
 
     if (!WOO_URL || !WOO_KEY || !WOO_SECRET) {
         return res.status(500).json({ error: 'Variables de API de WooCommerce no configuradas en el servidor' });
     }
 
-    const wooAuth = {
-        consumerKey: WOO_KEY,
-        consumerSecret: WOO_SECRET,
-    };
+    // ¡ESTA SECCIÓN YA NO ES NECESARIA!
+    // const wooAuth = {
+    //     consumerKey: WOO_KEY,
+    //     consumerSecret: WOO_SECRET,
+    // };
 
     try {
-        // --- 2. OBTENER PEDIDOS DE WOOCOMMERCE ---
+        // --- 2. OBTENER PEDIDOS DE WOOCOMMERCE (CORREGIDO) ---
         const ordersResponse = await axios.get(
             `${WOO_URL}/wp-json/wc/v3/orders`,
             {
+                // ¡CAMBIO CLAVE! Usa "auth" para Basic Auth
+                auth: {
+                    username: WOO_KEY,     // Key va en username
+                    password: WOO_SECRET,  // Secret va en password
+                },
+                // "params" ahora solo contiene los parámetros de la consulta
                 params: {
-                    ...wooAuth,
                     status: 'processing,on-hold',
                     per_page: 100,
                 },
@@ -87,10 +93,10 @@ app.get('/api/orders', async (req, res) => {
         const rawOrders: any[] = ordersResponse.data;
 
         if (rawOrders.length === 0) {
-            return res.json([]); // No hay pedidos, devolvemos un array vacío
+            return res.json([]);
         }
 
-        // --- 3. OBTENER PRODUCTOS (PARA CATEGORÍAS) ---
+        // --- 3. OBTENER PRODUCTOS (PARA CATEGORÍAS) (CORREGIDO) ---
         const productIds = new Set<number>();
         rawOrders.forEach(order => {
             order.line_items.forEach((item: any) => {
@@ -103,8 +109,12 @@ app.get('/api/orders', async (req, res) => {
             const productsResponse = await axios.get(
                 `${WOO_URL}/wp-json/wc/v3/products`,
                 {
+                    // ¡CAMBIO CLAVE! Usa "auth" aquí también
+                    auth: {
+                        username: WOO_KEY,
+                        password: WOO_SECRET,
+                    },
                     params: {
-                        ...wooAuth,
                         include: Array.from(productIds).join(','),
                         per_page: 100,
                     },
@@ -120,6 +130,7 @@ app.get('/api/orders', async (req, res) => {
         }
 
         // --- 4. OBTENER PROGRESO DE NUESTRA BASE DE DATOS ---
+        // (Esta parte estaba perfecta, no se cambia)
         const savedStatus = await prisma.purchaseStatus.findMany();
         const statusMap = new Map<number, { isPurchased: boolean, quantityPurchased: number }>();
         savedStatus.forEach(status => {
@@ -130,6 +141,7 @@ app.get('/api/orders', async (req, res) => {
         });
 
         // --- 5. COMBINAR TODO Y RESPONDER AL FRONTEND ---
+        // (Esta parte estaba perfecta, no se cambia)
         const finalOrders = rawOrders.map(order => ({
             id: order.id,
             dateCreated: order.date_created,
@@ -153,9 +165,10 @@ app.get('/api/orders', async (req, res) => {
             }),
         }));
 
-        res.json(finalOrders); // ¡Enviamos la lista combinada al frontend!
+        res.json(finalOrders);
 
     } catch (error: any) {
+        // Este log de error es el que te está ayudando
         console.error('Error al contactar API de WooCommerce:', error.response?.data || error.message);
         res.status(500).json({ error: 'No se pudo obtener los pedidos de WooCommerce' });
     }
