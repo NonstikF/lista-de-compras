@@ -1,159 +1,126 @@
 import React, { useState, useEffect } from 'react';
+
+// Importa tus componentes de vista
 import Login from './components/Login';
-import OrdersView from './components/OrdersView';
 import Dashboard from './components/Dashboard';
-import ApiSetup from './components/ApiSetup';
-import { LogoutIcon, ShoppingCartIcon, UserCircleIcon } from './components/icons';
+import OrdersView from './components/OrdersView';
 
-type View = 'login' | 'api_setup' | 'dashboard' | 'orders';
+// Importa tus iconos para el Header
+import { LogoutIcon, UserCircleIcon, ShoppingCartIcon } from './components/icons';
 
-interface ApiConfig {
-  url: string;
-  key: string;
-  secret: string;
-}
+// Define las vistas que tu aplicación puede mostrar
+type AppView = 'login' | 'dashboard' | 'orders';
 
+/**
+ * Un componente de encabezado simple que se muestra cuando estás logueado.
+ */
+const Header: React.FC<{ onLogout: () => void; setView: (view: AppView) => void }> = ({ onLogout, setView }) => {
+  return (
+    <header className="bg-white shadow-sm sticky top-0 z-10">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="flex justify-between items-center h-16">
+          {/* Título/Logo (clic para ir al dashboard) */}
+          <div
+            className="flex items-center cursor-pointer gap-2"
+            onClick={() => setView('dashboard')}
+          >
+            <ShoppingCartIcon className="w-7 h-7 text-indigo-600" />
+            <span className="text-xl font-bold text-slate-800">Order Processing</span>
+          </div>
+
+          {/* Iconos de Usuario y Logout */}
+          <div className="flex items-center space-x-4">
+            <span className="flex items-center text-sm font-medium text-slate-600">
+              <UserCircleIcon className="w-5 h-5 mr-1" />
+              admin
+            </span>
+            <button
+              onClick={onLogout}
+              title="Logout"
+              className="text-slate-500 hover:text-indigo-600"
+            >
+              <LogoutIcon className="w-6 h-6" />
+            </button>
+          </div>
+        </div>
+      </div>
+    </header>
+  );
+};
+
+/**
+ * Este es tu componente principal de la aplicación.
+ * Ahora solo gestiona el estado de autenticación y la vista actual.
+ */
 const App: React.FC = () => {
-  const [view, setView] = useState<View>('login');
-  const [apiConfig, setApiConfig] = useState<ApiConfig | null>(null);
-  const [apiError, setApiError] = useState<string | null>(null);
-  const [isConnecting, setIsConnecting] = useState(false);
+  const [view, setView] = useState<AppView>('login');
 
+  // Comprueba el estado de login desde localStorage para persistencia simple
+  const [isAuthenticated, setIsAuthenticated] = useState(() => {
+    return localStorage.getItem('isAuthenticated') === 'true';
+  });
+
+  // Efecto para redirigir si el estado de autenticación cambia
   useEffect(() => {
-    // On app load, check for saved API config in local storage
-    const savedConfig = localStorage.getItem('wcApiConfig');
-    if (savedConfig) {
-      setApiConfig(JSON.parse(savedConfig));
+    if (isAuthenticated) {
+      // Si está autenticado pero en la página de login, ir al dashboard
+      if (view === 'login') {
+        setView('dashboard');
+      }
+    } else {
+      // Si no está autenticado, forzar la vista de login
+      setView('login');
     }
-  }, []);
+  }, [isAuthenticated, view]);
+
 
   const handleLoginSuccess = () => {
-    if (apiConfig) {
-      setView('dashboard');
-    } else {
-      setView('api_setup');
-    }
+    localStorage.setItem('isAuthenticated', 'true');
+    setIsAuthenticated(true);
+    setView('dashboard');
   };
-  
+
   const handleLogout = () => {
-    // For full security, you might want to clear the API config on logout
-    // localStorage.removeItem('wcApiConfig');
-    // setApiConfig(null);
+    localStorage.removeItem('isAuthenticated');
+    setIsAuthenticated(false);
     setView('login');
   };
 
-  const handleConnect = async (url: string, key: string, secret: string) => {
-    setIsConnecting(true);
-    setApiError(null);
-    // Simple validation: try fetching a single order to test credentials
-    try {
-      const testUrl = `${url.endsWith('/') ? url.slice(0, -1) : url}/wp-json/wc/v3/orders?per_page=1&consumer_key=${key}&consumer_secret=${secret}`;
-      const response = await fetch(testUrl);
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Invalid credentials or URL.');
-      }
-
-      const config = { url, key, secret };
-      localStorage.setItem('wcApiConfig', JSON.stringify(config));
-      setApiConfig(config);
-      setView('dashboard');
-    } catch (err) {
-      if (err instanceof Error) {
-        setApiError(err.message);
-      } else {
-        setApiError('An unknown error occurred.');
-      }
-    } finally {
-      setIsConnecting(false);
-    }
-  };
-
-  const handleNavigateToOrders = () => {
-      setView('orders');
-  };
-  
-  const handleBackToDashboard = () => {
-      setView('dashboard');
-  };
-
-  const handleBackToApiSetup = () => {
-      localStorage.removeItem('wcApiConfig');
-      setApiConfig(null);
-      setView('api_setup');
-  }
-
-  const renderContent = () => {
+  // Función para renderizar el contenido principal basado en la vista actual
+  const renderView = () => {
     switch (view) {
       case 'login':
         return <Login onLoginSuccess={handleLoginSuccess} />;
-      case 'api_setup':
-        return <ApiSetup onConnect={handleConnect} isLoading={isConnecting} error={apiError} />;
-      default:
+      case 'dashboard':
+        return <Dashboard onNavigateToOrders={() => setView('orders')} />;
+      case 'orders':
         return (
-          <div className="min-h-screen bg-slate-100 font-sans">
-            <header className="bg-white shadow-md sticky top-0 z-10">
-              <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-                  <div className="flex justify-between items-center py-3">
-                      <div className="flex items-center space-x-3">
-                          <ShoppingCartIcon className="w-8 h-8 text-indigo-600" />
-                          <h1 className="text-2xl font-bold text-slate-800">
-                              {view === 'dashboard' ? 'Dashboard' : 'Order Processing'}
-                          </h1>
-                      </div>
-                      <div className="flex items-center space-x-4">
-                          <div className="flex items-center space-x-2">
-                              <UserCircleIcon className="w-6 h-6 text-slate-500" />
-                              <span className="hidden sm:inline font-medium text-slate-700">admin</span>
-                          </div>
-                          <button 
-                            onClick={handleLogout} 
-                            className="p-2 rounded-full text-slate-500 hover:bg-slate-200 hover:text-slate-800 transition-colors"
-                            aria-label="Logout"
-                          >
-                              <LogoutIcon className="w-6 h-6" />
-                          </button>
-                      </div>
-                  </div>
-              </div>
-            </header>
-            <main className="container mx-auto p-4 sm:p-6 lg:p-8">
-              {view === 'orders' && (
-                   <div className="mb-6 flex justify-between items-center">
-                      <button
-                          onClick={handleBackToDashboard}
-                          className="text-indigo-600 hover:text-indigo-800 font-semibold"
-                      >
-                          &larr; Back to Dashboard
-                      </button>
-                      <button
-                          onClick={handleBackToApiSetup}
-                          className="text-sm text-slate-500 hover:text-slate-700"
-                      >
-                          Change API Settings
-                      </button>
-                  </div>
-              )}
-               {view === 'dashboard' && (
-                  <div className="mb-6 text-right">
-                       <button
-                          onClick={handleBackToApiSetup}
-                          className="text-sm text-slate-500 hover:text-slate-700"
-                      >
-                          Change API Settings
-                      </button>
-                  </div>
-               )}
-
-              {view === 'dashboard' && <Dashboard onNavigateToOrders={handleNavigateToOrders} />}
-              {view === 'orders' && apiConfig && <OrdersView />}
-            </main>
+          // Este div añade el padding y el botón "Back to Dashboard"
+          <div className="p-4 md:p-8 max-w-7xl mx-auto">
+            <button
+              onClick={() => setView('dashboard')}
+              className="text-indigo-600 hover:text-indigo-800 font-medium mb-4"
+            >
+              &larr; Back to Dashboard
+            </button>
+            {/* ¡OrdersView ahora se renderiza sin props! */}
+            <OrdersView />
           </div>
         );
+      default:
+        return <Login onLoginSuccess={handleLoginSuccess} />;
     }
-  }
+  };
 
-  return renderContent();
+  return (
+    <div className="min-h-screen bg-slate-50">
+      {/* Solo muestra el Header si está autenticado */}
+      {isAuthenticated && <Header onLogout={handleLogout} setView={setView} />}
+      <main>
+        {renderView()}
+      </main>
+    </div>
+  );
 };
 
 export default App;
