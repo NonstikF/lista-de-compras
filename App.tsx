@@ -146,7 +146,7 @@ const App: React.FC = () => {
                )}
 
               {view === 'dashboard' && <Dashboard onNavigateToOrders={handleNavigateToOrders} />}
-              {view === 'orders' && apiConfig && <OrdersView apiConfig={apiConfig} />}
+              {view === 'orders' && apiConfig && <OrdersView />}
             </main>
           </div>
         );
