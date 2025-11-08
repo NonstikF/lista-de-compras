@@ -3,19 +3,16 @@ import type { Order, LineItem } from '../types';
 import { getOrders } from '../services/woocommerceService';
 import { CheckCircleIcon } from './icons';
 
-// ¡NUEVO! La URL de tu API de backend
+// La URL de tu API de backend
 const BACKEND_API_URL = import.meta.env.VITE_BACKEND_API_URL || 'http://localhost:4000';
 
 interface GroupedItems {
   [category: string]: LineItem[];
 }
 
+// Esta vista ya no necesita 'apiConfig'
 interface OrdersViewProps {
-    apiConfig: {
-        url: string;
-        key: string;
-        secret: string;
-    }
+  // Ya no pasamos apiConfig, así que esto está vacío
 }
 
 const LoadingSpinner: React.FC = () => (
@@ -102,18 +99,24 @@ const OrderItem: React.FC<{ item: LineItem; onQuantityChange: (itemId: number, n
 };
 
 
-const OrdersView: React.FC<OrdersViewProps> = ({ apiConfig }) => {
+const OrdersView: React.FC<OrdersViewProps> = () => { // Quitamos 'apiConfig'
     const [orders, setOrders] = useState<Order[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
+    // --- ¡SECCIÓN CORREGIDA! ---
+    // Este useEffect ahora llama a getOrders() sin argumentos
+    // y solo se ejecuta una vez.
     useEffect(() => {
         const fetchOrders = async () => {
-            if (!apiConfig) return;
             try {
                 setIsLoading(true);
                 setError(null);
-                const fetchedOrders = await getOrders(apiConfig.url, apiConfig.key, apiConfig.secret);
+                
+                // Llamamos a getOrders() sin argumentos.
+                // Tu backend se encarga del resto.
+                const fetchedOrders = await getOrders(); 
+                
                 setOrders(fetchedOrders.sort((a, b) => new Date(b.dateCreated).getTime() - new Date(a.dateCreated).getTime()));
             } catch (err) {
                 if (err instanceof Error) {
@@ -127,17 +130,16 @@ const OrdersView: React.FC<OrdersViewProps> = ({ apiConfig }) => {
             }
         };
         fetchOrders();
-    }, [apiConfig]);
+    }, []); // El array de dependencias ahora está vacío
 
     
-    // --- ¡SECCIÓN CORREGIDA! ---
+    // --- Esta función está CORREGIDA y es la que funciona ---
     const handleQuantityChange = (itemId: number, newQuantity: number) => {
         
         let itemToSave: LineItem | null = null;
         let orderIdToSave: number | null = null;
 
         // --- 1. ENCONTRAR LOS DATOS Y PREPARAR EL NUEVO ESTADO ---
-        // Buscamos el item y su pedido en el estado actual ('orders')
         const foundOrder = orders.find(o => o.lineItems.some(i => i.id === itemId));
         
         if (!foundOrder) {
@@ -151,7 +153,6 @@ const OrdersView: React.FC<OrdersViewProps> = ({ apiConfig }) => {
             return;
         }
 
-        // Guardamos los datos que necesitamos para el backend
         orderIdToSave = foundOrder.id;
         itemToSave = {
             ...foundItem,
@@ -160,22 +161,19 @@ const OrdersView: React.FC<OrdersViewProps> = ({ apiConfig }) => {
         };
         
         // --- 2. ACTUALIZAR EL ESTADO DE REACT (UI) ---
-        // Ahora creamos el nuevo array de 'orders'
         const updatedOrders = orders.map(order => {
             if (order.id !== orderIdToSave) return order;
             
             const updatedLineItems = order.lineItems.map(item => {
-                if (item.id === itemId) return itemToSave!; // Usamos el ítem preparado
+                if (item.id === itemId) return itemToSave!;
                 return item;
             });
             return { ...order, lineItems: updatedLineItems };
         });
         
-        // Actualizamos la UI
         setOrders(updatedOrders);
 
         // --- 3. ENVIAR AL BACKEND ---
-        // Esta sección ahora SÍ tiene los datos correctos y se ejecutará
         if (itemToSave && orderIdToSave) {
             const { id: lineItemId, isPurchased, quantityPurchased } = itemToSave;
 
@@ -191,7 +189,6 @@ const OrdersView: React.FC<OrdersViewProps> = ({ apiConfig }) => {
             })
             .then(response => {
                 if (!response.ok) {
-                    // Si el servidor da un error (ej. 500), lo capturamos aquí
                     console.error('Error del backend al guardar. Status:', response.status);
                     return response.json().then(err => Promise.reject(err));
                 }
@@ -205,7 +202,6 @@ const OrdersView: React.FC<OrdersViewProps> = ({ apiConfig }) => {
                 }
             })
             .catch(err => {
-                // Si el servidor no está corriendo (failed to fetch), se captura aquí
                 console.error('Error de red al guardar el estado:', err);
             });
         }
