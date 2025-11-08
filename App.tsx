@@ -25,7 +25,7 @@ const Header: React.FC<{ onLogout: () => void; setView: (view: AppView) => void 
             onClick={() => setView('dashboard')}
           >
             <ShoppingCartIcon className="w-7 h-7 text-indigo-600" />
-            <span className="text-xl font-bold text-slate-800">Order Processing</span>
+            <span className="text-xl font-bold text-slate-800">Lista de Compras</span>
           </div>
 
           {/* Iconos de Usuario y Logout */}
@@ -101,7 +101,7 @@ const App: React.FC = () => {
               onClick={() => setView('dashboard')}
               className="text-indigo-600 hover:text-indigo-800 font-medium mb-4"
             >
-              &larr; Back to Dashboard
+              &larr; Regresar al Panel
             </button>
             {/* ¡OrdersView ahora se renderiza sin props! */}
             <OrdersView />

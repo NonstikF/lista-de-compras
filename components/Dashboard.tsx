@@ -14,16 +14,16 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigateToOrders }) => {
                     <ShoppingCartIcon className="w-12 h-12" />
                 </div>
                 <h1 className="text-3xl md:text-4xl font-bold text-slate-800 mb-4">
-                    Welcome to the Order Manager
+                    Lista de compras PlantArte
                 </h1>
                 <p className="text-slate-600 text-lg mb-8">
-                    You're all set to start processing incoming orders. Click the button below to view all pending items and mark them as purchased.
+                    Todo listo para comenzar con las compras.
                 </p>
                 <button
                     onClick={onNavigateToOrders}
                     className="group inline-flex items-center justify-center gap-2 bg-indigo-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-all duration-300 transform hover:scale-105"
                 >
-                    <span>Process Orders</span>
+                    <span>Ver Lista</span>
                     <ArrowRightIcon className="w-5 h-5 transition-transform duration-300 group-hover:translate-x-1" />
                 </button>
             </div>

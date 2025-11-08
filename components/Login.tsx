@@ -19,7 +19,7 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
 
     // Mock authentication
     setTimeout(() => {
-      if (username === 'admin' && password === 'password') {
+      if (username === 'admin' && password === 'plantarteycafe8100') {
         onLoginSuccess();
       } else {
         setError('Invalid credentials. Use admin/password.');
@@ -36,8 +36,8 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
             <div className="bg-indigo-500 text-white p-3 rounded-full">
               <ShoppingCartIcon className="w-8 h-8" />
             </div>
-            <h1 className="text-3xl font-bold text-slate-800">Order Manager</h1>
-            <p className="text-slate-500">Sign in to continue</p>
+            <h1 className="text-3xl font-bold text-slate-800">Plataforma Para Compras</h1>
+            <p className="text-slate-500">Inicia Sesion para continuar</p>
           </div>
 
           <form onSubmit={handleLogin} className="space-y-6">
@@ -46,7 +46,7 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
                 htmlFor="username"
                 className="text-sm font-medium text-slate-600"
               >
-                Username
+                Usuario
               </label>
               <input
                 id="username"
@@ -54,7 +54,7 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition"
-                placeholder="e.g., admin"
+                placeholder="ej., admin"
                 required
               />
             </div>
@@ -64,7 +64,7 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
                 htmlFor="password"
                 className="text-sm font-medium text-slate-600"
               >
-                Password
+                Contraseña
               </label>
               <input
                 id="password"
@@ -72,7 +72,7 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition"
-                placeholder="e.g., password"
+                placeholder="ej., password"
                 required
               />
             </div>
