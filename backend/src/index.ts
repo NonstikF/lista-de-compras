@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import { PrismaClient } from '@prisma/client';
+import axios from 'axios'; // ¡NUEVA IMPORTACIÓN!
 
 // Inicializar Prisma Client
 const prisma = new PrismaClient();
@@ -9,73 +10,160 @@ const prisma = new PrismaClient();
 const app = express();
 
 // --- Middlewares ---
-// ¡CRÍTICO! Habilita CORS para que tu frontend (Vite) pueda hacerle peticiones
-app.use(cors()); 
-// ¡CRÍTICO! Permite al servidor entender JSON que viene en las peticiones (body)
-app.use(express.json()); 
+app.use(cors());
+app.use(express.json());
 
 // --- Rutas de nuestra API ---
 
 /**
- * RUTA [GET] /api/all-status
- * Obtiene TODOS los estados de compra guardados en la base de datos.
- * El frontend llamará a esto 1 vez al cargar los pedidos.
- */
-app.get('/api/all-status', async (req, res) => {
-  try {
-    const allStatus = await prisma.purchaseStatus.findMany();
-    res.json(allStatus);
-  } catch (error) {
-    console.error('Error al obtener estados:', error);
-    res.status(500).json({ error: 'No se pudo obtener el estado de los artículos' });
-  }
-});
-
-/**
  * RUTA [POST] /api/item-status
- * Guarda o actualiza (upsert) el estado de un artículo de línea individual.
- * El frontend llamará a esto CADA VEZ que el usuario cambie un interruptor o cantidad.
+ * Guarda o actualiza el estado de un artículo de línea individual.
+ * (Esta ruta ya la tenías y es correcta)
  */
 app.post('/api/item-status', async (req, res) => {
-  // Obtenemos los datos que envió el frontend en el 'body'
-  const { lineItemId, orderId, isPurchased, quantityPurchased } = req.body;
+    const { lineItemId, orderId, isPurchased, quantityPurchased } = req.body;
 
-  // Validación simple
-  if (typeof lineItemId === 'undefined') {
-    return res.status(400).json({ error: 'lineItemId es requerido' });
-  }
+    if (typeof lineItemId === 'undefined') {
+        return res.status(400).json({ error: 'lineItemId es requerido' });
+    }
 
-  try {
-    const status = await prisma.purchaseStatus.upsert({
-      where: {
-        lineItemId: lineItemId, // Busca por el ID del artículo
-      },
-      update: {
-        // Si lo encuentra, lo actualiza
-        isPurchased: isPurchased,
-        quantityPurchased: quantityPurchased,
-      },
-      create: {
-        // Si no lo encuentra, lo crea
-        lineItemId: lineItemId,
-        orderId: orderId,
-        isPurchased: isPurchased,
-        quantityPurchased: quantityPurchased,
-      },
-    });
+    try {
+        const status = await prisma.purchaseStatus.upsert({
+            where: {
+                lineItemId: lineItemId,
+            },
+            update: {
+                isPurchased: isPurchased,
+                quantityPurchased: quantityPurchased,
+            },
+            create: {
+                lineItemId: lineItemId,
+                orderId: orderId,
+                isPurchased: isPurchased,
+                quantityPurchased: quantityPurchased,
+            },
+        });
 
-    // Respondemos al frontend que todo salió bien
-    res.json({ success: true, status: status });
+        res.json({ success: true, status: status });
 
-  } catch (error) {
-    console.error('Error al guardar estado:', error);
-    res.status(500).json({ error: 'No se pudo guardar el estado' });
-  }
+    } catch (error) {
+        console.error('Error al guardar estado:', error);
+        res.status(500).json({ error: 'No se pudo guardar el estado' });
+    }
+});
+
+
+/**
+ * ¡NUEVA RUTA! [GET] /api/orders
+ * Obtiene pedidos de WooCommerce Y el progreso de la DB,
+ * los combina y los devuelve al frontend.
+ */
+app.get('/api/orders', async (req, res) => {
+
+    // 1. Cargar las claves seguras desde las variables de entorno de Railway
+    const { WOO_URL, WOO_KEY, WOO_SECRET } = process.env;
+
+    if (!WOO_URL || !WOO_KEY || !WOO_SECRET) {
+        return res.status(500).json({ error: 'Variables de API de WooCommerce no configuradas en el servidor' });
+    }
+
+    const wooAuth = {
+        consumerKey: WOO_KEY,
+        consumerSecret: WOO_SECRET,
+    };
+
+    try {
+        // --- 2. OBTENER PEDIDOS DE WOOCOMMERCE ---
+        const ordersResponse = await axios.get(
+            `${WOO_URL}/wp-json/wc/v3/orders`,
+            {
+                params: {
+                    ...wooAuth,
+                    status: 'processing,on-hold',
+                    per_page: 100,
+                },
+            }
+        );
+        const rawOrders: any[] = ordersResponse.data;
+
+        if (rawOrders.length === 0) {
+            return res.json([]); // No hay pedidos, devolvemos un array vacío
+        }
+
+        // --- 3. OBTENER PRODUCTOS (PARA CATEGORÍAS) ---
+        const productIds = new Set<number>();
+        rawOrders.forEach(order => {
+            order.line_items.forEach((item: any) => {
+                if (item.product_id) productIds.add(item.product_id);
+            });
+        });
+
+        const productCategoryMap = new Map<number, string>();
+        if (productIds.size > 0) {
+            const productsResponse = await axios.get(
+                `${WOO_URL}/wp-json/wc/v3/products`,
+                {
+                    params: {
+                        ...wooAuth,
+                        include: Array.from(productIds).join(','),
+                        per_page: 100,
+                    },
+                }
+            );
+            const rawProducts: any[] = productsResponse.data;
+            rawProducts.forEach(product => {
+                const categoryName = product.categories && product.categories.length > 0
+                    ? product.categories[0].name
+                    : 'Uncategorized';
+                productCategoryMap.set(product.id, categoryName);
+            });
+        }
+
+        // --- 4. OBTENER PROGRESO DE NUESTRA BASE DE DATOS ---
+        const savedStatus = await prisma.purchaseStatus.findMany();
+        const statusMap = new Map<number, { isPurchased: boolean, quantityPurchased: number }>();
+        savedStatus.forEach(status => {
+            statusMap.set(status.lineItemId, {
+                isPurchased: status.isPurchased,
+                quantityPurchased: status.quantityPurchased
+            });
+        });
+
+        // --- 5. COMBINAR TODO Y RESPONDER AL FRONTEND ---
+        const finalOrders = rawOrders.map(order => ({
+            id: order.id,
+            dateCreated: order.date_created,
+            status: order.status,
+            customer: {
+                firstName: order.billing.first_name,
+                lastName: order.billing.last_name,
+            },
+            lineItems: order.line_items.map((item: any) => {
+                const savedItemStatus = statusMap.get(item.id);
+                return {
+                    id: item.id,
+                    name: item.name,
+                    productId: item.product_id,
+                    quantity: item.quantity,
+                    sku: item.sku,
+                    isPurchased: savedItemStatus ? savedItemStatus.isPurchased : false,
+                    quantityPurchased: savedItemStatus ? savedItemStatus.quantityPurchased : 0,
+                    category: productCategoryMap.get(item.product_id) || 'Products',
+                };
+            }),
+        }));
+
+        res.json(finalOrders); // ¡Enviamos la lista combinada al frontend!
+
+    } catch (error: any) {
+        console.error('Error al contactar API de WooCommerce:', error.response?.data || error.message);
+        res.status(500).json({ error: 'No se pudo obtener los pedidos de WooCommerce' });
+    }
 });
 
 
 // --- Iniciar el Servidor ---
 const port = process.env.PORT || 4000; // Railway proveerá la variable PORT
 app.listen(port, () => {
-  console.log(`🚀 Servidor Backend escuchando en http://localhost:${port}`);
+    console.log(`🚀 Servidor Backend escuchando en http://localhost:${port}`);
 });
