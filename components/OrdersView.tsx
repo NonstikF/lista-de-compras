@@ -123,7 +123,7 @@ const OrderCard: React.FC<{
 }> = ({ order, viewMode, completingOrderId, onQuantityChange, onCompleteOrder }) => {
 
     // 1. Estado para colapsar el pedido (por defecto abierto)
-    const [isExpanded, setIsExpanded] = useState(true);
+    const [isExpanded, setIsExpanded] = useState(false);
 
     const itemsByCategory = order.lineItems.reduce((acc, item) => {
         const category = item.category || 'Products';
