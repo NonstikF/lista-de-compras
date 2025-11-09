@@ -7,6 +7,7 @@ export interface LineItem {
   sku: string;
   isPurchased: boolean;
   quantityPurchased: number;
+  imageUrl: string | null;
 }
 
 export interface Order {

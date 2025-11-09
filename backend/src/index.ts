@@ -18,6 +18,7 @@ app.use(express.json());
 /**
  * RUTA [POST] /api/item-status
  * Guarda o actualiza el estado de un artículo de línea individual.
+ * (Esta ruta no cambia)
  */
 app.post('/api/item-status', async (req, res) => {
     const { lineItemId, orderId, isPurchased, quantityPurchased } = req.body;
@@ -26,7 +27,7 @@ app.post('/api/item-status', async (req, res) => {
         return res.status(400).json({ error: 'lineItemId es requerido' });
     }
 
-    try {
+try {
         const status = await prisma.purchaseStatus.upsert({
             where: {
                 lineItemId: lineItemId,
@@ -45,7 +46,7 @@ app.post('/api/item-status', async (req, res) => {
 
         res.json({ success: true, status: status });
 
-    } catch (error) {
+    } catch (error) { 
         console.error('Error al guardar estado:', error);
         res.status(500).json({ error: 'No se pudo guardar el estado' });
     }
@@ -55,7 +56,7 @@ app.post('/api/item-status', async (req, res) => {
 /**
  * RUTA [GET] /api/orders
  * Obtiene pedidos (pendientes o completados) de WooCommerce
- * Y los combina con el progreso de la DB.
+ * Y los combina con el progreso de la DB y las imágenes del producto.
  */
 app.get('/api/orders', async (req, res) => {
 
@@ -98,7 +99,7 @@ app.get('/api/orders', async (req, res) => {
             return res.json([]);
         }
 
-        // --- 4. OBTENER PRODUCTOS (PARA CATEGORÍAS) ---
+        // --- 4. OBTENER PRODUCTOS (PARA CATEGORÍAS E IMÁGENES) ---
         const productIds = new Set<number>();
         rawOrders.forEach(order => {
             order.line_items.forEach((item: any) => {
@@ -106,7 +107,8 @@ app.get('/api/orders', async (req, res) => {
             });
         });
 
-        const productCategoryMap = new Map<number, string>();
+        // ¡MODIFICADO! productDetailsMap ahora también guarda la URL de la imagen
+        const productDetailsMap = new Map<number, { category: string, imageUrl: string | null }>();
         if (productIds.size > 0) {
             const productsResponse = await axios.get(
                 `${WOO_URL}/wp-json/wc/v3/products`,
@@ -126,7 +128,14 @@ app.get('/api/orders', async (req, res) => {
                 const categoryName = product.categories && product.categories.length > 0
                     ? product.categories[0].name
                     : 'Uncategorized';
-                productCategoryMap.set(product.id, categoryName);
+                
+                // Obtener la URL de la imagen (la primera imagen, si existe)
+                const imageUrl = product.images && product.images.length > 0
+                    ? product.images[0].src
+                    : null;
+                
+                // Guardamos ambos
+                productDetailsMap.set(product.id, { category: categoryName, imageUrl: imageUrl });
             });
         }
 
@@ -151,6 +160,9 @@ app.get('/api/orders', async (req, res) => {
             },
             lineItems: order.line_items.map((item: any) => {
                 const savedItemStatus = statusMap.get(item.id);
+                // Obtener detalles del mapa, incluyendo la imagen
+                const productDetails = productDetailsMap.get(item.product_id);
+
                 return {
                     id: item.id,
                     name: item.name,
@@ -159,7 +171,8 @@ app.get('/api/orders', async (req, res) => {
                     sku: item.sku,
                     isPurchased: savedItemStatus ? savedItemStatus.isPurchased : false,
                     quantityPurchased: savedItemStatus ? savedItemStatus.quantityPurchased : 0,
-                    category: productCategoryMap.get(item.product_id) || 'Products',
+                    category: productDetails ? productDetails.category : 'Products',
+                    imageUrl: productDetails ? productDetails.imageUrl : null, // ¡NUEVA PROPIEDAD!
                 };
             }),
         }));
@@ -174,8 +187,9 @@ app.get('/api/orders', async (req, res) => {
 
 
 /**
- * ¡NUEVA RUTA! [POST] /api/orders/:id/complete
+ * RUTA [POST] /api/orders/:id/complete
  * Actualiza el estado de un pedido en WooCommerce a "completed".
+ * (Esta ruta no cambia)
  */
 app.post('/api/orders/:id/complete', async (req, res) => {
     // 1. Obtenemos el ID del pedido desde los parámetros de la URL
