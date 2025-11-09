@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import type { Order, LineItem } from '../types';
-import { getOrders } from '../services/woocommerceService';
+// ¡MODIFICADO! Importamos nuestro nuevo tipo OrderStatusType
+import { getOrders, type OrderStatusType } from '../services/woocommerceService'; 
 import { CheckCircleIcon } from './icons';
 
 // La URL de tu API de backend
@@ -10,9 +11,8 @@ interface GroupedItems {
   [category: string]: LineItem[];
 }
 
-// Esta vista ya no necesita 'apiConfig'
 interface OrdersViewProps {
-  // Ya no pasamos apiConfig, así que esto está vacío
+  // Sin props
 }
 
 const LoadingSpinner: React.FC = () => (
@@ -99,23 +99,27 @@ const OrderItem: React.FC<{ item: LineItem; onQuantityChange: (itemId: number, n
 };
 
 
-const OrdersView: React.FC<OrdersViewProps> = () => { // Quitamos 'apiConfig'
+const OrdersView: React.FC<OrdersViewProps> = () => {
     const [orders, setOrders] = useState<Order[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    
+    // --- ¡NUEVO ESTADO! ---
+    // Para rastrear la pestaña actual: 'processing' (pendientes) o 'completed'
+    const [viewMode, setViewMode] = useState<OrderStatusType>('processing');
 
-    // --- ¡SECCIÓN CORREGIDA! ---
-    // Este useEffect ahora llama a getOrders() sin argumentos
-    // y solo se ejecuta una vez.
+    // --- ¡USEEFFECT MODIFICADO! ---
+    // Ahora depende de 'viewMode'. Cada vez que 'viewMode' cambia,
+    // vuelve a cargar los pedidos con el estado correcto.
     useEffect(() => {
         const fetchOrders = async () => {
             try {
                 setIsLoading(true);
                 setError(null);
+                setOrders([]); // Limpia los pedidos antiguos antes de cargar nuevos
                 
-                // Llamamos a getOrders() sin argumentos.
-                // Tu backend se encarga del resto.
-                const fetchedOrders = await getOrders(); 
+                // Pasa el modo de vista actual a la función getOrders
+                const fetchedOrders = await getOrders(viewMode); 
                 
                 setOrders(fetchedOrders.sort((a, b) => new Date(b.dateCreated).getTime() - new Date(a.dateCreated).getTime()));
             } catch (err) {
@@ -130,28 +134,20 @@ const OrdersView: React.FC<OrdersViewProps> = () => { // Quitamos 'apiConfig'
             }
         };
         fetchOrders();
-    }, []); // El array de dependencias ahora está vacío
+    }, [viewMode]); // ¡NUEVA DEPENDENCIA!
 
     
-    // --- Esta función está CORREGIDA y es la que funciona ---
+    // ... (Tu función handleQuantityChange no cambia, ya es correcta) ...
     const handleQuantityChange = (itemId: number, newQuantity: number) => {
         
         let itemToSave: LineItem | null = null;
         let orderIdToSave: number | null = null;
 
-        // --- 1. ENCONTRAR LOS DATOS Y PREPARAR EL NUEVO ESTADO ---
         const foundOrder = orders.find(o => o.lineItems.some(i => i.id === itemId));
-        
-        if (!foundOrder) {
-            console.warn('No se encontró el pedido para el ítem:', itemId);
-            return; 
-        }
+        if (!foundOrder) return; 
 
         const foundItem = foundOrder.lineItems.find(i => i.id === itemId);
-        if (!foundItem) {
-             console.warn('No se encontró el ítem:', itemId);
-            return;
-        }
+        if (!foundItem) return;
 
         orderIdToSave = foundOrder.id;
         itemToSave = {
@@ -160,7 +156,6 @@ const OrdersView: React.FC<OrdersViewProps> = () => { // Quitamos 'apiConfig'
             isPurchased: newQuantity === foundItem.quantity
         };
         
-        // --- 2. ACTUALIZAR EL ESTADO DE REACT (UI) ---
         const updatedOrders = orders.map(order => {
             if (order.id !== orderIdToSave) return order;
             
@@ -173,7 +168,6 @@ const OrdersView: React.FC<OrdersViewProps> = () => { // Quitamos 'apiConfig'
         
         setOrders(updatedOrders);
 
-        // --- 3. ENVIAR AL BACKEND ---
         if (itemToSave && orderIdToSave) {
             const { id: lineItemId, isPurchased, quantityPurchased } = itemToSave;
 
@@ -206,72 +200,118 @@ const OrdersView: React.FC<OrdersViewProps> = () => { // Quitamos 'apiConfig'
             });
         }
     };
-    // --- FIN DE LA SECCIÓN CORREGIDA ---
 
 
-    if (isLoading) return <LoadingSpinner />;
-    if (error) return <div className="text-center p-4 bg-red-100 text-red-700 rounded-lg">{error}</div>;
-    if (orders.length === 0) return <EmptyState />;
+    // --- ¡NUEVO JSX! ---
+    // Componente pequeño para los botones de las pestañas
+    const TabButton: React.FC<{
+        label: string;
+        isActive: boolean;
+        onClick: () => void;
+    }> = ({ label, isActive, onClick }) => {
+        return (
+            <button
+                onClick={onClick}
+                className={`px-6 py-2 font-medium rounded-md transition-colors ${
+                    isActive
+                        ? 'bg-indigo-600 text-white shadow'
+                        : 'bg-white text-slate-600 hover:bg-slate-100'
+                }`}
+            >
+                {label}
+            </button>
+        );
+    };
 
+
+    // ¡MODIFICADO! Añadimos los botones de pestañas
     return (
-        <div className="space-y-8">
-            {orders.map(order => {
-                const itemsByCategory = order.lineItems.reduce((acc, item) => {
-                    const category = item.category || 'Products'; // Default category
-                    if (!acc[category]) {
-                        acc[category] = [];
-                    }
-                    acc[category].push(item);
-                    return acc;
-                }, {} as GroupedItems);
+        <div className="space-y-6">
+            {/* --- INICIO DE LOS BOTONES DE PESTAÑAS --- */}
+            <div className="flex space-x-2 p-1 bg-slate-200 rounded-lg max-w-md">
+                <TabButton 
+                    label="Pendientes"
+                    isActive={viewMode === 'processing'}
+                    onClick={() => setViewMode('processing')}
+                />
+                <TabButton 
+                    label="Completados"
+                    isActive={viewMode === 'completed'}
+                    onClick={() => setViewMode('completed')}
+                />
+            </div>
+            {/* --- FIN DE LOS BOTONES DE PESTAÑAS --- */}
 
-                const categories = Object.keys(itemsByCategory).sort();
+            {/* El resto de tu lógica de renderizado */}
+            {isLoading && <LoadingSpinner />}
+            {!isLoading && error && <div className="text-center p-4 bg-red-100 text-red-700 rounded-lg">{error}</div>}
+            {!isLoading && !error && orders.length === 0 && <EmptyState />}
+            
+            {!isLoading && !error && orders.length > 0 && (
+                <div className="space-y-8">
+                    {orders.map(order => {
+                        const itemsByCategory = order.lineItems.reduce((acc, item) => {
+                            const category = item.category || 'Products';
+                            if (!acc[category]) {
+                                acc[category] = [];
+                            }
+                            acc[category].push(item);
+                            return acc;
+                        }, {} as GroupedItems);
 
-                return (
-                    <article key={order.id} aria-labelledby={`order-heading-${order.id}`} className="bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden">
-                        <header className="p-4 bg-slate-50 border-b border-slate-200 flex justify-between items-center flex-wrap gap-2">
-                            <div>
-                                <h2 id={`order-heading-${order.id}`} className="text-xl md:text-2xl font-bold text-slate-800">Order #{order.id}</h2>
-                                <p className="text-sm text-slate-500 mt-1">
-                                    {order.customer.firstName} {order.customer.lastName} &bull; {new Date(order.dateCreated).toLocaleDateString()}
-                                </p>
-                            </div>
-                            <span className="capitalize px-3 py-1 text-sm font-semibold rounded-full bg-blue-100 text-blue-800">
-                                {order.status}
-                            </span>
-                        </header>
-                        
-                        <div className="p-4 space-y-4">
-                            {categories.map(category => {
-                                const items = itemsByCategory[category];
-                                const purchasedCount = items.filter(item => item.isPurchased).length;
-                                const totalCount = items.length;
-                                const isComplete = purchasedCount === totalCount;
+                        const categories = Object.keys(itemsByCategory).sort();
 
-                                return (
-                                    <section key={category} aria-labelledby={`category-heading-${order.id}-${category}`}>
-                                        <div className="rounded-lg border border-slate-200 overflow-hidden">
-                                            <div className={`p-3 border-b ${isComplete ? 'border-green-200 bg-green-50' : 'border-indigo-200 bg-indigo-50'}`}>
-                                                <div className="flex justify-between items-center">
-                                                    <h3 id={`category-heading-${order.id}-${category}`} className="text-lg font-semibold text-slate-700">{category}</h3>
-                                                    <span className={`text-xs font-semibold px-2 py-1 rounded-full ${isComplete ? 'bg-green-200 text-green-800' : 'bg-indigo-200 text-indigo-800'}`}>
-                                                        {purchasedCount} / {totalCount}
-                                                    </span>
+                        return (
+                            <article key={order.id} aria-labelledby={`order-heading-${order.id}`} className="bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden">
+                                <header className="p-4 bg-slate-50 border-b border-slate-200 flex justify-between items-center flex-wrap gap-2">
+                                    <div>
+                                        <h2 id={`order-heading-${order.id}`} className="text-xl md:text-2xl font-bold text-slate-800">Order #{order.id}</h2>
+                                        <p className="text-sm text-slate-500 mt-1">
+                                            {order.customer.firstName} {order.customer.lastName} &bull; {new Date(order.dateCreated).toLocaleDateString()}
+                                        </p>
+                                    </div>
+                                    <span className={`capitalize px-3 py-1 text-sm font-semibold rounded-full ${
+                                        order.status === 'processing' ? 'bg-blue-100 text-blue-800' : 
+                                        order.status === 'on-hold' ? 'bg-yellow-100 text-yellow-800' :
+                                        'bg-green-100 text-green-800' // 'completed' usará verde
+                                    }`}>
+                                        {order.status}
+                                    </span>
+                                </header>
+                                
+                                <div className="p-4 space-y-4">
+                                    {categories.map(category => {
+                                        const items = itemsByCategory[category];
+                                        const purchasedCount = items.filter(item => item.isPurchased).length;
+                                        const totalCount = items.length;
+                                        const isComplete = purchasedCount === totalCount;
+
+                                        return (
+                                            <section key={category} aria-labelledby={`category-heading-${order.id}-${category}`}>
+                                                <div className="rounded-lg border border-slate-200 overflow-hidden">
+                                                    <div className={`p-3 border-b ${isComplete ? 'border-green-200 bg-green-50' : 'border-indigo-200 bg-indigo-50'}`}>
+                                                        <div className="flex justify-between items-center">
+                                                            <h3 id={`category-heading-${order.id}-${category}`} className="text-lg font-semibold text-slate-700">{category}</h3>
+                                                            <span className={`text-xs font-semibold px-2 py-1 rounded-full ${isComplete ? 'bg-green-200 text-green-800' : 'bg-indigo-200 text-indigo-800'}`}>
+                                                                {purchasedCount} / {totalCount}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                    <div className="divide-y divide-slate-100">
+                                                        {items.map(item => (
+                                                            <OrderItem key={item.id} item={item} onQuantityChange={handleQuantityChange} />
+                                                        ))}
+                                                    </div>
                                                 </div>
-                                            </div>
-                                            <div className="divide-y divide-slate-100">
-                                                {items.map(item => (
-                                                    <OrderItem key={item.id} item={item} onQuantityChange={handleQuantityChange} />
-                                                ))}
-                                            </div>
-                                        </div>
-                                    </section>
-                                );
-                            })}
-                        </div>
-                    </article>
-                );
-            })}
+                                            </section>
+                                        );
+                                    })}
+                                </div>
+                            </article>
+                        );
+                    })}
+                </div>
+            )}
         </div>
     );
 };

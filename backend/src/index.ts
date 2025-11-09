@@ -1,7 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import { PrismaClient } from '@prisma/client';
-import axios from 'axios'; // ¡NUEVA IMPORTACIÓN!
+import axios from 'axios';
 
 // Inicializar Prisma Client
 const prisma = new PrismaClient();
@@ -18,7 +18,7 @@ app.use(express.json());
 /**
  * RUTA [POST] /api/item-status
  * Guarda o actualiza el estado de un artículo de línea individual.
- * (Esta ruta ya la tenías y es correcta)
+ * (Esta ruta no cambia)
  */
 app.post('/api/item-status', async (req, res) => {
     const { lineItemId, orderId, isPurchased, quantityPurchased } = req.body;
@@ -54,9 +54,9 @@ app.post('/api/item-status', async (req, res) => {
 
 
 /**
- * ¡NUEVA RUTA! [GET] /api/orders
- * Obtiene pedidos de WooCommerce Y el progreso de la DB,
- * los combina y los devuelve al frontend.
+ * ¡RUTA MODIFICADA! [GET] /api/orders
+ * Ahora acepta un parámetro de consulta ?status=
+ * para obtener pedidos pendientes O completados.
  */
 app.get('/api/orders', async (req, res) => {
 
@@ -67,25 +67,32 @@ app.get('/api/orders', async (req, res) => {
         return res.status(500).json({ error: 'Variables de API de WooCommerce no configuradas en el servidor' });
     }
 
-    // ¡ESTA SECCIÓN YA NO ES NECESARIA!
-    // const wooAuth = {
-    //     consumerKey: WOO_KEY,
-    //     consumerSecret: WOO_SECRET,
-    // };
+    // --- ¡NUEVA LÓGICA! ---
+    // 2. Determinar qué estado de pedido quiere el frontend
+    const requestedStatus = req.query.status as string; // ej: 'completed' o 'processing'
+
+    let wooStatusString: string;
+    if (requestedStatus === 'completed') {
+        wooStatusString = 'completed';
+    } else {
+        // Por defecto, o si se pide 'processing', mostramos los pendientes
+        wooStatusString = 'processing,on-hold';
+    }
+    // --- FIN DE LA NUEVA LÓGICA ---
 
     try {
-        // --- 2. OBTENER PEDIDOS DE WOOCOMMERCE (CORREGIDO) ---
+        // --- 3. OBTENER PEDIDOS DE WOOCOMMERCE (¡MODIFICADO!) ---
         const ordersResponse = await axios.get(
             `${WOO_URL}/wp-json/wc/v3/orders`,
             {
-                // ¡CAMBIO CLAVE! Usa "auth" para Basic Auth
+                // Usamos "auth" para Basic Auth (esto ya estaba bien)
                 auth: {
-                    username: WOO_KEY,     // Key va en username
-                    password: WOO_SECRET,  // Secret va en password
+                    username: WOO_KEY,
+                    password: WOO_SECRET,
                 },
-                // "params" ahora solo contiene los parámetros de la consulta
+                // "params" ahora usa el estado dinámico
                 params: {
-                    status: 'processing,on-hold',
+                    status: wooStatusString, // <-- ¡CAMBIO CLAVE!
                     per_page: 100,
                 },
             }
@@ -96,7 +103,8 @@ app.get('/api/orders', async (req, res) => {
             return res.json([]);
         }
 
-        // --- 3. OBTENER PRODUCTOS (PARA CATEGORÍAS) (CORREGIDO) ---
+        // --- 4. OBTENER PRODUCTOS (PARA CATEGORÍAS) ---
+        // (Esta parte no cambia)
         const productIds = new Set<number>();
         rawOrders.forEach(order => {
             order.line_items.forEach((item: any) => {
@@ -109,7 +117,6 @@ app.get('/api/orders', async (req, res) => {
             const productsResponse = await axios.get(
                 `${WOO_URL}/wp-json/wc/v3/products`,
                 {
-                    // ¡CAMBIO CLAVE! Usa "auth" aquí también
                     auth: {
                         username: WOO_KEY,
                         password: WOO_SECRET,
@@ -129,8 +136,8 @@ app.get('/api/orders', async (req, res) => {
             });
         }
 
-        // --- 4. OBTENER PROGRESO DE NUESTRA BASE DE DATOS ---
-        // (Esta parte estaba perfecta, no se cambia)
+        // --- 5. OBTENER PROGRESO DE NUESTRA BASE DE DATOS ---
+        // (Esta parte no cambia)
         const savedStatus = await prisma.purchaseStatus.findMany();
         const statusMap = new Map<number, { isPurchased: boolean, quantityPurchased: number }>();
         savedStatus.forEach(status => {
@@ -140,8 +147,8 @@ app.get('/api/orders', async (req, res) => {
             });
         });
 
-        // --- 5. COMBINAR TODO Y RESPONDER AL FRONTEND ---
-        // (Esta parte estaba perfecta, no se cambia)
+        // --- 6. COMBINAR TODO Y RESPONDER AL FRONTEND ---
+        // (Esta parte no cambia)
         const finalOrders = rawOrders.map(order => ({
             id: order.id,
             dateCreated: order.date_created,
@@ -168,7 +175,6 @@ app.get('/api/orders', async (req, res) => {
         res.json(finalOrders);
 
     } catch (error: any) {
-        // Este log de error es el que te está ayudando
         console.error('Error al contactar API de WooCommerce:', error.response?.data || error.message);
         res.status(500).json({ error: 'No se pudo obtener los pedidos de WooCommerce' });
     }
@@ -176,7 +182,8 @@ app.get('/api/orders', async (req, res) => {
 
 
 // --- Iniciar el Servidor ---
-const port = process.env.PORT || 4000; // Railway proveerá la variable PORT
+// (Esta parte no cambia)
+const port = process.env.PORT || 4000;
 app.listen(port, () => {
     console.log(`🚀 Servidor Backend escuchando en http://localhost:${port}`);
 });
