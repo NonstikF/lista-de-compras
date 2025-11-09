@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import type { Order, LineItem } from '../types';
-// ¡MODIFICADO! Importamos nuestro nuevo tipo OrderStatusType
+// Importamos nuestro nuevo tipo OrderStatusType
 import { getOrders, type OrderStatusType } from '../services/woocommerceService'; 
 import { CheckCircleIcon } from './icons';
 
@@ -103,22 +103,16 @@ const OrdersView: React.FC<OrdersViewProps> = () => {
     const [orders, setOrders] = useState<Order[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-    
-    // --- ¡NUEVO ESTADO! ---
-    // Para rastrear la pestaña actual: 'processing' (pendientes) o 'completed'
     const [viewMode, setViewMode] = useState<OrderStatusType>('processing');
+    const [completingOrderId, setCompletingOrderId] = useState<number | null>(null);
 
-    // --- ¡USEEFFECT MODIFICADO! ---
-    // Ahora depende de 'viewMode'. Cada vez que 'viewMode' cambia,
-    // vuelve a cargar los pedidos con el estado correcto.
     useEffect(() => {
         const fetchOrders = async () => {
             try {
                 setIsLoading(true);
                 setError(null);
-                setOrders([]); // Limpia los pedidos antiguos antes de cargar nuevos
+                setOrders([]); 
                 
-                // Pasa el modo de vista actual a la función getOrders
                 const fetchedOrders = await getOrders(viewMode); 
                 
                 setOrders(fetchedOrders.sort((a, b) => new Date(b.dateCreated).getTime() - new Date(a.dateCreated).getTime()));
@@ -134,10 +128,9 @@ const OrdersView: React.FC<OrdersViewProps> = () => {
             }
         };
         fetchOrders();
-    }, [viewMode]); // ¡NUEVA DEPENDENCIA!
+    }, [viewMode]); 
 
     
-    // ... (Tu función handleQuantityChange no cambia, ya es correcta) ...
     const handleQuantityChange = (itemId: number, newQuantity: number) => {
         
         let itemToSave: LineItem | null = null;
@@ -201,9 +194,29 @@ const OrdersView: React.FC<OrdersViewProps> = () => {
         }
     };
 
+    const handleCompleteOrder = async (orderId: number) => {
+        setCompletingOrderId(orderId);
 
-    // --- ¡NUEVO JSX! ---
-    // Componente pequeño para los botones de las pestañas
+        try {
+            const response = await fetch(`${BACKEND_API_URL}/api/orders/${orderId}/complete`, {
+                method: 'POST',
+            });
+
+            if (!response.ok) {
+                throw new Error('El backend falló al completar el pedido');
+            }
+            
+            console.log(`Pedido #${orderId} completado.`);
+            setOrders(currentOrders => currentOrders.filter(order => order.id !== orderId));
+
+        } catch (err) {
+            console.error('Error al completar el pedido:', err);
+            alert(`No se pudo completar el pedido #${orderId}. Revisa la consola.`);
+        } finally {
+            setCompletingOrderId(null);
+        }
+    };
+    
     const TabButton: React.FC<{
         label: string;
         isActive: boolean;
@@ -223,11 +236,8 @@ const OrdersView: React.FC<OrdersViewProps> = () => {
         );
     };
 
-
-    // ¡MODIFICADO! Añadimos los botones de pestañas
     return (
         <div className="space-y-6">
-            {/* --- INICIO DE LOS BOTONES DE PESTAÑAS --- */}
             <div className="flex space-x-2 p-1 bg-slate-200 rounded-lg max-w-md">
                 <TabButton 
                     label="Pendientes"
@@ -240,9 +250,7 @@ const OrdersView: React.FC<OrdersViewProps> = () => {
                     onClick={() => setViewMode('completed')}
                 />
             </div>
-            {/* --- FIN DE LOS BOTONES DE PESTAÑAS --- */}
-
-            {/* El resto de tu lógica de renderizado */}
+            
             {isLoading && <LoadingSpinner />}
             {!isLoading && error && <div className="text-center p-4 bg-red-100 text-red-700 rounded-lg">{error}</div>}
             {!isLoading && !error && orders.length === 0 && <EmptyState />}
@@ -260,23 +268,38 @@ const OrdersView: React.FC<OrdersViewProps> = () => {
                         }, {} as GroupedItems);
 
                         const categories = Object.keys(itemsByCategory).sort();
+                        
+                        const allItemsPurchased = order.lineItems.every(item => item.isPurchased);
 
                         return (
                             <article key={order.id} aria-labelledby={`order-heading-${order.id}`} className="bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden">
-                                <header className="p-4 bg-slate-50 border-b border-slate-200 flex justify-between items-center flex-wrap gap-2">
+                                <header className="p-4 bg-slate-50 border-b border-slate-200 flex justify-between items-center flex-wrap gap-3">
                                     <div>
                                         <h2 id={`order-heading-${order.id}`} className="text-xl md:text-2xl font-bold text-slate-800">Order #{order.id}</h2>
                                         <p className="text-sm text-slate-500 mt-1">
                                             {order.customer.firstName} {order.customer.lastName} &bull; {new Date(order.dateCreated).toLocaleDateString()}
                                         </p>
                                     </div>
-                                    <span className={`capitalize px-3 py-1 text-sm font-semibold rounded-full ${
-                                        order.status === 'processing' ? 'bg-blue-100 text-blue-800' : 
-                                        order.status === 'on-hold' ? 'bg-yellow-100 text-yellow-800' :
-                                        'bg-green-100 text-green-800' // 'completed' usará verde
-                                    }`}>
-                                        {order.status}
-                                    </span>
+                                    
+                                    <div className="flex items-center gap-3">
+                                        <span className={`capitalize px-3 py-1 text-sm font-semibold rounded-full ${
+                                            order.status === 'processing' ? 'bg-blue-100 text-blue-800' : 
+                                            order.status === 'on-hold' ? 'bg-yellow-100 text-yellow-800' :
+                                            'bg-green-100 text-green-800'
+                                        }`}>
+                                            {order.status}
+                                        </span>
+
+                                        {viewMode === 'processing' && (
+                                            <button
+                                                onClick={() => handleCompleteOrder(order.id)}
+                                                disabled={!allItemsPurchased || completingOrderId === order.id}
+                                                className="px-3 py-1 text-sm font-medium bg-green-500 text-white rounded-md shadow-sm hover:bg-green-600 disabled:bg-gray-400 disabled:opacity-70 disabled:cursor-not-allowed"
+                                            >
+                                                {completingOrderId === order.id ? 'Completando...' : 'Completar Pedido'}
+                                            </button>
+                                        )}
+                                    </div>
                                 </header>
                                 
                                 <div className="p-4 space-y-4">

@@ -18,7 +18,6 @@ app.use(express.json());
 /**
  * RUTA [POST] /api/item-status
  * Guarda o actualiza el estado de un artículo de línea individual.
- * (Esta ruta no cambia)
  */
 app.post('/api/item-status', async (req, res) => {
     const { lineItemId, orderId, isPurchased, quantityPurchased } = req.body;
@@ -54,9 +53,9 @@ app.post('/api/item-status', async (req, res) => {
 
 
 /**
- * ¡RUTA MODIFICADA! [GET] /api/orders
- * Ahora acepta un parámetro de consulta ?status=
- * para obtener pedidos pendientes O completados.
+ * RUTA [GET] /api/orders
+ * Obtiene pedidos (pendientes o completados) de WooCommerce
+ * Y los combina con el progreso de la DB.
  */
 app.get('/api/orders', async (req, res) => {
 
@@ -67,32 +66,28 @@ app.get('/api/orders', async (req, res) => {
         return res.status(500).json({ error: 'Variables de API de WooCommerce no configuradas en el servidor' });
     }
 
-    // --- ¡NUEVA LÓGICA! ---
     // 2. Determinar qué estado de pedido quiere el frontend
-    const requestedStatus = req.query.status as string; // ej: 'completed' o 'processing'
+    const requestedStatus = req.query.status as string; // 'completed' o 'processing'
 
     let wooStatusString: string;
     if (requestedStatus === 'completed') {
         wooStatusString = 'completed';
     } else {
-        // Por defecto, o si se pide 'processing', mostramos los pendientes
+        // Por defecto, mostramos los pendientes
         wooStatusString = 'processing,on-hold';
     }
-    // --- FIN DE LA NUEVA LÓGICA ---
 
     try {
-        // --- 3. OBTENER PEDIDOS DE WOOCOMMERCE (¡MODIFICADO!) ---
+        // --- 3. OBTENER PEDIDOS DE WOOCOMMERCE ---
         const ordersResponse = await axios.get(
             `${WOO_URL}/wp-json/wc/v3/orders`,
             {
-                // Usamos "auth" para Basic Auth (esto ya estaba bien)
-                auth: {
+                auth: { // Basic Auth
                     username: WOO_KEY,
                     password: WOO_SECRET,
                 },
-                // "params" ahora usa el estado dinámico
                 params: {
-                    status: wooStatusString, // <-- ¡CAMBIO CLAVE!
+                    status: wooStatusString, // Estado dinámico
                     per_page: 100,
                 },
             }
@@ -104,7 +99,6 @@ app.get('/api/orders', async (req, res) => {
         }
 
         // --- 4. OBTENER PRODUCTOS (PARA CATEGORÍAS) ---
-        // (Esta parte no cambia)
         const productIds = new Set<number>();
         rawOrders.forEach(order => {
             order.line_items.forEach((item: any) => {
@@ -137,7 +131,6 @@ app.get('/api/orders', async (req, res) => {
         }
 
         // --- 5. OBTENER PROGRESO DE NUESTRA BASE DE DATOS ---
-        // (Esta parte no cambia)
         const savedStatus = await prisma.purchaseStatus.findMany();
         const statusMap = new Map<number, { isPurchased: boolean, quantityPurchased: number }>();
         savedStatus.forEach(status => {
@@ -148,7 +141,6 @@ app.get('/api/orders', async (req, res) => {
         });
 
         // --- 6. COMBINAR TODO Y RESPONDER AL FRONTEND ---
-        // (Esta parte no cambia)
         const finalOrders = rawOrders.map(order => ({
             id: order.id,
             dateCreated: order.date_created,
@@ -181,8 +173,51 @@ app.get('/api/orders', async (req, res) => {
 });
 
 
+/**
+ * ¡NUEVA RUTA! [POST] /api/orders/:id/complete
+ * Actualiza el estado de un pedido en WooCommerce a "completed".
+ */
+app.post('/api/orders/:id/complete', async (req, res) => {
+    // 1. Obtenemos el ID del pedido desde los parámetros de la URL
+    const { id: orderId } = req.params;
+
+    // 2. Cargamos las claves seguras
+    const { WOO_URL, WOO_KEY, WOO_SECRET } = process.env;
+
+    if (!WOO_URL || !WOO_KEY || !WOO_SECRET) {
+        return res.status(500).json({ error: 'Variables de API de WooCommerce no configuradas' });
+    }
+
+    // 3. Preparamos los datos que queremos enviar a WooCommerce
+    const dataToUpdate = {
+        status: 'completed'
+    };
+
+    try {
+        // 4. Hacemos una petición PUT (actualizar) a WooCommerce
+        const response = await axios.put(
+            `${WOO_URL}/wp-json/wc/v3/orders/${orderId}`, // <-- URL del pedido específico
+            dataToUpdate, // <-- Los datos a cambiar (status: "completed")
+            {
+                // Usamos la misma Basic Auth
+                auth: {
+                    username: WOO_KEY,
+                    password: WOO_SECRET,
+                }
+            }
+        );
+
+        // 5. Devolvemos la respuesta exitosa al frontend
+        res.json({ success: true, updatedOrder: response.data });
+
+    } catch (error: any) {
+        console.error(`Error al completar el pedido #${orderId}:`, error.response?.data || error.message);
+        res.status(500).json({ error: 'No se pudo actualizar el pedido en WooCommerce' });
+    }
+});
+
+
 // --- Iniciar el Servidor ---
-// (Esta parte no cambia)
 const port = process.env.PORT || 4000;
 app.listen(port, () => {
     console.log(`🚀 Servidor Backend escuchando en http://localhost:${port}`);
