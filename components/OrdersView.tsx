@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import type { Order, LineItem } from '../types';
 import { getOrders, type OrderStatusType } from '../services/woocommerceService';
-// ¡NUEVA IMPORTACIÓN!
-import { CheckCircleIcon, ChevronDownIcon } from './icons';
+// ¡MODIFICADO! Se añade EyeIcon
+import { CheckCircleIcon, ChevronDownIcon, XMarkIcon, EyeIcon } from './icons';
 
 // La URL de tu API de backend
 const BACKEND_API_URL = import.meta.env.VITE_BACKEND_API_URL || 'http://localhost:4000';
@@ -11,9 +11,53 @@ interface GroupedItems {
     [category: string]: LineItem[];
 }
 
-// --- (Componente OrderItem: Sin cambios) ---
-const OrderItem: React.FC<{ item: LineItem; onQuantityChange: (itemId: number, newQuantity: number) => void }> = ({ item, onQuantityChange }) => {
-    // ... (Todo el código de OrderItem es idéntico al que ya tienes) ...
+interface OrdersViewProps {
+    // Ya no pasamos apiConfig, así que esto está vacío
+}
+
+// --- Componente Modal de Imagen ---
+const ProductImageModal: React.FC<{ imageUrl: string; productName: string; onClose: () => void }> = ({ imageUrl, productName, onClose }) => {
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-70 p-4" onClick={onClose}>
+            <div className="relative bg-white rounded-lg shadow-xl max-w-lg mx-auto overflow-hidden" onClick={e => e.stopPropagation()}>
+                <button
+                    onClick={onClose}
+                    className="absolute top-2 right-2 p-1 bg-white rounded-full text-slate-700 hover:text-slate-900 hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-slate-500"
+                    aria-label="Cerrar imagen"
+                >
+                    <XMarkIcon className="w-6 h-6" />
+                </button>
+                <img src={imageUrl} alt={productName} className="max-h-[80vh] w-full object-contain" />
+                <div className="p-3 text-center text-slate-700 font-medium border-t border-slate-200">
+                    {productName}
+                </div>
+            </div>
+        </div>
+    );
+};
+
+
+// --- (LoadingSpinner y EmptyState: Sin cambios) ---
+const LoadingSpinner: React.FC = () => (
+    <div className="flex justify-center items-center h-64">
+        <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-indigo-500"></div>
+    </div>
+);
+
+const EmptyState: React.FC = () => (
+    <div className="text-center py-16 px-6 bg-slate-100 rounded-lg">
+        <CheckCircleIcon className="mx-auto h-12 w-12 text-green-500" />
+        <h3 className="mt-2 text-xl font-medium text-slate-900">All caught up!</h3>
+        <p className="mt-1 text-slate-500">There are no new orders to process right now.</p>
+    </div>
+);
+
+// --- Componente OrderItem (MODIFICADO) ---
+const OrderItem: React.FC<{
+    item: LineItem;
+    onQuantityChange: (itemId: number, newQuantity: number) => void;
+    onViewImage: (imageUrl: string, productName: string) => void;
+}> = ({ item, onQuantityChange, onViewImage }) => {
     const isPurchased = item.isPurchased;
     const isInProgress = item.quantityPurchased > 0 && !isPurchased;
 
@@ -31,11 +75,13 @@ const OrderItem: React.FC<{ item: LineItem; onQuantityChange: (itemId: number, n
             onQuantityChange(item.id, item.quantityPurchased - 1);
         }
     };
+
     const getBackgroundColor = () => {
         if (isPurchased) return 'bg-green-50 text-slate-500';
         if (isInProgress) return 'bg-yellow-50';
         return 'bg-white hover:bg-slate-50';
     };
+
     return (
         <div className={`flex items-center justify-between p-3 transition-all duration-300 ${getBackgroundColor()}`}>
             <div className="flex items-center space-x-4 flex-grow">
@@ -43,10 +89,15 @@ const OrderItem: React.FC<{ item: LineItem; onQuantityChange: (itemId: number, n
                     <span className="text-indigo-600 font-bold text-lg">{item.quantity}x</span>
                 </div>
                 <div>
-                    <p className={`font-semibold text-slate-800 ${isPurchased ? 'line-through' : ''}`}>{item.name}</p>
+                    {/* ¡MODIFICADO! El nombre del producto vuelve a ser un <p> simple */}
+                    <p className={`font-semibold text-slate-800 ${isPurchased ? 'line-through' : ''}`}>
+                        {item.name}
+                    </p>
                     <p className="text-xs text-slate-400">SKU: {item.sku || 'N/A'}</p>
                 </div>
             </div>
+
+            {/* ¡MODIFICADO! Se añade el botón de Ojo aquí */}
             <div className="flex items-center space-x-3">
                 {item.quantity > 1 && (
                     <div className="flex items-center space-x-2">
@@ -55,6 +106,20 @@ const OrderItem: React.FC<{ item: LineItem; onQuantityChange: (itemId: number, n
                         <button onClick={handleIncrement} disabled={isPurchased} className="w-7 h-7 flex items-center justify-center rounded-full bg-slate-200 text-slate-600 hover:bg-slate-300 disabled:opacity-50 disabled:cursor-not-allowed transition">+</button>
                     </div>
                 )}
+
+                {/* --- ¡NUEVO BOTÓN DE OJO! --- */}
+                {/* Solo se muestra si el item tiene una imagen */}
+                {item.imageUrl && (
+                    <button
+                        onClick={() => onViewImage(item.imageUrl!, item.name)}
+                        className="p-1 text-slate-500 hover:text-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 rounded-full"
+                        aria-label={`Ver imagen de ${item.name}`}
+                    >
+                        <EyeIcon className="w-5 h-5" />
+                    </button>
+                )}
+                {/* --- FIN DE NUEVO BOTÓN --- */}
+
                 <button
                     onClick={handleToggle}
                     aria-label={`Mark ${item.name} as ${isPurchased ? 'not purchased' : 'purchased'}`}
@@ -67,15 +132,15 @@ const OrderItem: React.FC<{ item: LineItem; onQuantityChange: (itemId: number, n
     );
 };
 
-// --- ¡NUEVO SUB-COMPONENTE PARA LA CATEGORÍA! ---
+// --- Componente CategorySection ---
 const CategorySection: React.FC<{
     category: string;
     items: LineItem[];
     onQuantityChange: (itemId: number, newQuantity: number) => void;
-}> = ({ category, items, onQuantityChange }) => {
+    onViewImage: (imageUrl: string, productName: string) => void;
+}> = ({ category, items, onQuantityChange, onViewImage }) => {
 
-    // 1. Estado para colapsar la categoría (por defecto abierta)
-    const [isExpanded, setIsExpanded] = useState(false);
+    const [isExpanded, setIsExpanded] = useState(false); // Por defecto cerrada
 
     const purchasedCount = items.filter(item => item.isPurchased).length;
     const totalCount = items.length;
@@ -84,14 +149,12 @@ const CategorySection: React.FC<{
     return (
         <section aria-labelledby={`category-heading-${category}`}>
             <div className="rounded-lg border border-slate-200 overflow-hidden">
-                {/* 2. El header de la categoría ahora es un botón */}
                 <button
                     type="button"
                     onClick={() => setIsExpanded(!isExpanded)}
                     className={`w-full p-3 border-b flex justify-between items-center transition-colors ${isComplete ? 'border-green-200 bg-green-50' : 'border-indigo-200 bg-indigo-50'} ${isExpanded ? '' : 'border-b-0'}`}
                 >
                     <div className="flex items-center gap-2">
-                        {/* 3. Ícono de flecha que gira */}
                         <ChevronDownIcon className={`w-5 h-5 text-slate-600 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
                         <h3 id={`category-heading-${category}`} className="text-lg font-semibold text-slate-700">{category}</h3>
                     </div>
@@ -100,11 +163,15 @@ const CategorySection: React.FC<{
                     </span>
                 </button>
 
-                {/* 4. Renderizado condicional: solo muestra los items si está expandido */}
                 {isExpanded && (
                     <div className="divide-y divide-slate-100">
                         {items.map(item => (
-                            <OrderItem key={item.id} item={item} onQuantityChange={onQuantityChange} />
+                            <OrderItem
+                                key={item.id}
+                                item={item}
+                                onQuantityChange={onQuantityChange}
+                                onViewImage={onViewImage}
+                            />
                         ))}
                     </div>
                 )}
@@ -113,17 +180,17 @@ const CategorySection: React.FC<{
     );
 };
 
-// --- ¡NUEVO SUB-COMPONENTE PARA EL PEDIDO COMPLETO! ---
+// --- Componente OrderCard ---
 const OrderCard: React.FC<{
     order: Order;
     viewMode: OrderStatusType;
     completingOrderId: number | null;
     onQuantityChange: (itemId: number, newQuantity: number) => void;
     onCompleteOrder: (orderId: number) => void;
-}> = ({ order, viewMode, completingOrderId, onQuantityChange, onCompleteOrder }) => {
+    onViewImage: (imageUrl: string, productName: string) => void;
+}> = ({ order, viewMode, completingOrderId, onQuantityChange, onCompleteOrder, onViewImage }) => {
 
-    // 1. Estado para colapsar el pedido (por defecto abierto)
-    const [isExpanded, setIsExpanded] = useState(false);
+    const [isExpanded, setIsExpanded] = useState(false); // Por defecto cerrado
 
     const itemsByCategory = order.lineItems.reduce((acc, item) => {
         const category = item.category || 'Products';
@@ -139,14 +206,12 @@ const OrderCard: React.FC<{
 
     return (
         <article aria-labelledby={`order-heading-${order.id}`} className="bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden">
-            {/* 2. El header del pedido ahora es un botón */}
             <button
                 type="button"
                 onClick={() => setIsExpanded(!isExpanded)}
                 className={`w-full p-4 bg-slate-50 border-b border-slate-200 flex justify-between items-center flex-wrap gap-3 ${isExpanded ? '' : 'border-b-0'}`}
             >
                 <div className="flex items-center gap-2">
-                    {/* 3. Ícono de flecha que gira */}
                     <ChevronDownIcon className={`w-6 h-6 text-slate-700 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
                     <div>
                         <h2 id={`order-heading-${order.id}`} className="text-xl md:text-2xl font-bold text-slate-800 text-left">Order #{order.id}</h2>
@@ -164,7 +229,7 @@ const OrderCard: React.FC<{
                     {viewMode === 'processing' && (
                         <button
                             onClick={(e) => {
-                                e.stopPropagation(); // Evita que el clic colapse el pedido
+                                e.stopPropagation();
                                 onCompleteOrder(order.id);
                             }}
                             disabled={!allItemsPurchased || completingOrderId === order.id}
@@ -176,7 +241,6 @@ const OrderCard: React.FC<{
                 </div>
             </button>
 
-            {/* 4. Renderizado condicional: solo muestra el cuerpo si está expandido */}
             {isExpanded && (
                 <div className="p-4 space-y-4">
                     {categories.map(category => (
@@ -185,6 +249,7 @@ const OrderCard: React.FC<{
                             category={category}
                             items={itemsByCategory[category]}
                             onQuantityChange={onQuantityChange}
+                            onViewImage={onViewImage}
                         />
                     ))}
                 </div>
@@ -193,25 +258,7 @@ const OrderCard: React.FC<{
     );
 };
 
-// --- (Componentes LoadingSpinner y EmptyState: Sin cambios) ---
-const LoadingSpinner: React.FC = () => (
-    <div className="flex justify-center items-center h-64">
-        <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-indigo-500"></div>
-    </div>
-);
-const EmptyState: React.FC = () => (
-    <div className="text-center py-16 px-6 bg-slate-100 rounded-lg">
-        <CheckCircleIcon className="mx-auto h-12 w-12 text-green-500" />
-        <h3 className="mt-2 text-xl font-medium text-slate-900">All caught up!</h3>
-        <p className="mt-1 text-slate-500">There are no new orders to process right now.</p>
-    </div>
-);
-
-interface OrdersViewProps {
-  // Ya no pasamos apiConfig, así que esto está vacío
-}
-
-// --- COMPONENTE PRINCIPAL: OrdersView (Ahora mucho más limpio) ---
+// --- COMPONENTE PRINCIPAL: OrdersView ---
 const OrdersView: React.FC<OrdersViewProps> = () => {
     const [orders, setOrders] = useState<Order[]>([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -219,7 +266,19 @@ const OrdersView: React.FC<OrdersViewProps> = () => {
     const [viewMode, setViewMode] = useState<OrderStatusType>('processing');
     const [completingOrderId, setCompletingOrderId] = useState<number | null>(null);
 
-    // ... (useEffect para cargar pedidos no cambia) ...
+    const [modalImageUrl, setModalImageUrl] = useState<string | null>(null);
+    const [modalProductName, setModalProductName] = useState<string | null>(null);
+
+    const handleViewImage = (imageUrl: string, productName: string) => {
+        setModalImageUrl(imageUrl);
+        setModalProductName(productName);
+    };
+
+    const handleCloseModal = () => {
+        setModalImageUrl(null);
+        setModalProductName(null);
+    };
+
     useEffect(() => {
         const fetchOrders = async () => {
             try {
@@ -245,7 +304,6 @@ const OrdersView: React.FC<OrdersViewProps> = () => {
     }, [viewMode]);
 
 
-    // ... (handleQuantityChange no cambia) ...
     const handleQuantityChange = (itemId: number, newQuantity: number) => {
         let itemToSave: LineItem | null = null;
         let orderIdToSave: number | null = null;
@@ -292,7 +350,6 @@ const OrdersView: React.FC<OrdersViewProps> = () => {
         }
     };
 
-    // ... (handleCompleteOrder no cambia) ...
     const handleCompleteOrder = async (orderId: number) => {
         setCompletingOrderId(orderId);
         try {
@@ -312,7 +369,6 @@ const OrdersView: React.FC<OrdersViewProps> = () => {
         }
     };
 
-    // ... (El componente TabButton no cambia) ...
     const TabButton: React.FC<{
         label: string;
         isActive: boolean;
@@ -322,8 +378,8 @@ const OrdersView: React.FC<OrdersViewProps> = () => {
             <button
                 onClick={onClick}
                 className={`px-6 py-2 font-medium rounded-md transition-colors ${isActive
-                    ? 'bg-indigo-600 text-white shadow'
-                    : 'bg-white text-slate-600 hover:bg-slate-100'
+                        ? 'bg-indigo-600 text-white shadow'
+                        : 'bg-white text-slate-600 hover:bg-slate-100'
                     }`}
             >
                 {label}
@@ -331,7 +387,6 @@ const OrdersView: React.FC<OrdersViewProps> = () => {
         );
     };
 
-    // --- JSX PRINCIPAL (¡Ahora usa el nuevo OrderCard!) ---
     return (
         <div className="space-y-6">
             <div className="flex space-x-2 p-1 bg-slate-200 rounded-lg max-w-md">
@@ -353,7 +408,6 @@ const OrdersView: React.FC<OrdersViewProps> = () => {
 
             {!isLoading && !error && orders.length > 0 && (
                 <div className="space-y-8">
-                    {/* ¡MÁS LIMPIO! Ahora solo mapeamos y renderizamos OrderCard */}
                     {orders.map(order => (
                         <OrderCard
                             key={order.id}
@@ -362,9 +416,18 @@ const OrdersView: React.FC<OrdersViewProps> = () => {
                             completingOrderId={completingOrderId}
                             onQuantityChange={handleQuantityChange}
                             onCompleteOrder={handleCompleteOrder}
+                            onViewImage={handleViewImage}
                         />
                     ))}
                 </div>
+            )}
+
+            {modalImageUrl && modalProductName && (
+                <ProductImageModal
+                    imageUrl={modalImageUrl}
+                    productName={modalProductName}
+                    onClose={handleCloseModal}
+                />
             )}
         </div>
     );

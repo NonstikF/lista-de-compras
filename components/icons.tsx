@@ -42,3 +42,10 @@ export const XMarkIcon: React.FC<{ className?: string }> = ({ className = "w-6 h
         <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
     </svg>
 );
+
+export const EyeIcon: React.FC<{ className?: string }> = ({ className = "w-6 h-6" }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 0 1 0-.634l3.072-5.408A1.125 1.125 0 0 1 6.11 5.625h11.78c.552 0 1.038.358 1.038.835l3.072 5.408a1.012 1.012 0 0 1 0 .634l-3.072 5.408A1.125 1.125 0 0 1 17.89 18.375H6.11a1.125 1.125 0 0 1-1.038-.835L2.036 12.322Z" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
+    </svg>
+);
