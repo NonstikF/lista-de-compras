@@ -1,18 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import type { Order, LineItem } from '../types';
-import { getOrders, type OrderStatusType } from '../services/woocommerceService';
-// ¡MODIFICADO! Se añade EyeIcon
-import { CheckCircleIcon, ChevronDownIcon, XMarkIcon, EyeIcon } from './icons';
+import { getOrders, type OrderStatusType } from '../services/woocommerceService'; 
+import { CheckCircleIcon, ChevronDownIcon, XMarkIcon, EyeIcon } from './icons'; 
 
 // La URL de tu API de backend
 const BACKEND_API_URL = import.meta.env.VITE_BACKEND_API_URL || 'http://localhost:4000';
 
 interface GroupedItems {
-    [category: string]: LineItem[];
+  [category: string]: LineItem[];
 }
 
 interface OrdersViewProps {
-    // Ya no pasamos apiConfig, así que esto está vacío
+  // Ya no pasamos apiConfig, así que esto está vacío
 }
 
 // --- Componente Modal de Imagen ---
@@ -36,7 +35,6 @@ const ProductImageModal: React.FC<{ imageUrl: string; productName: string; onClo
     );
 };
 
-
 // --- (LoadingSpinner y EmptyState: Sin cambios) ---
 const LoadingSpinner: React.FC = () => (
     <div className="flex justify-center items-center h-64">
@@ -52,15 +50,14 @@ const EmptyState: React.FC = () => (
     </div>
 );
 
-// --- Componente OrderItem (MODIFICADO) ---
-const OrderItem: React.FC<{
-    item: LineItem;
+// --- Componente OrderItem (Sin cambios) ---
+const OrderItem: React.FC<{ 
+    item: LineItem; 
     onQuantityChange: (itemId: number, newQuantity: number) => void;
     onViewImage: (imageUrl: string, productName: string) => void;
 }> = ({ item, onQuantityChange, onViewImage }) => {
     const isPurchased = item.isPurchased;
     const isInProgress = item.quantityPurchased > 0 && !isPurchased;
-
     const handleToggle = () => {
         const newQuantity = isPurchased ? 0 : item.quantity;
         onQuantityChange(item.id, newQuantity);
@@ -75,13 +72,11 @@ const OrderItem: React.FC<{
             onQuantityChange(item.id, item.quantityPurchased - 1);
         }
     };
-
     const getBackgroundColor = () => {
         if (isPurchased) return 'bg-green-50 text-slate-500';
         if (isInProgress) return 'bg-yellow-50';
         return 'bg-white hover:bg-slate-50';
     };
-
     return (
         <div className={`flex items-center justify-between p-3 transition-all duration-300 ${getBackgroundColor()}`}>
             <div className="flex items-center space-x-4 flex-grow">
@@ -89,15 +84,12 @@ const OrderItem: React.FC<{
                     <span className="text-indigo-600 font-bold text-lg">{item.quantity}x</span>
                 </div>
                 <div>
-                    {/* ¡MODIFICADO! El nombre del producto vuelve a ser un <p> simple */}
                     <p className={`font-semibold text-slate-800 ${isPurchased ? 'line-through' : ''}`}>
                         {item.name}
                     </p>
                     <p className="text-xs text-slate-400">SKU: {item.sku || 'N/A'}</p>
                 </div>
             </div>
-
-            {/* ¡MODIFICADO! Se añade el botón de Ojo aquí */}
             <div className="flex items-center space-x-3">
                 {item.quantity > 1 && (
                     <div className="flex items-center space-x-2">
@@ -106,9 +98,6 @@ const OrderItem: React.FC<{
                         <button onClick={handleIncrement} disabled={isPurchased} className="w-7 h-7 flex items-center justify-center rounded-full bg-slate-200 text-slate-600 hover:bg-slate-300 disabled:opacity-50 disabled:cursor-not-allowed transition">+</button>
                     </div>
                 )}
-
-                {/* --- ¡NUEVO BOTÓN DE OJO! --- */}
-                {/* Solo se muestra si el item tiene una imagen */}
                 {item.imageUrl && (
                     <button
                         onClick={() => onViewImage(item.imageUrl!, item.name)}
@@ -118,37 +107,43 @@ const OrderItem: React.FC<{
                         <EyeIcon className="w-5 h-5" />
                     </button>
                 )}
-                {/* --- FIN DE NUEVO BOTÓN --- */}
-
-                <button
+                 <button
                     onClick={handleToggle}
                     aria-label={`Mark ${item.name} as ${isPurchased ? 'not purchased' : 'purchased'}`}
-                    className={`relative w-14 h-8 rounded-full flex items-center transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 ${isPurchased ? 'bg-green-500 focus:ring-green-500' : 'bg-slate-300 focus:ring-indigo-500'}`}
+                    className={`relative w-14 h-8 rounded-full flex items-center transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 ${ isPurchased ? 'bg-green-500 focus:ring-green-500' : 'bg-slate-300 focus:ring-indigo-500' }`}
                 >
-                    <span className={`inline-block w-6 h-6 bg-white rounded-full shadow transform transition-transform duration-300 ${isPurchased ? 'translate-x-7' : 'translate-x-1'}`} />
+                    <span className={`inline-block w-6 h-6 bg-white rounded-full shadow transform transition-transform duration-300 ${ isPurchased ? 'translate-x-7' : 'translate-x-1' }`} />
                 </button>
             </div>
         </div>
     );
 };
 
-// --- Componente CategorySection ---
+// --- Componente CategorySection (¡MODIFICADO!) ---
 const CategorySection: React.FC<{
     category: string;
     items: LineItem[];
     onQuantityChange: (itemId: number, newQuantity: number) => void;
     onViewImage: (imageUrl: string, productName: string) => void;
 }> = ({ category, items, onQuantityChange, onViewImage }) => {
-
+    
     const [isExpanded, setIsExpanded] = useState(false); // Por defecto cerrada
 
     const purchasedCount = items.filter(item => item.isPurchased).length;
     const totalCount = items.length;
     const isComplete = purchasedCount === totalCount;
 
+    // --- ¡NUEVO! Calcular el total de la categoría ---
+    const categoryTotal = items.reduce((sum, item) => {
+        // item.total es un string, hay que convertirlo a número
+        return sum + parseFloat(item.total); 
+    }, 0);
+    // --- Fin de lo nuevo ---
+
     return (
         <section aria-labelledby={`category-heading-${category}`}>
             <div className="rounded-lg border border-slate-200 overflow-hidden">
+                {/* Botón para colapsar/expandir */}
                 <button
                     type="button"
                     onClick={() => setIsExpanded(!isExpanded)}
@@ -158,19 +153,29 @@ const CategorySection: React.FC<{
                         <ChevronDownIcon className={`w-5 h-5 text-slate-600 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
                         <h3 id={`category-heading-${category}`} className="text-lg font-semibold text-slate-700">{category}</h3>
                     </div>
-                    <span className={`text-xs font-semibold px-2 py-1 rounded-full ${isComplete ? 'bg-green-200 text-green-800' : 'bg-indigo-200 text-indigo-800'}`}>
-                        {purchasedCount} / {totalCount}
-                    </span>
+                    
+                    {/* ¡MODIFICADO! Contenedor para los totales */}
+                    <div className="flex items-center gap-3"> 
+                        {/* ¡NUEVO! Total en $ */}
+                        <span className={`text-sm font-bold ${isComplete ? 'text-green-800' : 'text-indigo-800'}`}>
+                            ${categoryTotal.toFixed(2)}
+                        </span>
+                        
+                        {/* Contador de artículos */}
+                        <span className={`text-xs font-semibold px-2 py-1 rounded-full ${isComplete ? 'bg-green-200 text-green-800' : 'bg-indigo-200 text-indigo-800'}`}>
+                            {purchasedCount} / {totalCount}
+                        </span>
+                    </div>
                 </button>
-
+                
                 {isExpanded && (
                     <div className="divide-y divide-slate-100">
                         {items.map(item => (
-                            <OrderItem
-                                key={item.id}
-                                item={item}
-                                onQuantityChange={onQuantityChange}
-                                onViewImage={onViewImage}
+                            <OrderItem 
+                                key={item.id} 
+                                item={item} 
+                                onQuantityChange={onQuantityChange} 
+                                onViewImage={onViewImage} 
                             />
                         ))}
                     </div>
@@ -180,7 +185,7 @@ const CategorySection: React.FC<{
     );
 };
 
-// --- Componente OrderCard ---
+// --- Componente OrderCard (¡MODIFICADO!) ---
 const OrderCard: React.FC<{
     order: Order;
     viewMode: OrderStatusType;
@@ -189,7 +194,7 @@ const OrderCard: React.FC<{
     onCompleteOrder: (orderId: number) => void;
     onViewImage: (imageUrl: string, productName: string) => void;
 }> = ({ order, viewMode, completingOrderId, onQuantityChange, onCompleteOrder, onViewImage }) => {
-
+    
     const [isExpanded, setIsExpanded] = useState(false); // Por defecto cerrado
 
     const itemsByCategory = order.lineItems.reduce((acc, item) => {
@@ -206,11 +211,13 @@ const OrderCard: React.FC<{
 
     return (
         <article aria-labelledby={`order-heading-${order.id}`} className="bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden">
+            {/* Botón para colapsar/expandir */}
             <button
                 type="button"
                 onClick={() => setIsExpanded(!isExpanded)}
                 className={`w-full p-4 bg-slate-50 border-b border-slate-200 flex justify-between items-center flex-wrap gap-3 ${isExpanded ? '' : 'border-b-0'}`}
             >
+                {/* Lado izquierdo: Flecha y Título */}
                 <div className="flex items-center gap-2">
                     <ChevronDownIcon className={`w-6 h-6 text-slate-700 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
                     <div>
@@ -220,16 +227,25 @@ const OrderCard: React.FC<{
                         </p>
                     </div>
                 </div>
-
+                
+                {/* Lado derecho: Total, Estado y Botón de Completar */}
                 <div className="flex items-center gap-3">
-                    <span className={`capitalize px-3 py-1 text-sm font-semibold rounded-full ${order.status === 'processing' ? 'bg-blue-100 text-blue-800' : order.status === 'on-hold' ? 'bg-yellow-100 text-yellow-800' : 'bg-green-100 text-green-800'}`}>
+                    
+                    {/* ¡NUEVO! Total del pedido */}
+                    <span className="text-xl font-bold text-slate-800">
+                        ${parseFloat(order.total).toFixed(2)}
+                    </span>
+                
+                    {/* Estado del Pedido */}
+                    <span className={`capitalize px-3 py-1 text-sm font-semibold rounded-full ${ order.status === 'processing' ? 'bg-blue-100 text-blue-800' : order.status === 'on-hold' ? 'bg-yellow-100 text-yellow-800' : 'bg-green-100 text-green-800' }`}>
                         {order.status}
                     </span>
 
+                    {/* Botón de Completar Pedido */}
                     {viewMode === 'processing' && (
                         <button
                             onClick={(e) => {
-                                e.stopPropagation();
+                                e.stopPropagation(); 
                                 onCompleteOrder(order.id);
                             }}
                             disabled={!allItemsPurchased || completingOrderId === order.id}
@@ -240,7 +256,7 @@ const OrderCard: React.FC<{
                     )}
                 </div>
             </button>
-
+            
             {isExpanded && (
                 <div className="p-4 space-y-4">
                     {categories.map(category => (
@@ -258,36 +274,30 @@ const OrderCard: React.FC<{
     );
 };
 
-// --- COMPONENTE PRINCIPAL: OrdersView ---
+// --- COMPONENTE PRINCIPAL: OrdersView (Sin cambios) ---
 const OrdersView: React.FC<OrdersViewProps> = () => {
     const [orders, setOrders] = useState<Order[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [viewMode, setViewMode] = useState<OrderStatusType>('processing');
     const [completingOrderId, setCompletingOrderId] = useState<number | null>(null);
-
     const [modalImageUrl, setModalImageUrl] = useState<string | null>(null);
     const [modalProductName, setModalProductName] = useState<string | null>(null);
-
     const handleViewImage = (imageUrl: string, productName: string) => {
         setModalImageUrl(imageUrl);
         setModalProductName(productName);
     };
-
     const handleCloseModal = () => {
         setModalImageUrl(null);
         setModalProductName(null);
     };
-
     useEffect(() => {
         const fetchOrders = async () => {
             try {
                 setIsLoading(true);
                 setError(null);
-                setOrders([]);
-
-                const fetchedOrders = await getOrders(viewMode);
-
+                setOrders([]); 
+                const fetchedOrders = await getOrders(viewMode); 
                 setOrders(fetchedOrders.sort((a, b) => new Date(b.dateCreated).getTime() - new Date(a.dateCreated).getTime()));
             } catch (err) {
                 if (err instanceof Error) {
@@ -301,14 +311,12 @@ const OrdersView: React.FC<OrdersViewProps> = () => {
             }
         };
         fetchOrders();
-    }, [viewMode]);
-
-
+    }, [viewMode]); 
     const handleQuantityChange = (itemId: number, newQuantity: number) => {
         let itemToSave: LineItem | null = null;
         let orderIdToSave: number | null = null;
         const foundOrder = orders.find(o => o.lineItems.some(i => i.id === itemId));
-        if (!foundOrder) return;
+        if (!foundOrder) return; 
         const foundItem = foundOrder.lineItems.find(i => i.id === itemId);
         if (!foundItem) return;
         orderIdToSave = foundOrder.id;
@@ -338,18 +346,17 @@ const OrdersView: React.FC<OrdersViewProps> = () => {
                     quantityPurchased: quantityPurchased,
                 }),
             })
-                .then(response => {
-                    if (!response.ok) {
-                        console.error('Error del backend al guardar. Status:', response.status);
-                        return response.json().then(err => Promise.reject(err));
-                    }
-                    return response.json();
-                })
-                .then(data => data.success ? console.log('Progreso guardado en DB:', data.status) : console.error('Error del backend (lógica):', data.error))
-                .catch(err => console.error('Error de red al guardar el estado:', err));
+            .then(response => {
+                if (!response.ok) {
+                    console.error('Error del backend al guardar. Status:', response.status);
+                    return response.json().then(err => Promise.reject(err));
+                }
+                return response.json();
+            })
+            .then(data => data.success ? console.log('Progreso guardado en DB:', data.status) : console.error('Error del backend (lógica):', data.error))
+            .catch(err => console.error('Error de red al guardar el estado:', err));
         }
     };
-
     const handleCompleteOrder = async (orderId: number) => {
         setCompletingOrderId(orderId);
         try {
@@ -368,7 +375,6 @@ const OrdersView: React.FC<OrdersViewProps> = () => {
             setCompletingOrderId(null);
         }
     };
-
     const TabButton: React.FC<{
         label: string;
         isActive: boolean;
@@ -377,10 +383,11 @@ const OrdersView: React.FC<OrdersViewProps> = () => {
         return (
             <button
                 onClick={onClick}
-                className={`px-6 py-2 font-medium rounded-md transition-colors ${isActive
+                className={`px-6 py-2 font-medium rounded-md transition-colors ${
+                    isActive
                         ? 'bg-indigo-600 text-white shadow'
                         : 'bg-white text-slate-600 hover:bg-slate-100'
-                    }`}
+                }`}
             >
                 {label}
             </button>
@@ -390,24 +397,25 @@ const OrdersView: React.FC<OrdersViewProps> = () => {
     return (
         <div className="space-y-6">
             <div className="flex space-x-2 p-1 bg-slate-200 rounded-lg max-w-md">
-                <TabButton
+                <TabButton 
                     label="Pendientes"
                     isActive={viewMode === 'processing'}
                     onClick={() => setViewMode('processing')}
                 />
-                <TabButton
+                <TabButton 
                     label="Completados"
                     isActive={viewMode === 'completed'}
                     onClick={() => setViewMode('completed')}
                 />
             </div>
-
+            
             {isLoading && <LoadingSpinner />}
             {!isLoading && error && <div className="text-center p-4 bg-red-100 text-red-700 rounded-lg">{error}</div>}
             {!isLoading && !error && orders.length === 0 && <EmptyState />}
-
+            
             {!isLoading && !error && orders.length > 0 && (
                 <div className="space-y-8">
+                    {/* El renderizado principal ahora usa OrderCard */}
                     {orders.map(order => (
                         <OrderCard
                             key={order.id}
@@ -422,11 +430,12 @@ const OrdersView: React.FC<OrdersViewProps> = () => {
                 </div>
             )}
 
+            {/* El modal se renderiza al final */}
             {modalImageUrl && modalProductName && (
-                <ProductImageModal
-                    imageUrl={modalImageUrl}
-                    productName={modalProductName}
-                    onClose={handleCloseModal}
+                <ProductImageModal 
+                    imageUrl={modalImageUrl} 
+                    productName={modalProductName} 
+                    onClose={handleCloseModal} 
                 />
             )}
         </div>

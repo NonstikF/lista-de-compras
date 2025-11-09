@@ -18,7 +18,6 @@ app.use(express.json());
 /**
  * RUTA [POST] /api/item-status
  * Guarda o actualiza el estado de un artículo de línea individual.
- * (Esta ruta no cambia)
  */
 app.post('/api/item-status', async (req, res) => {
     const { lineItemId, orderId, isPurchased, quantityPurchased } = req.body;
@@ -46,7 +45,7 @@ app.post('/api/item-status', async (req, res) => {
 
         res.json({ success: true, status: status });
 
-    } catch (error) { // <-- ¡Corregido sin la 'S'!
+    } catch (error) { // <-- Corregido (sin la 'S')
         console.error('Error al guardar estado:', error);
         res.status(500).json({ error: 'No se pudo guardar el estado' });
     }
@@ -56,7 +55,7 @@ app.post('/api/item-status', async (req, res) => {
 /**
  * RUTA [GET] /api/orders
  * Obtiene pedidos (pendientes o completados) de WooCommerce
- * Y los combina con el progreso de la DB y las imágenes del producto.
+ * Y los combina con el progreso de la DB, imágenes y totales.
  */
 app.get('/api/orders', async (req, res) => {
 
@@ -107,7 +106,7 @@ app.get('/api/orders', async (req, res) => {
             });
         });
 
-        // ¡MODIFICADO! productDetailsMap ahora también guarda la URL de la imagen
+        // Mapa para guardar detalles del producto
         const productDetailsMap = new Map<number, { category: string, imageUrl: string | null }>();
         if (productIds.size > 0) {
             const productsResponse = await axios.get(
@@ -129,12 +128,10 @@ app.get('/api/orders', async (req, res) => {
                     ? product.categories[0].name
                     : 'Uncategorized';
                 
-                // Obtener la URL de la imagen (la primera imagen, si existe)
                 const imageUrl = product.images && product.images.length > 0
                     ? product.images[0].src
                     : null;
                 
-                // Guardamos ambos
                 productDetailsMap.set(product.id, { category: categoryName, imageUrl: imageUrl });
             });
         }
@@ -154,13 +151,13 @@ app.get('/api/orders', async (req, res) => {
             id: order.id,
             dateCreated: order.date_created,
             status: order.status,
+            total: order.total, // Total del pedido
             customer: {
                 firstName: order.billing.first_name,
                 lastName: order.billing.last_name,
             },
             lineItems: order.line_items.map((item: any) => {
                 const savedItemStatus = statusMap.get(item.id);
-                // Obtener detalles del mapa, incluyendo la imagen
                 const productDetails = productDetailsMap.get(item.product_id);
 
                 return {
@@ -169,10 +166,11 @@ app.get('/api/orders', async (req, res) => {
                     productId: item.product_id,
                     quantity: item.quantity,
                     sku: item.sku,
+                    total: item.total, // Total del artículo
                     isPurchased: savedItemStatus ? savedItemStatus.isPurchased : false,
                     quantityPurchased: savedItemStatus ? savedItemStatus.quantityPurchased : 0,
                     category: productDetails ? productDetails.category : 'Products',
-                    imageUrl: productDetails ? productDetails.imageUrl : null, // ¡NUEVA PROPIEDAD!
+                    imageUrl: productDetails ? productDetails.imageUrl : null,
                 };
             }),
         }));
@@ -189,7 +187,6 @@ app.get('/api/orders', async (req, res) => {
 /**
  * RUTA [POST] /api/orders/:id/complete
  * Actualiza el estado de un pedido en WooCommerce a "completed".
- * (Esta ruta no cambia)
  */
 app.post('/api/orders/:id/complete', async (req, res) => {
     // 1. Obtenemos el ID del pedido desde los parámetros de la URL
