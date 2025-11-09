@@ -75,7 +75,7 @@ const CategorySection: React.FC<{
 }> = ({ category, items, onQuantityChange }) => {
 
     // 1. Estado para colapsar la categoría (por defecto abierta)
-    const [isExpanded, setIsExpanded] = useState(true);
+    const [isExpanded, setIsExpanded] = useState(false);
 
     const purchasedCount = items.filter(item => item.isPurchased).length;
     const totalCount = items.length;
