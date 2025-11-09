@@ -27,7 +27,7 @@ app.post('/api/item-status', async (req, res) => {
         return res.status(400).json({ error: 'lineItemId es requerido' });
     }
 
-try {
+    try {
         const status = await prisma.purchaseStatus.upsert({
             where: {
                 lineItemId: lineItemId,
@@ -46,7 +46,7 @@ try {
 
         res.json({ success: true, status: status });
 
-    } catch (error) { 
+    } catch (error) { // <-- ¡Corregido sin la 'S'!
         console.error('Error al guardar estado:', error);
         res.status(500).json({ error: 'No se pudo guardar el estado' });
     }
