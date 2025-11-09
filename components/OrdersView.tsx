@@ -41,7 +41,6 @@ const LoadingSpinner: React.FC = () => (
         <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-indigo-500"></div>
     </div>
 );
-
 const EmptyState: React.FC = () => (
     <div className="text-center py-16 px-6 bg-slate-100 rounded-lg">
         <CheckCircleIcon className="mx-auto h-12 w-12 text-green-500" />
@@ -133,17 +132,13 @@ const CategorySection: React.FC<{
     const totalCount = items.length;
     const isComplete = purchasedCount === totalCount;
 
-    // --- ¡NUEVO! Calcular el total de la categoría ---
     const categoryTotal = items.reduce((sum, item) => {
-        // item.total es un string, hay que convertirlo a número
         return sum + parseFloat(item.total); 
     }, 0);
-    // --- Fin de lo nuevo ---
 
     return (
         <section aria-labelledby={`category-heading-${category}`}>
             <div className="rounded-lg border border-slate-200 overflow-hidden">
-                {/* Botón para colapsar/expandir */}
                 <button
                     type="button"
                     onClick={() => setIsExpanded(!isExpanded)}
@@ -154,14 +149,11 @@ const CategorySection: React.FC<{
                         <h3 id={`category-heading-${category}`} className="text-lg font-semibold text-slate-700">{category}</h3>
                     </div>
                     
-                    {/* ¡MODIFICADO! Contenedor para los totales */}
                     <div className="flex items-center gap-3"> 
-                        {/* ¡NUEVO! Total en $ */}
                         <span className={`text-sm font-bold ${isComplete ? 'text-green-800' : 'text-indigo-800'}`}>
                             ${categoryTotal.toFixed(2)}
                         </span>
                         
-                        {/* Contador de artículos */}
                         <span className={`text-xs font-semibold px-2 py-1 rounded-full ${isComplete ? 'bg-green-200 text-green-800' : 'bg-indigo-200 text-indigo-800'}`}>
                             {purchasedCount} / {totalCount}
                         </span>
@@ -170,6 +162,10 @@ const CategorySection: React.FC<{
                 
                 {isExpanded && (
                     <div className="divide-y divide-slate-100">
+                        {/* ¡MODIFICADO!
+                            Aquí renderizamos los items. No necesitamos cambiarlos 
+                            porque ya vienen ordenados del componente padre (OrderCard).
+                        */}
                         {items.map(item => (
                             <OrderItem 
                                 key={item.id} 
@@ -211,13 +207,11 @@ const OrderCard: React.FC<{
 
     return (
         <article aria-labelledby={`order-heading-${order.id}`} className="bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden">
-            {/* Botón para colapsar/expandir */}
             <button
                 type="button"
                 onClick={() => setIsExpanded(!isExpanded)}
                 className={`w-full p-4 bg-slate-50 border-b border-slate-200 flex justify-between items-center flex-wrap gap-3 ${isExpanded ? '' : 'border-b-0'}`}
             >
-                {/* Lado izquierdo: Flecha y Título */}
                 <div className="flex items-center gap-2">
                     <ChevronDownIcon className={`w-6 h-6 text-slate-700 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
                     <div>
@@ -228,20 +222,13 @@ const OrderCard: React.FC<{
                     </div>
                 </div>
                 
-                {/* Lado derecho: Total, Estado y Botón de Completar */}
                 <div className="flex items-center gap-3">
-                    
-                    {/* ¡NUEVO! Total del pedido */}
                     <span className="text-xl font-bold text-slate-800">
                         ${parseFloat(order.total).toFixed(2)}
                     </span>
-                
-                    {/* Estado del Pedido */}
                     <span className={`capitalize px-3 py-1 text-sm font-semibold rounded-full ${ order.status === 'processing' ? 'bg-blue-100 text-blue-800' : order.status === 'on-hold' ? 'bg-yellow-100 text-yellow-800' : 'bg-green-100 text-green-800' }`}>
                         {order.status}
                     </span>
-
-                    {/* Botón de Completar Pedido */}
                     {viewMode === 'processing' && (
                         <button
                             onClick={(e) => {
@@ -259,15 +246,32 @@ const OrderCard: React.FC<{
             
             {isExpanded && (
                 <div className="p-4 space-y-4">
-                    {categories.map(category => (
-                        <CategorySection
-                            key={category}
-                            category={category}
-                            items={itemsByCategory[category]}
-                            onQuantityChange={onQuantityChange}
-                            onViewImage={onViewImage}
-                        />
-                    ))}
+                    {/* --- ¡SECCIÓN MODIFICADA! --- */}
+                    {categories.map(category => {
+                        // 1. Obtenemos los items de la categoría
+                        const items = itemsByCategory[category];
+                        
+                        // 2. ¡NUEVO! Los ordenamos por SKU
+                        const sortedItems = items.sort((a, b) => 
+                            (a.sku || '').localeCompare(
+                                (b.sku || ''), 
+                                undefined, // locale (default)
+                                { numeric: true, sensitivity: 'base' }
+                            )
+                        );
+
+                        // 3. Renderizamos la sección con los items ya ordenados
+                        return (
+                            <CategorySection
+                                key={category}
+                                category={category}
+                                items={sortedItems} // <-- ¡Pasamos los items ordenados!
+                                onQuantityChange={onQuantityChange}
+                                onViewImage={onViewImage}
+                            />
+                        );
+                    })}
+                    {/* --- FIN DE LA SECCIÓN MODIFICADA --- */}
                 </div>
             )}
         </article>
@@ -415,7 +419,6 @@ const OrdersView: React.FC<OrdersViewProps> = () => {
             
             {!isLoading && !error && orders.length > 0 && (
                 <div className="space-y-8">
-                    {/* El renderizado principal ahora usa OrderCard */}
                     {orders.map(order => (
                         <OrderCard
                             key={order.id}
@@ -430,7 +433,6 @@ const OrdersView: React.FC<OrdersViewProps> = () => {
                 </div>
             )}
 
-            {/* El modal se renderiza al final */}
             {modalImageUrl && modalProductName && (
                 <ProductImageModal 
                     imageUrl={modalImageUrl} 
