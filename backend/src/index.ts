@@ -127,11 +127,11 @@ app.get('/api/orders', async (req, res) => {
                 const categoryName = product.categories && product.categories.length > 0
                     ? product.categories[0].name
                     : 'Uncategorized';
-                
+
                 const imageUrl = product.images && product.images.length > 0
                     ? product.images[0].src
                     : null;
-                
+
                 productDetailsMap.set(product.id, { category: categoryName, imageUrl: imageUrl });
             });
         }
@@ -189,41 +189,83 @@ app.get('/api/orders', async (req, res) => {
  * Actualiza el estado de un pedido en WooCommerce a "completed".
  */
 app.post('/api/orders/:id/complete', async (req, res) => {
-    // 1. Obtenemos el ID del pedido desde los parámetros de la URL
-    const { id: orderId } = req.params;
+    const { id: orderIdParam } = req.params;
 
-    // 2. Cargamos las claves seguras
+    // Validación básica del ID
+    if (!orderIdParam) return res.status(400).json({ error: 'orderId requerido en la URL' });
+    const orderIdNum = Number(orderIdParam);
+    if (!Number.isFinite(orderIdNum)) {
+        // WooCommerce usa IDs numéricos; si usas strings (UUID) ajusta esto.
+        return res.status(400).json({ error: 'orderId inválido. Debe ser numérico' });
+    }
+
     const { WOO_URL, WOO_KEY, WOO_SECRET } = process.env;
-
     if (!WOO_URL || !WOO_KEY || !WOO_SECRET) {
+        console.error('Missing WOO_* env vars');
         return res.status(500).json({ error: 'Variables de API de WooCommerce no configuradas' });
     }
 
-    // 3. Preparamos los datos que queremos enviar a WooCommerce
-    const dataToUpdate = {
-        status: 'completed'
-    };
+    const dataToUpdate = { status: 'completed' };
 
     try {
-        // 4. Hacemos una petición PUT (actualizar) a WooCommerce
         const response = await axios.put(
-            `${WOO_URL}/wp-json/wc/v3/orders/${orderId}`, // <-- URL del pedido específico
-            dataToUpdate, // <-- Los datos a cambiar (status: "completed")
+            `${WOO_URL}/wp-json/wc/v3/orders/${orderIdNum}`,
+            dataToUpdate,
             {
-                // Usamos la misma Basic Auth
                 auth: {
                     username: WOO_KEY,
                     password: WOO_SECRET,
-                }
+                },
+                timeout: 15000, // evita waits indefinidos
+                validateStatus: (s) => true // permitimos capturar respuestas no-2xx manualmente
             }
         );
 
-        // 5. Devolvemos la respuesta exitosa al frontend
-        res.json({ success: true, updatedOrder: response.data });
+        // Si WooCommerce devolvió un status 2xx, todo ok
+        if (response.status >= 200 && response.status < 300) {
+            return res.status(200).json({ success: true, updatedOrder: response.data });
+        }
 
-    } catch (error: any) {
-        console.error(`Error al completar el pedido #${orderId}:`, error.response?.data || error.message);
-        res.status(500).json({ error: 'No se pudo actualizar el pedido en WooCommerce' });
+        // Si no fue 2xx: log detallado y devolver info útil al frontend (temporal)
+        console.error(`WooCommerce responded ${response.status} for order ${orderIdNum}:`, {
+            status: response.status,
+            data: response.data,
+            headers: response.headers
+        });
+
+        // Mapear códigos comunes a respuestas HTTP claras
+        if (response.status === 401 || response.status === 403) {
+            return res.status(502).json({ error: 'Auth falló al contactar WooCommerce', details: response.data });
+        }
+        if (response.status === 404) {
+            return res.status(404).json({ error: 'Pedido no encontrado en WooCommerce', details: response.data });
+        }
+        // otros errores de Woo -> 502 Bad Gateway
+        return res.status(502).json({ error: 'WooCommerce devolvió un error', status: response.status, details: response.data });
+
+    } catch (err) {
+        // Diferentes tipos de error de axios/prerequest
+        if (axios.isAxiosError(err)) {
+            console.error('Axios error al completar pedido:', {
+                message: err.message,
+                code: err.code,
+                config: err.config && { url: err.config.url, method: err.config.method },
+                response: err.response && { status: err.response.status, data: err.response.data }
+            });
+            // Si no hay response, es error de conexión/timeout
+            if (!err.response) {
+                return res.status(504).json({ error: 'No se pudo conectar a WooCommerce (timeout/conn error)', details: err.message });
+            }
+            // Si hay response, propagar su status/data
+            return res.status(502).json({ error: 'Error de WooCommerce', status: err.response.status, details: err.response.data });
+        }
+
+        // Error inesperado (no-axios)
+        console.error('Error inesperado al completar pedido:', err);
+        return res.status(500).json({
+            error: 'Error interno completando pedido',
+            details: String(err)
+        });
     }
 });
 
