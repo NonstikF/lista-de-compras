@@ -44,8 +44,8 @@ const LoadingSpinner: React.FC = () => (
 const EmptyState: React.FC = () => (
     <div className="text-center py-16 px-6 bg-slate-100 rounded-lg">
         <CheckCircleIcon className="mx-auto h-12 w-12 text-green-500" />
-        <h3 className="mt-2 text-xl font-medium text-slate-900">All caught up!</h3>
-        <p className="mt-1 text-slate-500">There are no new orders to process right now.</p>
+        <h3 className="mt-2 text-xl font-medium text-slate-900">Todo al dia!</h3>
+        <p className="mt-1 text-slate-500">No hay pedidos pendientes en este momento</p>
     </div>
 );
 
