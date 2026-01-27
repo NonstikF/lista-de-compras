@@ -50,6 +50,7 @@ const EmptyState: React.FC = () => (
 );
 
 // --- Componente OrderItem (Sin cambios) ---
+// --- Componente OrderItem ---
 const OrderItem: React.FC<{ 
     item: LineItem; 
     onQuantityChange: (itemId: number, newQuantity: number) => void;
@@ -57,6 +58,12 @@ const OrderItem: React.FC<{
 }> = ({ item, onQuantityChange, onViewImage }) => {
     const isPurchased = item.isPurchased;
     const isInProgress = item.quantityPurchased > 0 && !isPurchased;
+
+    // LÓGICA:
+    // WooCommerce API 'total' = (Precio Unitario * Cantidad).
+    // Por eso dividimos el total entre la cantidad para sacar el precio unitario real.
+    const unitPrice = item.quantity > 0 ? parseFloat(item.total) / item.quantity : 0;
+
     const handleToggle = () => {
         const newQuantity = isPurchased ? 0 : item.quantity;
         onQuantityChange(item.id, newQuantity);
@@ -71,11 +78,13 @@ const OrderItem: React.FC<{
             onQuantityChange(item.id, item.quantityPurchased - 1);
         }
     };
+
     const getBackgroundColor = () => {
         if (isPurchased) return 'bg-green-50 text-slate-500';
         if (isInProgress) return 'bg-yellow-50';
         return 'bg-white hover:bg-slate-50';
     };
+
     return (
         <div className={`flex items-center justify-between p-3 transition-all duration-300 ${getBackgroundColor()}`}>
             <div className="flex items-center space-x-4 flex-grow">
@@ -86,9 +95,20 @@ const OrderItem: React.FC<{
                     <p className={`font-semibold text-slate-800 ${isPurchased ? 'line-through' : ''}`}>
                         {item.name}
                     </p>
-                    <p className="text-xs text-slate-400">SKU: {item.sku || 'N/A'}</p>
+                    
+                    {/* Sección de Precio Unitario Agregada */}
+                    <div className="flex items-center gap-2 text-xs text-slate-500">
+                        <span>SKU: {item.sku || 'N/A'}</span>
+                        <span>&bull;</span>
+                        <span className="font-semibold text-slate-700">
+                            ${unitPrice.toFixed(2)} c/u
+                        </span>
+                    </div>
+
                 </div>
             </div>
+            
+            {/* Botones de acción (sin cambios) */}
             <div className="flex items-center space-x-3">
                 {item.quantity > 1 && (
                     <div className="flex items-center space-x-2">
