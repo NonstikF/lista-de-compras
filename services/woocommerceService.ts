@@ -3,27 +3,56 @@ import type { Order } from '../types';
 // La URL de tu API de backend
 const BACKEND_API_URL = import.meta.env.VITE_BACKEND_API_URL || 'http://localhost:4000';
 
-// ¡NUEVO! Definimos los tipos de estado que podemos solicitar
 export type OrderStatusType = 'processing' | 'completed';
 
-/**
- * ¡MODIFICADO!
- * Ahora acepta un parámetro 'status' para decirle al backend
- * qué pedidos queremos.
- */
-export const getOrders = async (status: OrderStatusType): Promise<Order[]> => {
-  
-  // 1. Llamamos a nuestro backend, añadiendo el estado como parámetro de consulta
-  const response = await fetch(`${BACKEND_API_URL}/api/orders?status=${status}`);
+export class AuthError extends Error {
+    constructor(message: string) {
+        super(message);
+        this.name = 'AuthError';
+    }
+}
 
-  if (!response.ok) {
-    // Si la respuesta es 404 o 500, esto lo mostrará
-    const errorData = await response.json().catch(() => ({ message: `Error del backend: ${response.status}` }));
-    throw new Error(errorData.message || `Error del backend: ${response.status}`);
-  }
+function authHeaders(token: string): Record<string, string> {
+    return {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+    };
+}
 
-  // 2. El backend nos da los datos listos
-  const orders: Order[] = await response.json();
-  
-  return orders;
+async function handleResponse<T>(response: Response): Promise<T> {
+    if (response.status === 401 || response.status === 403) {
+        throw new AuthError('Sesion expirada. Inicia sesion de nuevo.');
+    }
+    if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: `Error del backend: ${response.status}` }));
+        throw new Error(errorData.error || `Error del backend: ${response.status}`);
+    }
+    return response.json();
+}
+
+export const getOrders = async (status: OrderStatusType, token: string): Promise<Order[]> => {
+    const response = await fetch(`${BACKEND_API_URL}/api/orders?status=${status}`, {
+        headers: authHeaders(token),
+    });
+    return handleResponse<Order[]>(response);
+};
+
+export const saveItemStatus = async (
+    token: string,
+    data: { lineItemId: number; orderId: number; isPurchased: boolean; quantityPurchased: number }
+): Promise<{ success: boolean }> => {
+    const response = await fetch(`${BACKEND_API_URL}/api/item-status`, {
+        method: 'POST',
+        headers: authHeaders(token),
+        body: JSON.stringify(data),
+    });
+    return handleResponse<{ success: boolean }>(response);
+};
+
+export const completeOrder = async (token: string, orderId: number): Promise<{ success: boolean }> => {
+    const response = await fetch(`${BACKEND_API_URL}/api/orders/${orderId}/complete`, {
+        method: 'POST',
+        headers: authHeaders(token),
+    });
+    return handleResponse<{ success: boolean }>(response);
 };

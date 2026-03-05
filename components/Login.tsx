@@ -1,9 +1,10 @@
-
 import React, { useState } from 'react';
 import { ShoppingCartIcon } from './icons';
 
+const BACKEND_API_URL = import.meta.env.VITE_BACKEND_API_URL || 'http://localhost:4000';
+
 interface LoginProps {
-  onLoginSuccess: () => void;
+  onLoginSuccess: (token: string) => void;
 }
 
 const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
@@ -12,20 +13,36 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setIsLoading(true);
 
-    // Mock authentication
-    setTimeout(() => {
-      if (username === 'admin' && password === 'plantarteycafe8100') {
-        onLoginSuccess();
-      } else {
-        setError('Invalid credentials. Use admin/password.');
+    try {
+      const response = await fetch(`${BACKEND_API_URL}/api/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password }),
+      });
+
+      if (response.status === 429) {
+        setError('Demasiados intentos. Intenta de nuevo en 15 minutos.');
+        return;
       }
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        setError(data.error || 'Credenciales invalidas');
+        return;
+      }
+
+      onLoginSuccess(data.token);
+    } catch {
+      setError('Error de conexion. Verifica que el servidor este activo.');
+    } finally {
       setIsLoading(false);
-    }, 1000);
+    }
   };
 
   return (

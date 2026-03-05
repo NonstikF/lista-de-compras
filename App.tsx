@@ -8,18 +8,18 @@ import OrdersView from './components/OrdersView';
 // Importa tus iconos para el Header
 import { LogoutIcon, UserCircleIcon, ShoppingCartIcon } from './components/icons';
 
-// Define las vistas que tu aplicación puede mostrar
+// Define las vistas que tu aplicacion puede mostrar
 type AppView = 'login' | 'dashboard' | 'orders';
 
 /**
- * Un componente de encabezado simple que se muestra cuando estás logueado.
+ * Un componente de encabezado simple que se muestra cuando estas logueado.
  */
 const Header: React.FC<{ onLogout: () => void; setView: (view: AppView) => void }> = ({ onLogout, setView }) => {
   return (
     <header className="bg-white shadow-sm sticky top-0 z-10">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
-          {/* Título/Logo (clic para ir al dashboard) */}
+          {/* Titulo/Logo (clic para ir al dashboard) */}
           <div
             className="flex items-center cursor-pointer gap-2"
             onClick={() => setView('dashboard')}
@@ -49,44 +49,49 @@ const Header: React.FC<{ onLogout: () => void; setView: (view: AppView) => void 
 };
 
 /**
- * Este es tu componente principal de la aplicación.
- * Ahora solo gestiona el estado de autenticación y la vista actual.
+ * Componente principal de la aplicacion.
+ * Gestiona el token JWT y la vista actual.
  */
 const App: React.FC = () => {
   const [view, setView] = useState<AppView>('login');
 
-  // Comprueba el estado de login desde localStorage para persistencia simple
-  const [isAuthenticated, setIsAuthenticated] = useState(() => {
-    return localStorage.getItem('isAuthenticated') === 'true';
+  // Token JWT desde localStorage para persistencia
+  const [authToken, setAuthToken] = useState<string | null>(() => {
+    return localStorage.getItem('authToken');
   });
 
-  // Efecto para redirigir si el estado de autenticación cambia
+  const isAuthenticated = !!authToken;
+
+  // Efecto para redirigir si el estado de autenticacion cambia
   useEffect(() => {
     if (isAuthenticated) {
-      // Si está autenticado pero en la página de login, ir al dashboard
       if (view === 'login') {
         setView('dashboard');
       }
     } else {
-      // Si no está autenticado, forzar la vista de login
       setView('login');
     }
   }, [isAuthenticated, view]);
 
 
-  const handleLoginSuccess = () => {
-    localStorage.setItem('isAuthenticated', 'true');
-    setIsAuthenticated(true);
+  const handleLoginSuccess = (token: string) => {
+    localStorage.setItem('authToken', token);
+    setAuthToken(token);
     setView('dashboard');
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('isAuthenticated');
-    setIsAuthenticated(false);
+    localStorage.removeItem('authToken');
+    setAuthToken(null);
     setView('login');
   };
 
-  // Función para renderizar el contenido principal basado en la vista actual
+  // Callback para auto-logout cuando el backend devuelve 401/403
+  const handleAuthError = () => {
+    handleLogout();
+  };
+
+  // Funcion para renderizar el contenido principal basado en la vista actual
   const renderView = () => {
     switch (view) {
       case 'login':
@@ -95,7 +100,6 @@ const App: React.FC = () => {
         return <Dashboard onNavigateToOrders={() => setView('orders')} />;
       case 'orders':
         return (
-          // Este div añade el padding y el botón "Back to Dashboard"
           <div className="p-4 md:p-8 max-w-7xl mx-auto">
             <button
               onClick={() => setView('dashboard')}
@@ -103,8 +107,7 @@ const App: React.FC = () => {
             >
               &larr; Regresar al Panel
             </button>
-            {/* ¡OrdersView ahora se renderiza sin props! */}
-            <OrdersView />
+            <OrdersView authToken={authToken!} onAuthError={handleAuthError} />
           </div>
         );
       default:
@@ -114,7 +117,7 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      {/* Solo muestra el Header si está autenticado */}
+      {/* Solo muestra el Header si esta autenticado */}
       {isAuthenticated && <Header onLogout={handleLogout} setView={setView} />}
       <main>
         {renderView()}

@@ -24,3 +24,12 @@ export interface Order {
   customer: Customer;
   lineItems: LineItem[];
 }
+
+export interface LoginResponse {
+  token: string;
+  user: string;
+}
+
+export interface AuthError {
+  error: string;
+}

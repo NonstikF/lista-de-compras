@@ -1,17 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import type { Order, LineItem } from '../types';
-import { getOrders, type OrderStatusType } from '../services/woocommerceService'; 
-import { CheckCircleIcon, ChevronDownIcon, XMarkIcon, EyeIcon } from './icons'; 
-
-// La URL de tu API de backend
-const BACKEND_API_URL = import.meta.env.VITE_BACKEND_API_URL || 'http://localhost:4000';
+import { getOrders, saveItemStatus, completeOrder, AuthError, type OrderStatusType } from '../services/woocommerceService';
+import { CheckCircleIcon, ChevronDownIcon, XMarkIcon, EyeIcon } from './icons';
 
 interface GroupedItems {
   [category: string]: LineItem[];
 }
 
 interface OrdersViewProps {
-  // Ya no pasamos apiConfig, así que esto está vacío
+  authToken: string;
+  onAuthError: () => void;
 }
 
 // --- Componente Modal de Imagen ---
@@ -35,7 +33,7 @@ const ProductImageModal: React.FC<{ imageUrl: string; productName: string; onClo
     );
 };
 
-// --- (LoadingSpinner y EmptyState: Sin cambios) ---
+// --- (LoadingSpinner y EmptyState) ---
 const LoadingSpinner: React.FC = () => (
     <div className="flex justify-center items-center h-64">
         <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-indigo-500"></div>
@@ -49,19 +47,15 @@ const EmptyState: React.FC = () => (
     </div>
 );
 
-// --- Componente OrderItem (Sin cambios) ---
 // --- Componente OrderItem ---
-const OrderItem: React.FC<{ 
-    item: LineItem; 
+const OrderItem: React.FC<{
+    item: LineItem;
     onQuantityChange: (itemId: number, newQuantity: number) => void;
     onViewImage: (imageUrl: string, productName: string) => void;
 }> = ({ item, onQuantityChange, onViewImage }) => {
     const isPurchased = item.isPurchased;
     const isInProgress = item.quantityPurchased > 0 && !isPurchased;
 
-    // LÓGICA:
-    // WooCommerce API 'total' = (Precio Unitario * Cantidad).
-    // Por eso dividimos el total entre la cantidad para sacar el precio unitario real.
     const unitPrice = item.quantity > 0 ? parseFloat(item.total) / item.quantity : 0;
 
     const handleToggle = () => {
@@ -95,8 +89,7 @@ const OrderItem: React.FC<{
                     <p className={`font-semibold text-slate-800 ${isPurchased ? 'line-through' : ''}`}>
                         {item.name}
                     </p>
-                    
-                    {/* Sección de Precio Unitario Agregada */}
+
                     <div className="flex items-center gap-2 text-xs text-slate-500">
                         <span>SKU: {item.sku || 'N/A'}</span>
                         <span>&bull;</span>
@@ -107,8 +100,7 @@ const OrderItem: React.FC<{
 
                 </div>
             </div>
-            
-            {/* Botones de acción (sin cambios) */}
+
             <div className="flex items-center space-x-3">
                 {item.quantity > 1 && (
                     <div className="flex items-center space-x-2">
@@ -138,22 +130,22 @@ const OrderItem: React.FC<{
     );
 };
 
-// --- Componente CategorySection (¡MODIFICADO!) ---
+// --- Componente CategorySection ---
 const CategorySection: React.FC<{
     category: string;
     items: LineItem[];
     onQuantityChange: (itemId: number, newQuantity: number) => void;
     onViewImage: (imageUrl: string, productName: string) => void;
 }> = ({ category, items, onQuantityChange, onViewImage }) => {
-    
-    const [isExpanded, setIsExpanded] = useState(false); // Por defecto cerrada
+
+    const [isExpanded, setIsExpanded] = useState(false);
 
     const purchasedCount = items.filter(item => item.isPurchased).length;
     const totalCount = items.length;
     const isComplete = purchasedCount === totalCount;
 
     const categoryTotal = items.reduce((sum, item) => {
-        return sum + parseFloat(item.total); 
+        return sum + parseFloat(item.total);
     }, 0);
 
     return (
@@ -168,30 +160,26 @@ const CategorySection: React.FC<{
                         <ChevronDownIcon className={`w-5 h-5 text-slate-600 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
                         <h3 id={`category-heading-${category}`} className="text-lg font-semibold text-slate-700">{category}</h3>
                     </div>
-                    
-                    <div className="flex items-center gap-3"> 
+
+                    <div className="flex items-center gap-3">
                         <span className={`text-sm font-bold ${isComplete ? 'text-green-800' : 'text-indigo-800'}`}>
                             ${categoryTotal.toFixed(2)}
                         </span>
-                        
+
                         <span className={`text-xs font-semibold px-2 py-1 rounded-full ${isComplete ? 'bg-green-200 text-green-800' : 'bg-indigo-200 text-indigo-800'}`}>
                             {purchasedCount} / {totalCount}
                         </span>
                     </div>
                 </button>
-                
+
                 {isExpanded && (
                     <div className="divide-y divide-slate-100">
-                        {/* ¡MODIFICADO!
-                            Aquí renderizamos los items. No necesitamos cambiarlos 
-                            porque ya vienen ordenados del componente padre (OrderCard).
-                        */}
                         {items.map(item => (
-                            <OrderItem 
-                                key={item.id} 
-                                item={item} 
-                                onQuantityChange={onQuantityChange} 
-                                onViewImage={onViewImage} 
+                            <OrderItem
+                                key={item.id}
+                                item={item}
+                                onQuantityChange={onQuantityChange}
+                                onViewImage={onViewImage}
                             />
                         ))}
                     </div>
@@ -201,7 +189,7 @@ const CategorySection: React.FC<{
     );
 };
 
-// --- Componente OrderCard (¡MODIFICADO!) ---
+// --- Componente OrderCard ---
 const OrderCard: React.FC<{
     order: Order;
     viewMode: OrderStatusType;
@@ -210,8 +198,8 @@ const OrderCard: React.FC<{
     onCompleteOrder: (orderId: number) => void;
     onViewImage: (imageUrl: string, productName: string) => void;
 }> = ({ order, viewMode, completingOrderId, onQuantityChange, onCompleteOrder, onViewImage }) => {
-    
-    const [isExpanded, setIsExpanded] = useState(false); // Por defecto cerrado
+
+    const [isExpanded, setIsExpanded] = useState(false);
 
     const itemsByCategory = order.lineItems.reduce((acc, item) => {
         const category = item.category || 'Products';
@@ -241,7 +229,7 @@ const OrderCard: React.FC<{
                         </p>
                     </div>
                 </div>
-                
+
                 <div className="flex items-center gap-3">
                     <span className="text-xl font-bold text-slate-800">
                         ${parseFloat(order.total).toFixed(2)}
@@ -252,7 +240,7 @@ const OrderCard: React.FC<{
                     {viewMode === 'processing' && (
                         <button
                             onClick={(e) => {
-                                e.stopPropagation(); 
+                                e.stopPropagation();
                                 onCompleteOrder(order.id);
                             }}
                             disabled={!allItemsPurchased || completingOrderId === order.id}
@@ -263,43 +251,38 @@ const OrderCard: React.FC<{
                     )}
                 </div>
             </button>
-            
+
             {isExpanded && (
                 <div className="p-4 space-y-4">
-                    {/* --- ¡SECCIÓN MODIFICADA! --- */}
                     {categories.map(category => {
-                        // 1. Obtenemos los items de la categoría
                         const items = itemsByCategory[category];
-                        
-                        // 2. ¡NUEVO! Los ordenamos por SKU
-                        const sortedItems = items.sort((a, b) => 
+
+                        const sortedItems = items.sort((a, b) =>
                             (a.sku || '').localeCompare(
-                                (b.sku || ''), 
-                                undefined, // locale (default)
+                                (b.sku || ''),
+                                undefined,
                                 { numeric: true, sensitivity: 'base' }
                             )
                         );
 
-                        // 3. Renderizamos la sección con los items ya ordenados
                         return (
                             <CategorySection
                                 key={category}
                                 category={category}
-                                items={sortedItems} // <-- ¡Pasamos los items ordenados!
+                                items={sortedItems}
                                 onQuantityChange={onQuantityChange}
                                 onViewImage={onViewImage}
                             />
                         );
                     })}
-                    {/* --- FIN DE LA SECCIÓN MODIFICADA --- */}
                 </div>
             )}
         </article>
     );
 };
 
-// --- COMPONENTE PRINCIPAL: OrdersView (Sin cambios) ---
-const OrdersView: React.FC<OrdersViewProps> = () => {
+// --- COMPONENTE PRINCIPAL: OrdersView ---
+const OrdersView: React.FC<OrdersViewProps> = ({ authToken, onAuthError }) => {
     const [orders, setOrders] = useState<Order[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -320,14 +303,18 @@ const OrdersView: React.FC<OrdersViewProps> = () => {
             try {
                 setIsLoading(true);
                 setError(null);
-                setOrders([]); 
-                const fetchedOrders = await getOrders(viewMode); 
+                setOrders([]);
+                const fetchedOrders = await getOrders(viewMode, authToken);
                 setOrders(fetchedOrders.sort((a, b) => new Date(b.dateCreated).getTime() - new Date(a.dateCreated).getTime()));
             } catch (err) {
+                if (err instanceof AuthError) {
+                    onAuthError();
+                    return;
+                }
                 if (err instanceof Error) {
-                    setError(`Failed to fetch orders: ${err.message}`);
+                    setError(`Error al obtener pedidos: ${err.message}`);
                 } else {
-                    setError('An unknown error occurred while fetching orders.');
+                    setError('Error desconocido al obtener pedidos.');
                 }
                 console.error(err);
             } finally {
@@ -335,12 +322,12 @@ const OrdersView: React.FC<OrdersViewProps> = () => {
             }
         };
         fetchOrders();
-    }, [viewMode]); 
+    }, [viewMode, authToken, onAuthError]);
     const handleQuantityChange = (itemId: number, newQuantity: number) => {
         let itemToSave: LineItem | null = null;
         let orderIdToSave: number | null = null;
         const foundOrder = orders.find(o => o.lineItems.some(i => i.id === itemId));
-        if (!foundOrder) return; 
+        if (!foundOrder) return;
         const foundItem = foundOrder.lineItems.find(i => i.id === itemId);
         if (!foundItem) return;
         orderIdToSave = foundOrder.id;
@@ -360,39 +347,35 @@ const OrdersView: React.FC<OrdersViewProps> = () => {
         setOrders(updatedOrders);
         if (itemToSave && orderIdToSave) {
             const { id: lineItemId, isPurchased, quantityPurchased } = itemToSave;
-            fetch(`${BACKEND_API_URL}/api/item-status`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    lineItemId: lineItemId,
-                    orderId: orderIdToSave,
-                    isPurchased: isPurchased,
-                    quantityPurchased: quantityPurchased,
-                }),
+            saveItemStatus(authToken, {
+                lineItemId,
+                orderId: orderIdToSave,
+                isPurchased,
+                quantityPurchased,
             })
-            .then(response => {
-                if (!response.ok) {
-                    console.error('Error del backend al guardar. Status:', response.status);
-                    return response.json().then(err => Promise.reject(err));
+            .then(data => {
+                if (data.success) console.log('Progreso guardado en DB');
+            })
+            .catch(err => {
+                if (err instanceof AuthError) {
+                    onAuthError();
+                    return;
                 }
-                return response.json();
-            })
-            .then(data => data.success ? console.log('Progreso guardado en DB:', data.status) : console.error('Error del backend (lógica):', data.error))
-            .catch(err => console.error('Error de red al guardar el estado:', err));
+                console.error('Error al guardar el estado:', err);
+            });
         }
     };
     const handleCompleteOrder = async (orderId: number) => {
         setCompletingOrderId(orderId);
         try {
-            const response = await fetch(`${BACKEND_API_URL}/api/orders/${orderId}/complete`, {
-                method: 'POST',
-            });
-            if (!response.ok) {
-                throw new Error('El backend falló al completar el pedido');
-            }
+            await completeOrder(authToken, orderId);
             console.log(`Pedido #${orderId} completado.`);
             setOrders(currentOrders => currentOrders.filter(order => order.id !== orderId));
         } catch (err) {
+            if (err instanceof AuthError) {
+                onAuthError();
+                return;
+            }
             console.error('Error al completar el pedido:', err);
             alert(`No se pudo completar el pedido #${orderId}. Revisa la consola.`);
         } finally {
@@ -421,22 +404,22 @@ const OrdersView: React.FC<OrdersViewProps> = () => {
     return (
         <div className="space-y-6">
             <div className="flex space-x-2 p-1 bg-slate-200 rounded-lg max-w-md">
-                <TabButton 
+                <TabButton
                     label="Pendientes"
                     isActive={viewMode === 'processing'}
                     onClick={() => setViewMode('processing')}
                 />
-                <TabButton 
+                <TabButton
                     label="Completados"
                     isActive={viewMode === 'completed'}
                     onClick={() => setViewMode('completed')}
                 />
             </div>
-            
+
             {isLoading && <LoadingSpinner />}
             {!isLoading && error && <div className="text-center p-4 bg-red-100 text-red-700 rounded-lg">{error}</div>}
             {!isLoading && !error && orders.length === 0 && <EmptyState />}
-            
+
             {!isLoading && !error && orders.length > 0 && (
                 <div className="space-y-8">
                     {orders.map(order => (
@@ -454,10 +437,10 @@ const OrdersView: React.FC<OrdersViewProps> = () => {
             )}
 
             {modalImageUrl && modalProductName && (
-                <ProductImageModal 
-                    imageUrl={modalImageUrl} 
-                    productName={modalProductName} 
-                    onClose={handleCloseModal} 
+                <ProductImageModal
+                    imageUrl={modalImageUrl}
+                    productName={modalProductName}
+                    onClose={handleCloseModal}
                 />
             )}
         </div>
