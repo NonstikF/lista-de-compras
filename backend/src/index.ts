@@ -205,6 +205,7 @@ app.get('/api/orders', async (req: Request, res: Response) => {
                     status: wooStatusString,
                     per_page: 100,
                 },
+                timeout: 15000,
             }
         );
         const rawOrders: any[] = ordersResponse.data;
@@ -272,7 +273,16 @@ app.get('/api/orders', async (req: Request, res: Response) => {
         }
 
         // --- 5. OBTENER PROGRESO DE NUESTRA BASE DE DATOS ---
-        const savedStatus = await prisma.purchaseStatus.findMany();
+        const allLineItemIds: number[] = [];
+        rawOrders.forEach((order: any) => {
+            order.line_items.forEach((item: any) => {
+                allLineItemIds.push(item.id);
+            });
+        });
+
+        const savedStatus = await prisma.purchaseStatus.findMany({
+            where: { lineItemId: { in: allLineItemIds } },
+        });
         const statusMap = new Map<number, { isPurchased: boolean, quantityPurchased: number }>();
         savedStatus.forEach(status => {
             statusMap.set(status.lineItemId, {
