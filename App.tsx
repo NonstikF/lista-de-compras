@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import Login from './components/Login';
 import Dashboard from './components/Dashboard';
 import OrdersView from './components/OrdersView';
+import { ToastContainer } from './components/Toast';
 
 // Importa tus iconos para el Header
 import { LogoutIcon, UserCircleIcon, ShoppingCartIcon } from './components/icons';
@@ -122,6 +123,7 @@ const App: React.FC = () => {
       <main>
         {renderView()}
       </main>
+      <ToastContainer />
     </div>
   );
 };

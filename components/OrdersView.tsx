@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import type { Order, LineItem } from '../types';
 import { getOrders, saveItemStatus, completeOrder, AuthError, type OrderStatusType } from '../services/woocommerceService';
 import { CheckCircleIcon, ChevronDownIcon, XMarkIcon, EyeIcon } from './icons';
+import { showToast } from './Toast';
 
 interface GroupedItems {
   [category: string]: LineItem[];
@@ -316,7 +317,7 @@ const OrdersView: React.FC<OrdersViewProps> = ({ authToken, onAuthError }) => {
                 } else {
                     setError('Error desconocido al obtener pedidos.');
                 }
-                console.error(err);
+                showToast('error', err instanceof Error ? err.message : 'Error desconocido');
             } finally {
                 setIsLoading(false);
             }
@@ -356,14 +357,14 @@ const OrdersView: React.FC<OrdersViewProps> = ({ authToken, onAuthError }) => {
                     quantityPurchased,
                 })
                 .then(data => {
-                    if (data.success) console.log('Progreso guardado en DB');
+                    if (data.success) showToast('success', 'Progreso guardado');
                 })
                 .catch(err => {
                     if (err instanceof AuthError) {
                         onAuthError();
                         return;
                     }
-                    console.error('Error al guardar el estado:', err);
+                    showToast('error', 'Error al guardar el progreso');
                 });
             }
 
@@ -374,15 +375,14 @@ const OrdersView: React.FC<OrdersViewProps> = ({ authToken, onAuthError }) => {
         setCompletingOrderId(orderId);
         try {
             await completeOrder(authToken, orderId);
-            console.log(`Pedido #${orderId} completado.`);
+            showToast('success', `Pedido #${orderId} completado`);
             setOrders(currentOrders => currentOrders.filter(order => order.id !== orderId));
         } catch (err) {
             if (err instanceof AuthError) {
                 onAuthError();
                 return;
             }
-            console.error('Error al completar el pedido:', err);
-            alert(`No se pudo completar el pedido #${orderId}. Revisa la consola.`);
+            showToast('error', `No se pudo completar el pedido #${orderId}`);
         } finally {
             setCompletingOrderId(null);
         }
