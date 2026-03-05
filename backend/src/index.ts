@@ -6,6 +6,7 @@ import jwt from 'jsonwebtoken';
 import { z } from 'zod';
 import { PrismaClient } from '@prisma/client';
 import axios from 'axios';
+import type { WooCommerceOrder, WooCommerceProduct, WooCommerceLineItem } from './types';
 
 // Inicializar Prisma Client
 const prisma = new PrismaClient();
@@ -231,7 +232,7 @@ app.get('/api/orders', async (req: Request, res: Response) => {
                 timeout: 15000,
             }
         );
-        const rawOrders: any[] = ordersResponse.data;
+        const rawOrders: WooCommerceOrder[] = ordersResponse.data;
 
         if (rawOrders.length === 0) {
             res.json([]);
@@ -241,7 +242,7 @@ app.get('/api/orders', async (req: Request, res: Response) => {
         // --- 4. OBTENER PRODUCTOS (PARA CATEGORIAS E IMAGENES) CON CACHE ---
         const productIds = new Set<number>();
         rawOrders.forEach(order => {
-            order.line_items.forEach((item: any) => {
+            order.line_items.forEach((item: WooCommerceLineItem) => {
                 if (item.product_id) productIds.add(item.product_id);
             });
         });
@@ -289,7 +290,7 @@ app.get('/api/orders', async (req: Request, res: Response) => {
                 )
             );
 
-            const rawProducts: any[] = batchResponses.flatMap(r => r.data);
+            const rawProducts: WooCommerceProduct[] = batchResponses.flatMap(r => r.data);
             rawProducts.forEach(product => {
                 const categoryName = product.categories && product.categories.length > 0
                     ? product.categories[0].name
@@ -311,8 +312,8 @@ app.get('/api/orders', async (req: Request, res: Response) => {
 
         // --- 5. OBTENER PROGRESO DE NUESTRA BASE DE DATOS ---
         const allLineItemIds: number[] = [];
-        rawOrders.forEach((order: any) => {
-            order.line_items.forEach((item: any) => {
+        rawOrders.forEach((order) => {
+            order.line_items.forEach((item) => {
                 allLineItemIds.push(item.id);
             });
         });
@@ -338,7 +339,7 @@ app.get('/api/orders', async (req: Request, res: Response) => {
                 firstName: order.billing.first_name,
                 lastName: order.billing.last_name,
             },
-            lineItems: order.line_items.map((item: any) => {
+            lineItems: order.line_items.map((item: WooCommerceLineItem) => {
                 const savedItemStatus = statusMap.get(item.id);
                 const productDetails = productDetailsMap.get(item.product_id);
 
@@ -367,8 +368,9 @@ app.get('/api/orders', async (req: Request, res: Response) => {
 
         res.json(finalOrders);
 
-    } catch (error: any) {
-        console.error('Error al contactar API de WooCommerce:', error.response?.data || error.message);
+    } catch (error: unknown) {
+        const axiosErr = error as { response?: { data?: unknown }; message?: string };
+        console.error('Error al contactar API de WooCommerce:', axiosErr.response?.data || axiosErr.message);
         res.status(500).json({ error: 'No se pudo obtener los pedidos de WooCommerce' });
     }
 });

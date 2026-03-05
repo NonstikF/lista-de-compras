@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import type { Order, LineItem } from '../types';
 import { getOrders, saveItemStatus, completeOrder, AuthError, type OrderStatusType } from '../services/woocommerceService';
 import { CheckCircleIcon, ChevronDownIcon, XMarkIcon, EyeIcon } from './icons';
@@ -48,11 +48,11 @@ const EmptyState: React.FC = () => (
 );
 
 // --- Componente OrderItem ---
-const OrderItem: React.FC<{
+const OrderItem = React.memo<{
     item: LineItem;
     onQuantityChange: (itemId: number, newQuantity: number) => void;
     onViewImage: (imageUrl: string, productName: string) => void;
-}> = ({ item, onQuantityChange, onViewImage }) => {
+}>(({ item, onQuantityChange, onViewImage }) => {
     const isPurchased = item.isPurchased;
     const isInProgress = item.quantityPurchased > 0 && !isPurchased;
 
@@ -128,15 +128,15 @@ const OrderItem: React.FC<{
             </div>
         </div>
     );
-};
+});
 
 // --- Componente CategorySection ---
-const CategorySection: React.FC<{
+const CategorySection = React.memo<{
     category: string;
     items: LineItem[];
     onQuantityChange: (itemId: number, newQuantity: number) => void;
     onViewImage: (imageUrl: string, productName: string) => void;
-}> = ({ category, items, onQuantityChange, onViewImage }) => {
+}>(({ category, items, onQuantityChange, onViewImage }) => {
 
     const [isExpanded, setIsExpanded] = useState(false);
 
@@ -187,17 +187,17 @@ const CategorySection: React.FC<{
             </div>
         </section>
     );
-};
+});
 
 // --- Componente OrderCard ---
-const OrderCard: React.FC<{
+const OrderCard = React.memo<{
     order: Order;
     viewMode: OrderStatusType;
     completingOrderId: number | null;
     onQuantityChange: (itemId: number, newQuantity: number) => void;
     onCompleteOrder: (orderId: number) => void;
     onViewImage: (imageUrl: string, productName: string) => void;
-}> = ({ order, viewMode, completingOrderId, onQuantityChange, onCompleteOrder, onViewImage }) => {
+}>(({ order, viewMode, completingOrderId, onQuantityChange, onCompleteOrder, onViewImage }) => {
 
     const [isExpanded, setIsExpanded] = useState(false);
 
@@ -279,7 +279,7 @@ const OrderCard: React.FC<{
             )}
         </article>
     );
-};
+});
 
 // --- COMPONENTE PRINCIPAL: OrdersView ---
 const OrdersView: React.FC<OrdersViewProps> = ({ authToken, onAuthError }) => {
@@ -290,10 +290,10 @@ const OrdersView: React.FC<OrdersViewProps> = ({ authToken, onAuthError }) => {
     const [completingOrderId, setCompletingOrderId] = useState<number | null>(null);
     const [modalImageUrl, setModalImageUrl] = useState<string | null>(null);
     const [modalProductName, setModalProductName] = useState<string | null>(null);
-    const handleViewImage = (imageUrl: string, productName: string) => {
+    const handleViewImage = useCallback((imageUrl: string, productName: string) => {
         setModalImageUrl(imageUrl);
         setModalProductName(productName);
-    };
+    }, []);
     const handleCloseModal = () => {
         setModalImageUrl(null);
         setModalProductName(null);
@@ -323,49 +323,54 @@ const OrdersView: React.FC<OrdersViewProps> = ({ authToken, onAuthError }) => {
         };
         fetchOrders();
     }, [viewMode, authToken, onAuthError]);
-    const handleQuantityChange = (itemId: number, newQuantity: number) => {
-        let itemToSave: LineItem | null = null;
-        let orderIdToSave: number | null = null;
-        const foundOrder = orders.find(o => o.lineItems.some(i => i.id === itemId));
-        if (!foundOrder) return;
-        const foundItem = foundOrder.lineItems.find(i => i.id === itemId);
-        if (!foundItem) return;
-        orderIdToSave = foundOrder.id;
-        itemToSave = {
-            ...foundItem,
-            quantityPurchased: newQuantity,
-            isPurchased: newQuantity === foundItem.quantity
-        };
-        const updatedOrders = orders.map(order => {
-            if (order.id !== orderIdToSave) return order;
-            const updatedLineItems = order.lineItems.map(item => {
-                if (item.id === itemId) return itemToSave!;
-                return item;
+    const handleQuantityChange = useCallback((itemId: number, newQuantity: number) => {
+        setOrders(prevOrders => {
+            let itemToSave: LineItem | null = null;
+            let orderIdToSave: number | null = null;
+            const foundOrder = prevOrders.find(o => o.lineItems.some(i => i.id === itemId));
+            if (!foundOrder) return prevOrders;
+            const foundItem = foundOrder.lineItems.find(i => i.id === itemId);
+            if (!foundItem) return prevOrders;
+            orderIdToSave = foundOrder.id;
+            itemToSave = {
+                ...foundItem,
+                quantityPurchased: newQuantity,
+                isPurchased: newQuantity === foundItem.quantity
+            };
+            const updatedOrders = prevOrders.map(order => {
+                if (order.id !== orderIdToSave) return order;
+                const updatedLineItems = order.lineItems.map(item => {
+                    if (item.id === itemId) return itemToSave!;
+                    return item;
+                });
+                return { ...order, lineItems: updatedLineItems };
             });
-            return { ...order, lineItems: updatedLineItems };
+
+            // Fire-and-forget save to backend
+            if (itemToSave && orderIdToSave) {
+                const { id: lineItemId, isPurchased, quantityPurchased } = itemToSave;
+                saveItemStatus(authToken, {
+                    lineItemId,
+                    orderId: orderIdToSave,
+                    isPurchased,
+                    quantityPurchased,
+                })
+                .then(data => {
+                    if (data.success) console.log('Progreso guardado en DB');
+                })
+                .catch(err => {
+                    if (err instanceof AuthError) {
+                        onAuthError();
+                        return;
+                    }
+                    console.error('Error al guardar el estado:', err);
+                });
+            }
+
+            return updatedOrders;
         });
-        setOrders(updatedOrders);
-        if (itemToSave && orderIdToSave) {
-            const { id: lineItemId, isPurchased, quantityPurchased } = itemToSave;
-            saveItemStatus(authToken, {
-                lineItemId,
-                orderId: orderIdToSave,
-                isPurchased,
-                quantityPurchased,
-            })
-            .then(data => {
-                if (data.success) console.log('Progreso guardado en DB');
-            })
-            .catch(err => {
-                if (err instanceof AuthError) {
-                    onAuthError();
-                    return;
-                }
-                console.error('Error al guardar el estado:', err);
-            });
-        }
-    };
-    const handleCompleteOrder = async (orderId: number) => {
+    }, [authToken, onAuthError]);
+    const handleCompleteOrder = useCallback(async (orderId: number) => {
         setCompletingOrderId(orderId);
         try {
             await completeOrder(authToken, orderId);
@@ -381,7 +386,7 @@ const OrdersView: React.FC<OrdersViewProps> = ({ authToken, onAuthError }) => {
         } finally {
             setCompletingOrderId(null);
         }
-    };
+    }, [authToken, onAuthError]);
     const TabButton: React.FC<{
         label: string;
         isActive: boolean;
