@@ -109,20 +109,32 @@ app.get('/api/orders', async (req, res) => {
         // Mapa para guardar detalles del producto
         const productDetailsMap = new Map<number, { category: string, imageUrl: string | null }>();
         if (productIds.size > 0) {
-            const productsResponse = await axios.get(
-                `${WOO_URL}/wp-json/wc/v3/products`,
-                {
-                    auth: {
-                        username: WOO_KEY,
-                        password: WOO_SECRET,
-                    },
-                    params: {
-                        include: Array.from(productIds).join(','),
-                        per_page: 100,
-                    },
-                }
+            const productIdArray = Array.from(productIds);
+            const BATCH_SIZE = 100;
+            const batches: number[][] = [];
+            for (let i = 0; i < productIdArray.length; i += BATCH_SIZE) {
+                batches.push(productIdArray.slice(i, i + BATCH_SIZE));
+            }
+
+            const batchResponses = await Promise.all(
+                batches.map(batch =>
+                    axios.get(
+                        `${WOO_URL}/wp-json/wc/v3/products`,
+                        {
+                            auth: {
+                                username: WOO_KEY,
+                                password: WOO_SECRET,
+                            },
+                            params: {
+                                include: batch.join(','),
+                                per_page: 100,
+                            },
+                        }
+                    )
+                )
             );
-            const rawProducts: any[] = productsResponse.data;
+
+            const rawProducts: any[] = batchResponses.flatMap(r => r.data);
             rawProducts.forEach(product => {
                 const categoryName = product.categories && product.categories.length > 0
                     ? product.categories[0].name
