@@ -10,6 +10,29 @@ import axios from 'axios';
 // Inicializar Prisma Client
 const prisma = new PrismaClient();
 
+// --- Cache en memoria para productos ---
+const PRODUCT_CACHE_TTL = 10 * 60 * 1000; // 10 minutos
+interface CachedProduct {
+    category: string;
+    imageUrl: string | null;
+    cachedAt: number;
+}
+const productCache = new Map<number, CachedProduct>();
+
+function getCachedProduct(productId: number): { category: string; imageUrl: string | null } | null {
+    const cached = productCache.get(productId);
+    if (!cached) return null;
+    if (Date.now() - cached.cachedAt > PRODUCT_CACHE_TTL) {
+        productCache.delete(productId);
+        return null;
+    }
+    return { category: cached.category, imageUrl: cached.imageUrl };
+}
+
+function setCachedProduct(productId: number, category: string, imageUrl: string | null): void {
+    productCache.set(productId, { category, imageUrl, cachedAt: Date.now() });
+}
+
 // Inicializar Express App
 const app = express();
 
@@ -215,23 +238,36 @@ app.get('/api/orders', async (req: Request, res: Response) => {
             return;
         }
 
-        // --- 4. OBTENER PRODUCTOS (PARA CATEGORIAS E IMAGENES) ---
+        // --- 4. OBTENER PRODUCTOS (PARA CATEGORIAS E IMAGENES) CON CACHE ---
         const productIds = new Set<number>();
         rawOrders.forEach(order => {
             order.line_items.forEach((item: any) => {
                 if (item.product_id) productIds.add(item.product_id);
             });
         });
-        console.log(`Product IDs a buscar: [${Array.from(productIds).join(', ')}]`);
 
-        // Mapa para guardar detalles del producto
         const productDetailsMap = new Map<number, { category: string, imageUrl: string | null }>();
-        if (productIds.size > 0) {
-            const productIdArray = Array.from(productIds);
+        const uncachedIds: number[] = [];
+
+        // Separar productos cacheados de los que necesitan fetch
+        for (const id of productIds) {
+            const cached = getCachedProduct(id);
+            if (cached) {
+                productDetailsMap.set(id, cached);
+            } else {
+                uncachedIds.push(id);
+            }
+        }
+
+        const fromCache = productIds.size - uncachedIds.length;
+        console.log(`Products: ${productIds.size} total, ${fromCache} from cache, ${uncachedIds.length} to fetch`);
+
+        // Solo fetch de WooCommerce para productos NO cacheados
+        if (uncachedIds.length > 0) {
             const BATCH_SIZE = 100;
             const batches: number[][] = [];
-            for (let i = 0; i < productIdArray.length; i += BATCH_SIZE) {
-                batches.push(productIdArray.slice(i, i + BATCH_SIZE));
+            for (let i = 0; i < uncachedIds.length; i += BATCH_SIZE) {
+                batches.push(uncachedIds.slice(i, i + BATCH_SIZE));
             }
 
             const batchResponses = await Promise.all(
@@ -264,9 +300,10 @@ app.get('/api/orders', async (req: Request, res: Response) => {
                     : null;
 
                 productDetailsMap.set(product.id, { category: categoryName, imageUrl: imageUrl });
+                setCachedProduct(product.id, categoryName, imageUrl);
             });
 
-            const missingIds = productIdArray.filter(id => !productDetailsMap.has(id));
+            const missingIds = uncachedIds.filter(id => !productDetailsMap.has(id));
             if (missingIds.length > 0) {
                 console.warn(`Productos no encontrados en WooCommerce API: [${missingIds.join(', ')}]`);
             }
