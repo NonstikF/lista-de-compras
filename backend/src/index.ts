@@ -102,9 +102,11 @@ app.get('/api/orders', async (req, res) => {
         const productIds = new Set<number>();
         rawOrders.forEach(order => {
             order.line_items.forEach((item: any) => {
+                // Agregar product_id (producto principal)
                 if (item.product_id) productIds.add(item.product_id);
             });
         });
+        console.log(`📦 Product IDs a buscar: [${Array.from(productIds).join(', ')}]`);
 
         // Mapa para guardar detalles del producto
         const productDetailsMap = new Map<number, { category: string, imageUrl: string | null }>();
@@ -128,6 +130,7 @@ app.get('/api/orders', async (req, res) => {
                             params: {
                                 include: batch.join(','),
                                 per_page: 100,
+                                status: 'any',
                             },
                         }
                     )
@@ -146,6 +149,12 @@ app.get('/api/orders', async (req, res) => {
 
                 productDetailsMap.set(product.id, { category: categoryName, imageUrl: imageUrl });
             });
+
+            // Log de productos que no se encontraron en el API
+            const missingIds = productIdArray.filter(id => !productDetailsMap.has(id));
+            if (missingIds.length > 0) {
+                console.warn(`⚠️ Productos no encontrados en WooCommerce API: [${missingIds.join(', ')}]`);
+            }
         }
 
         // --- 5. OBTENER PROGRESO DE NUESTRA BASE DE DATOS ---
@@ -172,16 +181,27 @@ app.get('/api/orders', async (req, res) => {
                 const savedItemStatus = statusMap.get(item.id);
                 const productDetails = productDetailsMap.get(item.product_id);
 
+                // Fallback: intentar obtener categoría del parent product si es variación
+                let category = 'Sin Categoría';
+                if (productDetails) {
+                    category = productDetails.category;
+                } else if (item.parent_name) {
+                    // Para variaciones, WooCommerce puede no devolver el producto hijo,
+                    // pero el parent puede estar en el mapa
+                    const parentProduct = productDetailsMap.get(item.product_id);
+                    if (parentProduct) category = parentProduct.category;
+                }
+
                 return {
                     id: item.id,
                     name: item.name,
                     productId: item.product_id,
                     quantity: item.quantity,
                     sku: item.sku,
-                    total: item.total, // Total del artículo
+                    total: item.total,
                     isPurchased: savedItemStatus ? savedItemStatus.isPurchased : false,
                     quantityPurchased: savedItemStatus ? savedItemStatus.quantityPurchased : 0,
-                    category: productDetails ? productDetails.category : 'Products',
+                    category: category,
                     imageUrl: productDetails ? productDetails.imageUrl : null,
                 };
             }),
