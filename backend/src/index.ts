@@ -15,6 +15,11 @@ app.use(express.json());
 
 // --- Rutas de nuestra API ---
 
+// Healthcheck para Railway
+app.get('/', (_req, res) => {
+    res.json({ status: 'ok' });
+});
+
 /**
  * RUTA [POST] /api/item-status
  * Guarda o actualiza el estado de un artículo de línea individual.
