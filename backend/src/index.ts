@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { PrismaClient } from '@prisma/client';
 import axios from 'axios';
 import type { WooCommerceOrder, WooCommerceProduct, WooCommerceLineItem } from './types';
+import { initTelegramBot } from './telegram';
 
 // Inicializar Prisma Client
 const prisma = new PrismaClient();
@@ -466,4 +467,5 @@ app.post('/api/orders/:id/complete', async (req: Request, res: Response) => {
 const port = process.env.PORT || 4000;
 app.listen(port, () => {
     console.log(`Servidor Backend escuchando en http://localhost:${port}`);
+    initTelegramBot(prisma);
 });
