@@ -562,6 +562,109 @@ export async function initTelegramBot(prisma: PrismaClient): Promise<TelegramBot
         }
     });
 
+    // --- /lista ---
+    bot.onText(/\/lista/, async (msg) => {
+        if (!isAuthorized(msg.chat.id)) return;
+        try {
+            await bot.sendMessage(msg.chat.id, '⏳ Generando lista de compras\\.\\.\\.');
+            const orders = await fetchOrders(prisma);
+
+            // Acumular ítems sin comprar agrupados por categoría y nombre
+            const itemMap = new Map<string, { name: string; category: string; total: number; orders: number[] }>();
+            for (const order of orders) {
+                for (const item of order.lineItems) {
+                    if (item.isPurchased) continue;
+                    const pending = item.quantity - item.quantityPurchased;
+                    if (pending <= 0) continue;
+                    const key = item.name.toLowerCase();
+                    if (itemMap.has(key)) {
+                        const entry = itemMap.get(key)!;
+                        entry.total += pending;
+                        if (!entry.orders.includes(order.id)) entry.orders.push(order.id);
+                    } else {
+                        itemMap.set(key, { name: item.name, category: item.category, total: pending, orders: [order.id] });
+                    }
+                }
+            }
+
+            if (itemMap.size === 0) {
+                await bot.sendMessage(msg.chat.id, '✅ No hay ítems pendientes de comprar\\.', { parse_mode: 'MarkdownV2' });
+                return;
+            }
+
+            // Agrupar por categoría
+            const byCategory = new Map<string, typeof itemMap extends Map<string, infer V> ? V[] : never>();
+            for (const entry of itemMap.values()) {
+                const cat = entry.category || 'Sin categoría';
+                if (!byCategory.has(cat)) byCategory.set(cat, []);
+                byCategory.get(cat)!.push(entry);
+            }
+
+            let listMsg = `🛒 *Lista de compras \\(${itemMap.size} productos\\)*\n\n`;
+            for (const [cat, items] of byCategory) {
+                listMsg += `*${escapeMarkdown(cat)}*\n`;
+                for (const item of items) {
+                    const orderRefs = item.orders.map(id => `\\#${id}`).join(', ');
+                    listMsg += `  • ${escapeMarkdown(item.name)} x${item.total} _\\(${orderRefs}\\)_\n`;
+                }
+                listMsg += '\n';
+            }
+
+            await bot.sendMessage(msg.chat.id, listMsg, { parse_mode: 'MarkdownV2' });
+        } catch (err) {
+            await bot.sendMessage(msg.chat.id, '❌ Error al generar la lista\\.');
+            console.error('Telegram /lista error:', err);
+        }
+    });
+
+    // --- /faltantes ---
+    bot.onText(/\/faltantes/, async (msg) => {
+        if (!isAuthorized(msg.chat.id)) return;
+        try {
+            await bot.sendMessage(msg.chat.id, '⏳ Buscando faltantes en pedidos completados\\.\\.\\.');
+            const completedOrders = await fetchOrders(prisma, 'completed');
+
+            // Pedidos completados que tienen ítems sin comprar
+            const ordersWithMissing = completedOrders
+                .map(order => ({
+                    ...order,
+                    lineItems: order.lineItems.filter(i => !i.isPurchased),
+                }))
+                .filter(order => order.lineItems.length > 0);
+
+            if (ordersWithMissing.length === 0) {
+                await bot.sendMessage(msg.chat.id, '✅ No hay faltantes en pedidos completados\\.', { parse_mode: 'MarkdownV2' });
+                return;
+            }
+
+            let faltMsg = `⚠️ *Faltantes en pedidos completados \\(${ordersWithMissing.length} pedidos\\)*\n\n`;
+
+            for (const order of ordersWithMissing) {
+                faltMsg += `🛒 *Pedido \\#${order.id}* \\— ${escapeMarkdown(order.customer)}\n`;
+
+                const byCategory = new Map<string, ProcessedLineItem[]>();
+                for (const item of order.lineItems) {
+                    const cat = item.category || 'Sin categoría';
+                    if (!byCategory.has(cat)) byCategory.set(cat, []);
+                    byCategory.get(cat)!.push(item);
+                }
+
+                for (const [cat, items] of byCategory) {
+                    faltMsg += `  *${escapeMarkdown(cat)}*\n`;
+                    for (const item of items) {
+                        faltMsg += `    • ${escapeMarkdown(item.name)} x${item.quantity}\n`;
+                    }
+                }
+                faltMsg += '\n';
+            }
+
+            await bot.sendMessage(msg.chat.id, faltMsg, { parse_mode: 'MarkdownV2' });
+        } catch (err) {
+            await bot.sendMessage(msg.chat.id, '❌ Error al obtener faltantes\\.');
+            console.error('Telegram /faltantes error:', err);
+        }
+    });
+
     // --- Notificaciones automáticas ---
     if (config.chatId) {
         const knownOrderIds = new Set<number>();
