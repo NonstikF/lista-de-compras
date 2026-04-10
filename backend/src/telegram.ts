@@ -316,6 +316,30 @@ export async function initTelegramBot(prisma: PrismaClient): Promise<TelegramBot
             });
             const statusMap = new Map(savedStatuses.map(s => [s.lineItemId, s]));
 
+            // Obtener categorías para este pedido
+            const productIds = [...new Set(raw.line_items.map((i: WooCommerceLineItem) => i.product_id))];
+            const singleCategoryMap = new Map<number, string>();
+            const uncached = productIds.filter(id => {
+                const c = productCategoryCache.get(id);
+                if (c && Date.now() - c.cachedAt < CATEGORY_CACHE_TTL) { singleCategoryMap.set(id, c.category); return false; }
+                return true;
+            });
+            if (uncached.length > 0) {
+                try {
+                    const { WOO_URL: wUrl, WOO_KEY: wKey, WOO_SECRET: wSec } = getWooConfig();
+                    const pr = await axios.get(`${wUrl}/wp-json/wc/v3/products`, {
+                        auth: { username: wKey, password: wSec },
+                        params: { include: uncached.join(','), per_page: 100, status: 'any' },
+                        timeout: 10000,
+                    });
+                    for (const p of pr.data) {
+                        const cat: string = p.categories?.[0]?.name || 'Sin categoría';
+                        singleCategoryMap.set(p.id, cat);
+                        productCategoryCache.set(p.id, { category: cat, cachedAt: Date.now() });
+                    }
+                } catch { /* continuar sin categorías */ }
+            }
+
             const order: ProcessedOrder = {
                 id: raw.id,
                 dateCreated: raw.date_created,
@@ -327,6 +351,7 @@ export async function initTelegramBot(prisma: PrismaClient): Promise<TelegramBot
                     return {
                         id: item.id,
                         name: item.name,
+                        category: singleCategoryMap.get(item.product_id) || 'Sin categoría',
                         quantity: item.quantity,
                         sku: item.sku,
                         total: item.total,
