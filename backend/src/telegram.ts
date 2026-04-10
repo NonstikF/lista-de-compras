@@ -282,7 +282,7 @@ export async function initTelegramBot(prisma: PrismaClient): Promise<TelegramBot
 
             await bot.sendMessage(msg.chat.id, `📋 *${orders.length} pedido\\(s\\) pendiente\\(s\\):*`, { parse_mode: 'MarkdownV2' });
             for (const order of orders) {
-                await bot.sendMessage(msg.chat.id, formatOrderMessage(order), { parse_mode: 'MarkdownV2' });
+                await bot.sendMessage(msg.chat.id, formatOrderMessage(order, true), { parse_mode: 'MarkdownV2' });
             }
         } catch (err) {
             await bot.sendMessage(msg.chat.id, '❌ Error al obtener pedidos\\.');
@@ -610,17 +610,29 @@ export async function notifyMissingItems(
     prisma: PrismaClient,
     orderId: number,
     customer: string,
-    missingItems: Array<{ name: string; quantity: number; quantityPurchased: number }>
+    missingItems: Array<{ name: string; category: string; quantity: number; quantityPurchased: number }>
 ): Promise<void> {
     const config = await getBotConfig(prisma);
     if (!config?.chatId || !activeBotInstance) return;
 
     let msg = `⚠️ *Pedido \\#${orderId} completado con faltantes*\n`;
     msg += `👤 ${escapeMarkdown(customer)}\n\n`;
-    msg += `*Ítems no surtidos:*\n`;
+
+    // Agrupar faltantes por categoría
+    const byCategory = new Map<string, typeof missingItems>();
     for (const item of missingItems) {
-        const faltante = item.quantity - item.quantityPurchased;
-        msg += `• ${escapeMarkdown(item.name)} \\— falta ${faltante}/${item.quantity}\n`;
+        const cat = item.category || 'Sin categoría';
+        if (!byCategory.has(cat)) byCategory.set(cat, []);
+        byCategory.get(cat)!.push(item);
+    }
+
+    for (const [cat, items] of byCategory) {
+        msg += `*${escapeMarkdown(cat)}*\n`;
+        for (const item of items) {
+            const faltante = item.quantity - item.quantityPurchased;
+            msg += `  • ${escapeMarkdown(item.name)} \\— falta ${faltante}/${item.quantity}\n`;
+        }
+        msg += '\n';
     }
 
     await activeBotInstance.sendMessage(config.chatId, msg, { parse_mode: 'MarkdownV2' });

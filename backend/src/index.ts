@@ -429,15 +429,16 @@ app.post('/api/orders/:id/complete', async (req: Request, res: Response) => {
                 const statusMap = new Map(statuses.map(s => [s.lineItemId, s]));
 
                 const missingItems = rawOrder.line_items
-                    .map((item: { id: number; name: string; quantity: number }) => {
+                    .map((item: { id: number; name: string; quantity: number; product_id: number }) => {
                         const status = statusMap.get(item.id);
                         const quantityPurchased = status?.quantityPurchased ?? 0;
                         if (!status?.isPurchased) {
-                            return { name: item.name, quantity: item.quantity, quantityPurchased };
+                            const category = getCachedProduct(item.product_id)?.category || 'Sin categoría';
+                            return { name: item.name, category, quantity: item.quantity, quantityPurchased };
                         }
                         return null;
                     })
-                    .filter(Boolean) as Array<{ name: string; quantity: number; quantityPurchased: number }>;
+                    .filter(Boolean) as Array<{ name: string; category: string; quantity: number; quantityPurchased: number }>;
 
                 if (missingItems.length > 0) {
                     const customer = `${rawOrder.billing.first_name} ${rawOrder.billing.last_name}`.trim();
