@@ -254,43 +254,168 @@ export async function initTelegramBot(prisma: PrismaClient): Promise<TelegramBot
     bot.on('message', (msg) => { saveChat(msg.chat); });
     bot.on('channel_post', (msg) => { saveChat(msg.chat); });
 
-    // --- /start ---
+    // --- Panel de control ---
+    function sendPanel(chatId: number) {
+        bot.sendMessage(chatId, '🤖 *Panel de PlantArte*\nSeleccioná una opción:', {
+            parse_mode: 'MarkdownV2',
+            reply_markup: {
+                inline_keyboard: [
+                    [
+                        { text: '📋 Ver Pedidos',      callback_data: 'pedidos'   },
+                        { text: '🛒 Lista de Compras', callback_data: 'lista'     },
+                    ],
+                    [
+                        { text: '⚠️ Faltantes',        callback_data: 'faltantes' },
+                        { text: '📊 Resumen del día',  callback_data: 'resumen'   },
+                    ],
+                ],
+            },
+        });
+    }
+
+    // --- Funciones reutilizables por comando ---
+    async function runPedidos(chatId: number) {
+        await bot.sendMessage(chatId, '⏳ Consultando pedidos\\.\\.\\.');
+        const orders = await fetchOrders(prisma);
+        if (orders.length === 0) {
+            await bot.sendMessage(chatId, '✅ No hay pedidos pendientes\\.', { parse_mode: 'MarkdownV2' });
+            return;
+        }
+        await bot.sendMessage(chatId, `📋 *${orders.length} pedido\\(s\\) pendiente\\(s\\):*`, { parse_mode: 'MarkdownV2' });
+        for (const order of orders) {
+            await bot.sendMessage(chatId, formatOrderMessage(order, true), { parse_mode: 'MarkdownV2' });
+        }
+    }
+
+    async function runLista(chatId: number) {
+        await bot.sendMessage(chatId, '⏳ Generando lista de compras\\.\\.\\.');
+        const orders = await fetchOrders(prisma);
+        const itemMap = new Map<string, { name: string; category: string; total: number; orders: number[] }>();
+        for (const order of orders) {
+            for (const item of order.lineItems) {
+                if (item.isPurchased) continue;
+                const pending = item.quantity - item.quantityPurchased;
+                if (pending <= 0) continue;
+                const key = item.name.toLowerCase();
+                if (itemMap.has(key)) {
+                    const entry = itemMap.get(key)!;
+                    entry.total += pending;
+                    if (!entry.orders.includes(order.id)) entry.orders.push(order.id);
+                } else {
+                    itemMap.set(key, { name: item.name, category: item.category, total: pending, orders: [order.id] });
+                }
+            }
+        }
+        if (itemMap.size === 0) {
+            await bot.sendMessage(chatId, '✅ No hay ítems pendientes de comprar\\.', { parse_mode: 'MarkdownV2' });
+            return;
+        }
+        const byCategory = new Map<string, Array<{ name: string; total: number; orders: number[] }>>();
+        for (const entry of itemMap.values()) {
+            const cat = entry.category || 'Sin categoría';
+            if (!byCategory.has(cat)) byCategory.set(cat, []);
+            byCategory.get(cat)!.push(entry);
+        }
+        let listMsg = `🛒 *Lista de compras \\(${itemMap.size} productos\\)*\n\n`;
+        for (const [cat, items] of byCategory) {
+            listMsg += `*${escapeMarkdown(cat)}*\n`;
+            for (const item of items) {
+                const orderRefs = item.orders.map(id => `\\#${id}`).join(', ');
+                listMsg += `  • ${escapeMarkdown(item.name)} x${item.total} _\\(${orderRefs}\\)_\n`;
+            }
+            listMsg += '\n';
+        }
+        await bot.sendMessage(chatId, listMsg, { parse_mode: 'MarkdownV2' });
+    }
+
+    async function runFaltantes(chatId: number) {
+        await bot.sendMessage(chatId, '⏳ Buscando faltantes en pedidos completados\\.\\.\\.');
+        const completedOrders = await fetchOrders(prisma, 'completed');
+        const ordersWithMissing = completedOrders
+            .map(order => ({ ...order, lineItems: order.lineItems.filter(i => !i.isPurchased) }))
+            .filter(order => order.lineItems.length > 0);
+        if (ordersWithMissing.length === 0) {
+            await bot.sendMessage(chatId, '✅ No hay faltantes en pedidos completados\\.', { parse_mode: 'MarkdownV2' });
+            return;
+        }
+        let faltMsg = `⚠️ *Faltantes en pedidos completados \\(${ordersWithMissing.length} pedidos\\)*\n\n`;
+        for (const order of ordersWithMissing) {
+            faltMsg += `🛒 *Pedido \\#${order.id}* \\— ${escapeMarkdown(order.customer)}\n`;
+            const byCategory = new Map<string, ProcessedLineItem[]>();
+            for (const item of order.lineItems) {
+                const cat = item.category || 'Sin categoría';
+                if (!byCategory.has(cat)) byCategory.set(cat, []);
+                byCategory.get(cat)!.push(item);
+            }
+            for (const [cat, items] of byCategory) {
+                faltMsg += `  *${escapeMarkdown(cat)}*\n`;
+                for (const item of items) {
+                    faltMsg += `    • ${escapeMarkdown(item.name)} x${item.quantity}\n`;
+                }
+            }
+            faltMsg += '\n';
+        }
+        await bot.sendMessage(chatId, faltMsg, { parse_mode: 'MarkdownV2' });
+    }
+
+    async function runResumen(chatId: number) {
+        await bot.sendMessage(chatId, '⏳ Generando resumen\\.\\.\\.');
+        const [pendingOrders, completedOrders] = await Promise.all([
+            fetchOrders(prisma, 'processing,on-hold'),
+            fetchOrders(prisma, 'completed'),
+        ]);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const completedToday = completedOrders.filter(o => new Date(o.dateCreated) >= today);
+        const totalPendingItems = pendingOrders.reduce((sum, o) =>
+            sum + o.lineItems.reduce((s, i) => s + i.quantity, 0), 0);
+        const purchasedItems = pendingOrders.reduce((sum, o) =>
+            sum + o.lineItems.filter(i => i.isPurchased).reduce((s, i) => s + i.quantityPurchased, 0), 0);
+        let summaryMsg = `📊 *Resumen del día*\n\n`;
+        summaryMsg += `📋 *Pedidos pendientes:* ${pendingOrders.length}\n`;
+        summaryMsg += `📦 *Progreso de compras:* ${purchasedItems}/${totalPendingItems} ítems\n`;
+        summaryMsg += `✅ *Completados hoy:* ${completedToday.length}\n`;
+        if (pendingOrders.length > 0) {
+            summaryMsg += `\n*Pedidos activos:*\n`;
+            pendingOrders.slice(0, 8).forEach(o => {
+                const purchased = o.lineItems.filter(i => i.isPurchased).length;
+                summaryMsg += `• \\#${o.id} — ${escapeMarkdown(o.customer)} \\(${purchased}/${o.lineItems.length}\\)\n`;
+            });
+            if (pendingOrders.length > 8) summaryMsg += `_\\.\\.\\.y ${pendingOrders.length - 8} más_\n`;
+        }
+        await bot.sendMessage(chatId, summaryMsg, { parse_mode: 'MarkdownV2' });
+    }
+
+    // --- /start → Panel ---
     bot.onText(/\/start/, (msg) => {
         if (!isAuthorized(msg.chat.id)) return;
-        const welcomeMsg =
-            `👋 *Bot de PlantArte*\n\n` +
-            `Comandos disponibles:\n\n` +
-            `/pedidos — Ver pedidos pendientes\n` +
-            `/pedido \\[id\\] — Detalle de un pedido\n` +
-            `/lista — Lista de compras consolidada\n` +
-            `/faltantes — Faltantes de pedidos completados\n` +
-            `/buscar \\[texto\\] — Buscar en pedidos activos\n` +
-            `/comprado \\[item\\_id\\] \\[cantidad\\] — Marcar ítem como comprado\n` +
-            `/completar \\[order\\_id\\] — Marcar pedido como completado\n` +
-            `/resumen — Resumen del día`;
-        bot.sendMessage(msg.chat.id, welcomeMsg, { parse_mode: 'MarkdownV2' });
+        sendPanel(msg.chat.id);
+    });
+
+    // --- Callback de botones del panel ---
+    bot.on('callback_query', async (query) => {
+        if (!query.message) return;
+        const chatId = query.message.chat.id;
+        if (!isAuthorized(chatId)) return;
+        await bot.answerCallbackQuery(query.id);
+        try {
+            switch (query.data) {
+                case 'pedidos':   await runPedidos(chatId);   break;
+                case 'lista':     await runLista(chatId);     break;
+                case 'faltantes': await runFaltantes(chatId); break;
+                case 'resumen':   await runResumen(chatId);   break;
+            }
+        } catch (err) {
+            await bot.sendMessage(chatId, '❌ Error al procesar la solicitud\\.');
+            console.error('Telegram callback error:', err);
+        }
     });
 
     // --- /pedidos ---
     bot.onText(/\/pedidos/, async (msg) => {
         if (!isAuthorized(msg.chat.id)) return;
-        try {
-            await bot.sendMessage(msg.chat.id, '⏳ Consultando pedidos\\.\\.\\.');
-            const orders = await fetchOrders(prisma);
-
-            if (orders.length === 0) {
-                await bot.sendMessage(msg.chat.id, '✅ No hay pedidos pendientes\\.');
-                return;
-            }
-
-            await bot.sendMessage(msg.chat.id, `📋 *${orders.length} pedido\\(s\\) pendiente\\(s\\):*`, { parse_mode: 'MarkdownV2' });
-            for (const order of orders) {
-                await bot.sendMessage(msg.chat.id, formatOrderMessage(order, true), { parse_mode: 'MarkdownV2' });
-            }
-        } catch (err) {
-            await bot.sendMessage(msg.chat.id, '❌ Error al obtener pedidos\\.');
-            console.error('Telegram /pedidos error:', err);
-        }
+        try { await runPedidos(msg.chat.id); }
+        catch (err) { await bot.sendMessage(msg.chat.id, '❌ Error al obtener pedidos\\.'); console.error(err); }
     });
 
     // --- /pedido [id] ---
@@ -524,147 +649,22 @@ export async function initTelegramBot(prisma: PrismaClient): Promise<TelegramBot
     // --- /resumen ---
     bot.onText(/\/resumen/, async (msg) => {
         if (!isAuthorized(msg.chat.id)) return;
-        try {
-            await bot.sendMessage(msg.chat.id, '⏳ Generando resumen\\.\\.\\.');
-
-            const [pendingOrders, completedOrders] = await Promise.all([
-                fetchOrders(prisma, 'processing,on-hold'),
-                fetchOrders(prisma, 'completed'),
-            ]);
-
-            const today = new Date();
-            today.setHours(0, 0, 0, 0);
-            const completedToday = completedOrders.filter(o => new Date(o.dateCreated) >= today);
-
-            const totalPendingItems = pendingOrders.reduce((sum, o) =>
-                sum + o.lineItems.reduce((s, i) => s + i.quantity, 0), 0);
-            const purchasedItems = pendingOrders.reduce((sum, o) =>
-                sum + o.lineItems.filter(i => i.isPurchased).reduce((s, i) => s + i.quantityPurchased, 0), 0);
-
-            let summaryMsg = `📊 *Resumen del día*\n\n`;
-            summaryMsg += `📋 *Pedidos pendientes:* ${pendingOrders.length}\n`;
-            summaryMsg += `📦 *Progreso de compras:* ${purchasedItems}/${totalPendingItems} ítems\n`;
-            summaryMsg += `✅ *Completados hoy:* ${completedToday.length}\n`;
-
-            if (pendingOrders.length > 0) {
-                summaryMsg += `\n*Pedidos activos:*\n`;
-                pendingOrders.slice(0, 8).forEach(o => {
-                    const purchased = o.lineItems.filter(i => i.isPurchased).length;
-                    summaryMsg += `• \\#${o.id} — ${escapeMarkdown(o.customer)} \\(${purchased}/${o.lineItems.length}\\)\n`;
-                });
-                if (pendingOrders.length > 8) {
-                    summaryMsg += `_\\.\\.\\.y ${pendingOrders.length - 8} más_\n`;
-                }
-            }
-
-            await bot.sendMessage(msg.chat.id, summaryMsg, { parse_mode: 'MarkdownV2' });
-        } catch (err) {
-            await bot.sendMessage(msg.chat.id, '❌ Error al generar resumen\\.');
-            console.error('Telegram /resumen error:', err);
-        }
+        try { await runResumen(msg.chat.id); }
+        catch (err) { await bot.sendMessage(msg.chat.id, '❌ Error al generar resumen\\.'); console.error(err); }
     });
 
     // --- /lista ---
     bot.onText(/\/lista/, async (msg) => {
         if (!isAuthorized(msg.chat.id)) return;
-        try {
-            await bot.sendMessage(msg.chat.id, '⏳ Generando lista de compras\\.\\.\\.');
-            const orders = await fetchOrders(prisma);
-
-            // Acumular ítems sin comprar agrupados por categoría y nombre
-            const itemMap = new Map<string, { name: string; category: string; total: number; orders: number[] }>();
-            for (const order of orders) {
-                for (const item of order.lineItems) {
-                    if (item.isPurchased) continue;
-                    const pending = item.quantity - item.quantityPurchased;
-                    if (pending <= 0) continue;
-                    const key = item.name.toLowerCase();
-                    if (itemMap.has(key)) {
-                        const entry = itemMap.get(key)!;
-                        entry.total += pending;
-                        if (!entry.orders.includes(order.id)) entry.orders.push(order.id);
-                    } else {
-                        itemMap.set(key, { name: item.name, category: item.category, total: pending, orders: [order.id] });
-                    }
-                }
-            }
-
-            if (itemMap.size === 0) {
-                await bot.sendMessage(msg.chat.id, '✅ No hay ítems pendientes de comprar\\.', { parse_mode: 'MarkdownV2' });
-                return;
-            }
-
-            // Agrupar por categoría
-            const byCategory = new Map<string, typeof itemMap extends Map<string, infer V> ? V[] : never>();
-            for (const entry of itemMap.values()) {
-                const cat = entry.category || 'Sin categoría';
-                if (!byCategory.has(cat)) byCategory.set(cat, []);
-                byCategory.get(cat)!.push(entry);
-            }
-
-            let listMsg = `🛒 *Lista de compras \\(${itemMap.size} productos\\)*\n\n`;
-            for (const [cat, items] of byCategory) {
-                listMsg += `*${escapeMarkdown(cat)}*\n`;
-                for (const item of items) {
-                    const orderRefs = item.orders.map(id => `\\#${id}`).join(', ');
-                    listMsg += `  • ${escapeMarkdown(item.name)} x${item.total} _\\(${orderRefs}\\)_\n`;
-                }
-                listMsg += '\n';
-            }
-
-            await bot.sendMessage(msg.chat.id, listMsg, { parse_mode: 'MarkdownV2' });
-        } catch (err) {
-            await bot.sendMessage(msg.chat.id, '❌ Error al generar la lista\\.');
-            console.error('Telegram /lista error:', err);
-        }
+        try { await runLista(msg.chat.id); }
+        catch (err) { await bot.sendMessage(msg.chat.id, '❌ Error al generar la lista\\.'); console.error(err); }
     });
 
     // --- /faltantes ---
     bot.onText(/\/faltantes/, async (msg) => {
         if (!isAuthorized(msg.chat.id)) return;
-        try {
-            await bot.sendMessage(msg.chat.id, '⏳ Buscando faltantes en pedidos completados\\.\\.\\.');
-            const completedOrders = await fetchOrders(prisma, 'completed');
-
-            // Pedidos completados que tienen ítems sin comprar
-            const ordersWithMissing = completedOrders
-                .map(order => ({
-                    ...order,
-                    lineItems: order.lineItems.filter(i => !i.isPurchased),
-                }))
-                .filter(order => order.lineItems.length > 0);
-
-            if (ordersWithMissing.length === 0) {
-                await bot.sendMessage(msg.chat.id, '✅ No hay faltantes en pedidos completados\\.', { parse_mode: 'MarkdownV2' });
-                return;
-            }
-
-            let faltMsg = `⚠️ *Faltantes en pedidos completados \\(${ordersWithMissing.length} pedidos\\)*\n\n`;
-
-            for (const order of ordersWithMissing) {
-                faltMsg += `🛒 *Pedido \\#${order.id}* \\— ${escapeMarkdown(order.customer)}\n`;
-
-                const byCategory = new Map<string, ProcessedLineItem[]>();
-                for (const item of order.lineItems) {
-                    const cat = item.category || 'Sin categoría';
-                    if (!byCategory.has(cat)) byCategory.set(cat, []);
-                    byCategory.get(cat)!.push(item);
-                }
-
-                for (const [cat, items] of byCategory) {
-                    faltMsg += `  *${escapeMarkdown(cat)}*\n`;
-                    for (const item of items) {
-                        faltMsg += `    • ${escapeMarkdown(item.name)} x${item.quantity}\n`;
-                    }
-                }
-                faltMsg += '\n';
-            }
-
-            await bot.sendMessage(msg.chat.id, faltMsg, { parse_mode: 'MarkdownV2' });
-        } catch (err) {
-            await bot.sendMessage(msg.chat.id, '❌ Error al obtener faltantes\\.');
-            console.error('Telegram /faltantes error:', err);
-        }
+        try { await runFaltantes(msg.chat.id); }
+        catch (err) { await bot.sendMessage(msg.chat.id, '❌ Error al obtener faltantes\\.'); console.error(err); }
     });
 
     // --- Notificaciones automáticas ---
