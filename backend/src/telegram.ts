@@ -254,22 +254,20 @@ export async function initTelegramBot(prisma: PrismaClient): Promise<TelegramBot
     bot.on('message', (msg) => { saveChat(msg.chat); });
     bot.on('channel_post', (msg) => { saveChat(msg.chat); });
 
-    // --- Panel de control ---
+    // --- Teclado persistente ---
+    const MENU_KEYBOARD = {
+        keyboard: [
+            [{ text: '📋 Ver Pedidos' },     { text: '🛒 Lista de Compras' }],
+            [{ text: '⚠️ Faltantes' },       { text: '📊 Resumen del día'  }],
+        ],
+        resize_keyboard: true,
+        persistent: true,
+    };
+
     function sendPanel(chatId: number) {
-        bot.sendMessage(chatId, '🤖 *Panel de PlantArte*\nSeleccioná una opción:', {
+        bot.sendMessage(chatId, '🤖 *Bot de PlantArte listo\\!*\nUsá los botones del menú:', {
             parse_mode: 'MarkdownV2',
-            reply_markup: {
-                inline_keyboard: [
-                    [
-                        { text: '📋 Ver Pedidos',      callback_data: 'pedidos'   },
-                        { text: '🛒 Lista de Compras', callback_data: 'lista'     },
-                    ],
-                    [
-                        { text: '⚠️ Faltantes',        callback_data: 'faltantes' },
-                        { text: '📊 Resumen del día',  callback_data: 'resumen'   },
-                    ],
-                ],
-            },
+            reply_markup: MENU_KEYBOARD,
         });
     }
 
@@ -392,22 +390,22 @@ export async function initTelegramBot(prisma: PrismaClient): Promise<TelegramBot
         sendPanel(msg.chat.id);
     });
 
-    // --- Callback de botones del panel ---
-    bot.on('callback_query', async (query) => {
-        if (!query.message) return;
-        const chatId = query.message.chat.id;
-        if (!isAuthorized(chatId)) return;
-        await bot.answerCallbackQuery(query.id);
-        try {
-            switch (query.data) {
-                case 'pedidos':   await runPedidos(chatId);   break;
-                case 'lista':     await runLista(chatId);     break;
-                case 'faltantes': await runFaltantes(chatId); break;
-                case 'resumen':   await runResumen(chatId);   break;
-            }
-        } catch (err) {
-            await bot.sendMessage(chatId, '❌ Error al procesar la solicitud\\.');
-            console.error('Telegram callback error:', err);
+    // --- Handler de botones del teclado persistente ---
+    const MENU_ACTIONS: Record<string, (chatId: number) => Promise<void>> = {
+        '📋 Ver Pedidos':     runPedidos,
+        '🛒 Lista de Compras': runLista,
+        '⚠️ Faltantes':       runFaltantes,
+        '📊 Resumen del día': runResumen,
+    };
+
+    bot.on('message', async (msg) => {
+        if (!msg.text || !isAuthorized(msg.chat.id)) return;
+        const action = MENU_ACTIONS[msg.text];
+        if (!action) return;
+        try { await action(msg.chat.id); }
+        catch (err) {
+            await bot.sendMessage(msg.chat.id, '❌ Error al procesar la solicitud\\.');
+            console.error('Telegram menu error:', err);
         }
     });
 
