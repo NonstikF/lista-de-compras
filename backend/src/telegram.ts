@@ -130,8 +130,8 @@ function formatOrderMessage(order: ProcessedOrder, detailed = false): string {
 
     let msg = `🛒 *Pedido \\#${order.id}*\n`;
     msg += `👤 ${escapeMarkdown(order.customer)}\n`;
-    msg += `📅 ${date}\n`;
-    msg += `💰 $${order.total}\n`;
+    msg += `📅 ${escapeMarkdown(date)}\n`;
+    msg += `💰 $${escapeMarkdown(order.total)}\n`;
     msg += `📦 Ítems: ${purchasedCount}/${totalCount} comprados\n`;
 
     if (detailed) {
