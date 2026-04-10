@@ -158,12 +158,13 @@ function escapeMarkdown(text: string): string {
 }
 
 function formatOrderMessage(order: ProcessedOrder, detailed = false): string {
-    const date = new Date(order.dateCreated).toLocaleDateString('es-AR', {
+    const date = new Date(order.dateCreated).toLocaleDateString('es-MX', {
         day: '2-digit',
         month: '2-digit',
         year: '2-digit',
         hour: '2-digit',
         minute: '2-digit',
+        timeZone: 'America/Tijuana',
     });
 
     const purchasedCount = order.lineItems.filter(i => i.isPurchased).length;
