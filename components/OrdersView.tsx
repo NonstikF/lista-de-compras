@@ -202,6 +202,7 @@ const OrderCard = React.memo<{
 }>(({ order, viewMode, completingOrderId, onQuantityChange, onCompleteOrder, onViewImage }) => {
 
     const [isExpanded, setIsExpanded] = useState(false);
+    const [showConfirm, setShowConfirm] = useState(false);
 
     const itemsByCategory = order.lineItems.reduce((acc, item) => {
         const category = item.category || 'Products';
@@ -214,6 +215,7 @@ const OrderCard = React.memo<{
 
     const categories = Object.keys(itemsByCategory).sort();
     const allItemsPurchased = order.lineItems.every(item => item.isPurchased);
+    const missingItems = order.lineItems.filter(item => !item.isPurchased);
 
     return (
         <article aria-labelledby={`order-heading-${order.id}`} className="bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden">
@@ -243,9 +245,13 @@ const OrderCard = React.memo<{
                         <button
                             onClick={(e) => {
                                 e.stopPropagation();
-                                onCompleteOrder(order.id);
+                                if (!allItemsPurchased) {
+                                    setShowConfirm(true);
+                                } else {
+                                    onCompleteOrder(order.id);
+                                }
                             }}
-                            disabled={!allItemsPurchased || completingOrderId === order.id}
+                            disabled={completingOrderId === order.id}
                             className="px-3 py-1 text-sm font-medium bg-green-500 text-white rounded-md shadow-sm hover:bg-green-600 disabled:bg-gray-400 disabled:opacity-70 disabled:cursor-not-allowed"
                         >
                             {completingOrderId === order.id ? 'Completando...' : 'Completar Pedido'}
@@ -277,6 +283,35 @@ const OrderCard = React.memo<{
                             />
                         );
                     })}
+                </div>
+            )}
+
+            {/* Modal de confirmación de faltantes */}
+            {showConfirm && (
+                <div className="m-4 p-4 bg-amber-50 border border-amber-300 rounded-lg">
+                    <p className="font-semibold text-amber-800 mb-2">⚠️ Hay ítems sin surtir. ¿Deseas completar el pedido de todos modos?</p>
+                    <ul className="text-sm text-amber-700 mb-3 space-y-0.5 pl-2">
+                        {missingItems.map(item => (
+                            <li key={item.id}>
+                                • {item.name} — {item.quantityPurchased}/{item.quantity} surtidos
+                            </li>
+                        ))}
+                    </ul>
+                    <p className="text-xs text-amber-600 mb-3">Se enviará una notificación a Telegram con los faltantes.</p>
+                    <div className="flex gap-2">
+                        <button
+                            onClick={() => { setShowConfirm(false); onCompleteOrder(order.id); }}
+                            className="px-4 py-1.5 text-sm font-medium bg-amber-600 text-white rounded-md hover:bg-amber-700"
+                        >
+                            Sí, completar
+                        </button>
+                        <button
+                            onClick={() => setShowConfirm(false)}
+                            className="px-4 py-1.5 text-sm font-medium bg-white text-slate-700 rounded-md border border-slate-300 hover:bg-slate-50"
+                        >
+                            Cancelar
+                        </button>
+                    </div>
                 </div>
             )}
         </article>

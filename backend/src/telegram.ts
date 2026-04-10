@@ -553,3 +553,24 @@ export async function initTelegramBot(prisma: PrismaClient): Promise<TelegramBot
 export async function reinitTelegramBot(prisma: PrismaClient): Promise<void> {
     await initTelegramBot(prisma);
 }
+
+// --- Notificación de faltantes al completar un pedido ---
+export async function notifyMissingItems(
+    prisma: PrismaClient,
+    orderId: number,
+    customer: string,
+    missingItems: Array<{ name: string; quantity: number; quantityPurchased: number }>
+): Promise<void> {
+    const config = await getBotConfig(prisma);
+    if (!config?.chatId || !activeBotInstance) return;
+
+    let msg = `⚠️ *Pedido \\#${orderId} completado con faltantes*\n`;
+    msg += `👤 ${escapeMarkdown(customer)}\n\n`;
+    msg += `*Ítems no surtidos:*\n`;
+    for (const item of missingItems) {
+        const faltante = item.quantity - item.quantityPurchased;
+        msg += `• ${escapeMarkdown(item.name)} — falta ${faltante}/${item.quantity}\n`;
+    }
+
+    await activeBotInstance.sendMessage(config.chatId, msg, { parse_mode: 'MarkdownV2' });
+}

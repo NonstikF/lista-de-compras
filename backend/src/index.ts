@@ -7,7 +7,7 @@ import { z } from 'zod';
 import { PrismaClient } from '@prisma/client';
 import axios from 'axios';
 import type { WooCommerceOrder, WooCommerceProduct, WooCommerceLineItem } from './types';
-import { initTelegramBot, reinitTelegramBot } from './telegram';
+import { initTelegramBot, reinitTelegramBot, notifyMissingItems } from './telegram';
 
 // Inicializar Prisma Client
 const prisma = new PrismaClient();
@@ -418,7 +418,36 @@ app.post('/api/orders/:id/complete', async (req: Request, res: Response) => {
         );
 
         if (response.status >= 200 && response.status < 300) {
-            res.status(200).json({ success: true, updatedOrder: response.data });
+            const rawOrder = response.data;
+
+            // Detectar faltantes y notificar por Telegram
+            try {
+                const lineItemIds: number[] = rawOrder.line_items.map((i: { id: number }) => i.id);
+                const statuses = await prisma.purchaseStatus.findMany({
+                    where: { lineItemId: { in: lineItemIds } },
+                });
+                const statusMap = new Map(statuses.map(s => [s.lineItemId, s]));
+
+                const missingItems = rawOrder.line_items
+                    .map((item: { id: number; name: string; quantity: number }) => {
+                        const status = statusMap.get(item.id);
+                        const quantityPurchased = status?.quantityPurchased ?? 0;
+                        if (!status?.isPurchased) {
+                            return { name: item.name, quantity: item.quantity, quantityPurchased };
+                        }
+                        return null;
+                    })
+                    .filter(Boolean) as Array<{ name: string; quantity: number; quantityPurchased: number }>;
+
+                if (missingItems.length > 0) {
+                    const customer = `${rawOrder.billing.first_name} ${rawOrder.billing.last_name}`.trim();
+                    await notifyMissingItems(prisma, orderIdNum, customer, missingItems);
+                }
+            } catch (notifErr) {
+                console.error('Error notificando faltantes por Telegram:', notifErr);
+            }
+
+            res.status(200).json({ success: true, updatedOrder: rawOrder });
             return;
         }
 
