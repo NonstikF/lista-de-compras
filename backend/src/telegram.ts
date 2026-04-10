@@ -7,6 +7,7 @@ import type { WooCommerceOrder, WooCommerceLineItem } from './types';
 interface ProcessedLineItem {
     id: number;
     name: string;
+    category: string;
     quantity: number;
     sku: string;
     total: string;
@@ -29,6 +30,10 @@ interface BotConfig {
     allowedChatIds: string[];
     staleHours: number;
 }
+
+// --- Cache de categorías de productos (TTL 5 horas) ---
+const productCategoryCache = new Map<number, { category: string; cachedAt: number }>();
+const CATEGORY_CACHE_TTL = 5 * 60 * 60 * 1000;
 
 // --- Instancia activa del bot ---
 let activeBotInstance: TelegramBot | null = null;
@@ -84,6 +89,41 @@ async function fetchOrders(prisma: PrismaClient, status = 'processing,on-hold'):
     const rawOrders: WooCommerceOrder[] = ordersResponse.data;
     if (rawOrders.length === 0) return [];
 
+    // Obtener categorías de productos (con cache)
+    const productIds = new Set<number>();
+    rawOrders.forEach(o => o.line_items.forEach((i: WooCommerceLineItem) => {
+        if (i.product_id) productIds.add(i.product_id);
+    }));
+
+    const categoryMap = new Map<number, string>();
+    const uncachedIds: number[] = [];
+
+    for (const id of productIds) {
+        const cached = productCategoryCache.get(id);
+        if (cached && Date.now() - cached.cachedAt < CATEGORY_CACHE_TTL) {
+            categoryMap.set(id, cached.category);
+        } else {
+            uncachedIds.push(id);
+        }
+    }
+
+    if (uncachedIds.length > 0) {
+        try {
+            const productsResponse = await axios.get(`${WOO_URL}/wp-json/wc/v3/products`, {
+                auth: { username: WOO_KEY, password: WOO_SECRET },
+                params: { include: uncachedIds.join(','), per_page: 100, status: 'any' },
+                timeout: 15000,
+            });
+            for (const product of productsResponse.data) {
+                const category: string = product.categories?.[0]?.name || 'Sin categoría';
+                categoryMap.set(product.id, category);
+                productCategoryCache.set(product.id, { category, cachedAt: Date.now() });
+            }
+        } catch {
+            // Si falla el fetch de categorías, continuamos sin ellas
+        }
+    }
+
     const allLineItemIds = rawOrders.flatMap(o => o.line_items.map((i: WooCommerceLineItem) => i.id));
     const savedStatuses = await prisma.purchaseStatus.findMany({
         where: { lineItemId: { in: allLineItemIds } },
@@ -101,6 +141,7 @@ async function fetchOrders(prisma: PrismaClient, status = 'processing,on-hold'):
             return {
                 id: item.id,
                 name: item.name,
+                category: categoryMap.get(item.product_id) || 'Sin categoría',
                 quantity: item.quantity,
                 sku: item.sku,
                 total: item.total,
@@ -128,22 +169,32 @@ function formatOrderMessage(order: ProcessedOrder, detailed = false): string {
     const purchasedCount = order.lineItems.filter(i => i.isPurchased).length;
     const totalCount = order.lineItems.length;
 
-    let msg = `🛒 *Pedido \\#${order.id}*\n`;
-    msg += `👤 ${escapeMarkdown(order.customer)}\n`;
-    msg += `📅 ${escapeMarkdown(date)}\n`;
-    msg += `💰 $${escapeMarkdown(order.total)}\n`;
-    msg += `📦 Ítems: ${purchasedCount}/${totalCount} comprados\n`;
+    let msg = `🛒 *Pedido \\#${order.id}* \\— ${escapeMarkdown(order.customer)}\n`;
+    msg += `💰 $${escapeMarkdown(order.total)} \\| 📅 ${escapeMarkdown(date)}\n`;
+    msg += `📦 ${purchasedCount}/${totalCount} ítems comprados\n`;
 
     if (detailed) {
-        msg += `\n*Detalle:*\n`;
-        order.lineItems.forEach(item => {
-            const icon = item.isPurchased ? '✅' : '⬜';
-            msg += `${icon} ${escapeMarkdown(item.name)} x${item.quantity}`;
-            if (item.isPurchased && item.quantityPurchased < item.quantity) {
-                msg += ` _(${item.quantityPurchased} comprados)_`;
+        // Agrupar ítems por categoría
+        const byCategory = new Map<string, ProcessedLineItem[]>();
+        for (const item of order.lineItems) {
+            const cat = item.category || 'Sin categoría';
+            if (!byCategory.has(cat)) byCategory.set(cat, []);
+            byCategory.get(cat)!.push(item);
+        }
+
+        msg += '\n';
+        for (const [cat, items] of byCategory) {
+            msg += `*${escapeMarkdown(cat)}*\n`;
+            for (const item of items) {
+                const icon = item.isPurchased ? '✅' : '⬜';
+                msg += `  ${icon} ${escapeMarkdown(item.name)} x${item.quantity}`;
+                if (item.quantityPurchased > 0 && !item.isPurchased) {
+                    msg += ` _\\(${item.quantityPurchased} comprados\\)_`;
+                }
+                msg += '\n';
             }
-            msg += ` — ID: \`${item.id}\`\n`;
-        });
+            msg += '\n';
+        }
     }
 
     return msg;
@@ -569,7 +620,7 @@ export async function notifyMissingItems(
     msg += `*Ítems no surtidos:*\n`;
     for (const item of missingItems) {
         const faltante = item.quantity - item.quantityPurchased;
-        msg += `• ${escapeMarkdown(item.name)} — falta ${faltante}/${item.quantity}\n`;
+        msg += `• ${escapeMarkdown(item.name)} \\— falta ${faltante}/${item.quantity}\n`;
     }
 
     await activeBotInstance.sendMessage(config.chatId, msg, { parse_mode: 'MarkdownV2' });
