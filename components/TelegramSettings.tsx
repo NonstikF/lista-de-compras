@@ -1,5 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { getTelegramConfig, saveTelegramConfig, testTelegramBot } from '../services/woocommerceService';
+import {
+    getTelegramConfig,
+    saveTelegramConfig,
+    testTelegramBot,
+    detectTelegramChats,
+} from '../services/woocommerceService';
+import type { TelegramChat } from '../services/woocommerceService';
 import { showToast } from './Toast';
 
 interface TelegramSettingsProps {
@@ -7,12 +13,21 @@ interface TelegramSettingsProps {
     onAuthError: () => void;
 }
 
+const CHAT_TYPE_LABEL: Record<string, string> = {
+    private: '👤 Privado',
+    group: '👥 Grupo',
+    supergroup: '👥 Supergrupo',
+    channel: '📢 Canal',
+};
+
 const TelegramSettings: React.FC<TelegramSettingsProps> = ({ authToken, onAuthError }) => {
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [testing, setTesting] = useState(false);
+    const [detecting, setDetecting] = useState(false);
     const [showToken, setShowToken] = useState(false);
     const [tokenChanged, setTokenChanged] = useState(false);
+    const [detectedChats, setDetectedChats] = useState<TelegramChat[]>([]);
 
     const [form, setForm] = useState({
         enabled: false,
@@ -53,14 +68,14 @@ const TelegramSettings: React.FC<TelegramSettingsProps> = ({ authToken, onAuthEr
         try {
             await saveTelegramConfig(authToken, {
                 enabled: form.enabled,
-                botToken: tokenChanged ? form.botToken : form.botToken, // masked if not changed
+                botToken: form.botToken,
                 chatId: form.chatId,
                 allowedChatIds: form.allowedChatIds,
                 staleHours: form.staleHours,
             });
             showToast('success', 'Configuración guardada. Bot reiniciado.');
             setTokenChanged(false);
-            // Reload to get masked token
+            setDetectedChats([]);
             const updated = await getTelegramConfig(authToken);
             setForm(f => ({ ...f, botToken: updated.botToken }));
             setHasToken(updated.hasToken);
@@ -88,6 +103,27 @@ const TelegramSettings: React.FC<TelegramSettingsProps> = ({ authToken, onAuthEr
             }
         } finally {
             setTesting(false);
+        }
+    };
+
+    const handleDetect = async () => {
+        setDetecting(true);
+        setDetectedChats([]);
+        try {
+            const result = await detectTelegramChats(authToken);
+            if (result.chats.length === 0) {
+                showToast('info', 'No se encontraron chats. Mandá un mensaje al bot o al grupo primero.');
+            } else {
+                setDetectedChats(result.chats);
+            }
+        } catch (err: unknown) {
+            if (err instanceof Error && err.name === 'AuthError') {
+                onAuthError();
+            } else {
+                showToast('error', err instanceof Error ? err.message : 'Error al detectar chats');
+            }
+        } finally {
+            setDetecting(false);
         }
     };
 
@@ -140,7 +176,7 @@ const TelegramSettings: React.FC<TelegramSettingsProps> = ({ authToken, onAuthEr
                             Token del Bot
                         </label>
                         <p className="text-xs text-slate-500 mb-2">
-                            Obtenelo en <span className="font-mono bg-slate-100 px-1 rounded">@BotFather</span> → /newbot
+                            Obténlo en <span className="font-mono bg-slate-100 px-1 rounded">@BotFather</span> con el comando /newbot
                         </p>
                         <div className="relative">
                             <input
@@ -149,8 +185,9 @@ const TelegramSettings: React.FC<TelegramSettingsProps> = ({ authToken, onAuthEr
                                 onChange={e => {
                                     setForm(f => ({ ...f, botToken: e.target.value }));
                                     setTokenChanged(true);
+                                    setDetectedChats([]);
                                 }}
-                                placeholder={hasToken ? 'Token guardado (modificar para cambiar)' : 'Ej: 7719236313:AAEExtfq...'}
+                                placeholder={hasToken ? 'Token guardado (editar para cambiar)' : 'Ej: 7719236313:AAEExtfq...'}
                                 className="w-full pr-20 pl-3 py-2.5 border border-slate-300 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                             />
                             <button
@@ -161,44 +198,93 @@ const TelegramSettings: React.FC<TelegramSettingsProps> = ({ authToken, onAuthEr
                                 {showToken ? 'Ocultar' : 'Ver'}
                             </button>
                         </div>
+                        {tokenChanged && (
+                            <p className="text-xs text-amber-600 mt-1.5">⚠️ Guardá para aplicar el nuevo token.</p>
+                        )}
                     </div>
 
-                    {/* Chat ID */}
+                    {/* Chat ID con detección automática */}
                     <div>
                         <label className="block text-sm font-semibold text-slate-700 mb-1.5">
                             Chat ID para notificaciones
                         </label>
                         <p className="text-xs text-slate-500 mb-2">
-                            Tu ID numérico. Enviá cualquier mensaje al bot y consultá{' '}
-                            <span className="font-mono bg-slate-100 px-1 rounded">api.telegram.org/bot&lt;TOKEN&gt;/getUpdates</span>
+                            ID del chat o grupo donde el bot enviará alertas de nuevos pedidos.
                         </p>
-                        <input
-                            type="text"
-                            value={form.chatId}
-                            onChange={e => setForm(f => ({ ...f, chatId: e.target.value }))}
-                            placeholder="Ej: 1604064549"
-                            className="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                        />
+                        <div className="flex gap-2">
+                            <input
+                                type="text"
+                                value={form.chatId}
+                                onChange={e => setForm(f => ({ ...f, chatId: e.target.value }))}
+                                placeholder="Ej: 1604064549 o -1001234567890"
+                                className="flex-1 px-3 py-2.5 border border-slate-300 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                            />
+                            <button
+                                onClick={handleDetect}
+                                disabled={detecting || !hasToken}
+                                title={!hasToken ? 'Configurá el token primero' : 'Detectar chats recientes del bot'}
+                                className="px-3 py-2.5 bg-indigo-50 text-indigo-700 text-sm font-semibold rounded-lg border border-indigo-200 hover:bg-indigo-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
+                            >
+                                {detecting ? (
+                                    <span className="flex items-center gap-1.5">
+                                        <span className="animate-spin inline-block w-3.5 h-3.5 border-2 border-indigo-400 border-t-transparent rounded-full"></span>
+                                        Buscando...
+                                    </span>
+                                ) : '🔍 Detectar'}
+                            </button>
+                        </div>
+
+                        {/* Lista de chats detectados */}
+                        {detectedChats.length > 0 && (
+                            <div className="mt-2 border border-slate-200 rounded-lg overflow-hidden">
+                                <p className="text-xs font-semibold text-slate-500 px-3 py-2 bg-slate-50 border-b border-slate-200">
+                                    Seleccioná un chat:
+                                </p>
+                                {detectedChats.map(chat => (
+                                    <button
+                                        key={chat.id}
+                                        onClick={() => {
+                                            setForm(f => ({ ...f, chatId: chat.id }));
+                                            setDetectedChats([]);
+                                            showToast('success', `Chat ID ${chat.id} seleccionado`);
+                                        }}
+                                        className={`w-full flex items-center justify-between px-3 py-2.5 hover:bg-indigo-50 transition-colors text-left border-b border-slate-100 last:border-0 ${form.chatId === chat.id ? 'bg-indigo-50' : ''}`}
+                                    >
+                                        <div>
+                                            <span className="text-sm font-medium text-slate-800">{chat.name}</span>
+                                            <span className="text-xs text-slate-400 ml-2 font-mono">{chat.id}</span>
+                                        </div>
+                                        <span className="text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
+                                            {CHAT_TYPE_LABEL[chat.type] ?? chat.type}
+                                        </span>
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+
+                        {!hasToken && (
+                            <p className="text-xs text-slate-400 mt-1.5">Guardá el token primero para poder detectar chats.</p>
+                        )}
                     </div>
 
-                    {/* Allowed Chat IDs */}
+                    {/* Usuarios autorizados */}
                     <div>
                         <label className="block text-sm font-semibold text-slate-700 mb-1.5">
                             Usuarios autorizados
                         </label>
                         <p className="text-xs text-slate-500 mb-2">
-                            Chat IDs que pueden usar el bot. Separados por coma. Vacío = cualquier persona.
+                            Chat IDs que pueden usar el bot, separados por coma. Vacío = cualquier persona.
                         </p>
                         <input
                             type="text"
                             value={form.allowedChatIds}
                             onChange={e => setForm(f => ({ ...f, allowedChatIds: e.target.value }))}
-                            placeholder="Ej: 1604064549, 987654321"
+                            placeholder="Ej: 1604064549, -1001234567890"
                             className="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                         />
                     </div>
 
-                    {/* Stale hours */}
+                    {/* Umbral de alertas */}
                     <div>
                         <label className="block text-sm font-semibold text-slate-700 mb-1.5">
                             Alerta de pedidos sin atender (horas)
@@ -236,7 +322,7 @@ const TelegramSettings: React.FC<TelegramSettingsProps> = ({ authToken, onAuthEr
                         </div>
                     </div>
 
-                    {/* Botones */}
+                    {/* Botones de acción */}
                     <div className="flex flex-col sm:flex-row gap-3 pt-2">
                         <button
                             onClick={handleSave}
@@ -247,8 +333,8 @@ const TelegramSettings: React.FC<TelegramSettingsProps> = ({ authToken, onAuthEr
                         </button>
                         <button
                             onClick={handleTest}
-                            disabled={testing || !hasToken}
-                            title={!hasToken ? 'Configurá el token primero' : ''}
+                            disabled={testing || !hasToken || !form.chatId}
+                            title={!hasToken ? 'Configurá el token primero' : !form.chatId ? 'Configurá el Chat ID primero' : ''}
                             className="flex-1 bg-slate-100 text-slate-700 font-semibold py-2.5 px-4 rounded-lg hover:bg-slate-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors border border-slate-200"
                         >
                             {testing ? 'Enviando...' : '📨 Enviar mensaje de prueba'}

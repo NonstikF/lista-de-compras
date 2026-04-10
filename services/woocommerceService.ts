@@ -89,3 +89,16 @@ export const testTelegramBot = async (token: string): Promise<{ success: boolean
     });
     return handleResponse<{ success: boolean }>(response);
 };
+
+export interface TelegramChat {
+    id: string;
+    name: string;
+    type: string;
+}
+
+export const detectTelegramChats = async (token: string): Promise<{ chats: TelegramChat[] }> => {
+    const response = await fetch(`${BACKEND_API_URL}/api/telegram/chats`, {
+        headers: authHeaders(token),
+    });
+    return handleResponse<{ chats: TelegramChat[] }>(response);
+};

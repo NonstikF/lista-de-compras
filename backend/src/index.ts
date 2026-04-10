@@ -544,6 +544,52 @@ app.put('/api/telegram/config', async (req: Request, res: Response) => {
 });
 
 /**
+ * RUTA [GET] /api/telegram/chats
+ * Detecta los chats recientes que han enviado mensajes al bot.
+ */
+app.get('/api/telegram/chats', async (_req: Request, res: Response) => {
+    try {
+        const config = await prisma.telegramConfig.findUnique({ where: { id: 1 } });
+        const token = config?.botToken || process.env.TELEGRAM_BOT_TOKEN;
+
+        if (!token) {
+            res.status(400).json({ error: 'Token no configurado' });
+            return;
+        }
+
+        const response = await axios.get(`https://api.telegram.org/bot${token}/getUpdates`, {
+            params: { limit: 100 },
+            timeout: 10000,
+        });
+
+        const updates = response.data?.result ?? [];
+
+        // Extraer chats únicos de los updates
+        const chatsMap = new Map<string, { id: string; name: string; type: string }>();
+        for (const update of updates) {
+            const chat = update.message?.chat ?? update.channel_post?.chat;
+            if (!chat) continue;
+
+            const id = String(chat.id);
+            if (!chatsMap.has(id)) {
+                let name = '';
+                if (chat.type === 'private') {
+                    name = [chat.first_name, chat.last_name].filter(Boolean).join(' ');
+                } else {
+                    name = chat.title || chat.username || `Grupo ${id}`;
+                }
+                chatsMap.set(id, { id, name, type: chat.type });
+            }
+        }
+
+        res.json({ chats: Array.from(chatsMap.values()) });
+    } catch (err) {
+        console.error('Error al obtener chats de Telegram:', err);
+        res.status(500).json({ error: 'No se pudieron obtener los chats. Asegurate de que el token sea válido.' });
+    }
+});
+
+/**
  * RUTA [POST] /api/telegram/test
  * Envía un mensaje de prueba al chat configurado.
  */
