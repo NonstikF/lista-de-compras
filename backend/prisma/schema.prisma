@@ -36,3 +36,10 @@ model TelegramConfig {
   staleHours     Int      @default(2)
   updatedAt      DateTime @updatedAt
 }
+
+model TelegramKnownChat {
+  id       String   @id  // chat_id de Telegram
+  name     String
+  type     String
+  seenAt   DateTime @updatedAt
+}

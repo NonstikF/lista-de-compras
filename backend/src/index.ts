@@ -557,6 +557,17 @@ app.get('/api/telegram/chats', async (_req: Request, res: Response) => {
             return;
         }
 
+        // Primero intentar desde la DB (chats vistos por el bot en polling)
+        const knownChats = await prisma.telegramKnownChat.findMany({
+            orderBy: { seenAt: 'desc' },
+        });
+
+        if (knownChats.length > 0) {
+            res.json({ chats: knownChats.map(c => ({ id: c.id, name: c.name, type: c.type })) });
+            return;
+        }
+
+        // Fallback: getUpdates (funciona solo si el bot no está en polling activo)
         const response = await axios.get(`https://api.telegram.org/bot${token}/getUpdates`, {
             params: { limit: 100 },
             timeout: 10000,
@@ -564,7 +575,6 @@ app.get('/api/telegram/chats', async (_req: Request, res: Response) => {
 
         const updates = response.data?.result ?? [];
 
-        // Extraer chats únicos de los updates
         const chatsMap = new Map<string, { id: string; name: string; type: string }>();
         for (const update of updates) {
             const chat = update.message?.chat ?? update.channel_post?.chat;

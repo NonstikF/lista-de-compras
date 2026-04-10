@@ -183,6 +183,25 @@ export async function initTelegramBot(prisma: PrismaClient): Promise<TelegramBot
     const bot = new TelegramBot(config.token, { polling: true });
     activeBotInstance = bot;
 
+    // --- Guardar chats en DB para detección automática ---
+    async function saveChat(chat: { id: number; type: string; first_name?: string; last_name?: string; title?: string; username?: string }) {
+        const id = String(chat.id);
+        let name = '';
+        if (chat.type === 'private') {
+            name = [chat.first_name, chat.last_name].filter(Boolean).join(' ');
+        } else {
+            name = chat.title || chat.username || `Grupo ${id}`;
+        }
+        await prisma.telegramKnownChat.upsert({
+            where: { id },
+            update: { name, type: chat.type },
+            create: { id, name, type: chat.type },
+        }).catch(() => {});
+    }
+
+    bot.on('message', (msg) => { saveChat(msg.chat); });
+    bot.on('channel_post', (msg) => { saveChat(msg.chat); });
+
     // --- /start ---
     bot.onText(/\/start/, (msg) => {
         if (!isAuthorized(msg.chat.id)) return;
