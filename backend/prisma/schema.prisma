@@ -26,3 +26,13 @@ model PurchaseStatus {
 
   @@index([orderId])
 }
+
+model TelegramConfig {
+  id             Int      @id @default(1)
+  botToken       String   @default("")
+  chatId         String   @default("")
+  allowedChatIds String   @default("")
+  enabled        Boolean  @default(false)
+  staleHours     Int      @default(2)
+  updatedAt      DateTime @updatedAt
+}

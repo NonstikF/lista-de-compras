@@ -7,7 +7,7 @@ import { z } from 'zod';
 import { PrismaClient } from '@prisma/client';
 import axios from 'axios';
 import type { WooCommerceOrder, WooCommerceProduct, WooCommerceLineItem } from './types';
-import { initTelegramBot } from './telegram';
+import { initTelegramBot, reinitTelegramBot } from './telegram';
 
 // Inicializar Prisma Client
 const prisma = new PrismaClient();
@@ -462,6 +462,113 @@ app.post('/api/orders/:id/complete', async (req: Request, res: Response) => {
     }
 });
 
+
+// --- Rutas de Configuración del Bot de Telegram ---
+
+const telegramConfigSchema = z.object({
+    botToken: z.string().optional(),
+    chatId: z.string(),
+    allowedChatIds: z.string(),
+    enabled: z.boolean(),
+    staleHours: z.number().int().min(1).max(72),
+});
+
+/**
+ * RUTA [GET] /api/telegram/config
+ * Devuelve la configuración actual del bot (token enmascarado).
+ */
+app.get('/api/telegram/config', async (_req: Request, res: Response) => {
+    try {
+        const config = await prisma.telegramConfig.findUnique({ where: { id: 1 } });
+
+        if (!config) {
+            const envToken = process.env.TELEGRAM_BOT_TOKEN || '';
+            res.json({
+                botToken: envToken ? `****${envToken.slice(-4)}` : '',
+                chatId: process.env.TELEGRAM_CHAT_ID || '',
+                allowedChatIds: process.env.TELEGRAM_ALLOWED_CHAT_IDS || '',
+                enabled: !!envToken,
+                staleHours: 2,
+                hasToken: !!envToken,
+            });
+            return;
+        }
+
+        res.json({
+            botToken: config.botToken ? `****${config.botToken.slice(-4)}` : '',
+            chatId: config.chatId,
+            allowedChatIds: config.allowedChatIds,
+            enabled: config.enabled,
+            staleHours: config.staleHours,
+            hasToken: !!config.botToken,
+        });
+    } catch (err) {
+        console.error('Error al obtener config de Telegram:', err);
+        res.status(500).json({ error: 'Error al obtener la configuración' });
+    }
+});
+
+/**
+ * RUTA [PUT] /api/telegram/config
+ * Guarda la configuración del bot y lo reinicia.
+ */
+app.put('/api/telegram/config', async (req: Request, res: Response) => {
+    const parsed = telegramConfigSchema.safeParse(req.body);
+    if (!parsed.success) {
+        res.status(400).json({ error: parsed.error.issues[0].message });
+        return;
+    }
+
+    const { botToken, chatId, allowedChatIds, enabled, staleHours } = parsed.data;
+
+    try {
+        const existing = await prisma.telegramConfig.findUnique({ where: { id: 1 } });
+
+        // Conservar token anterior si el nuevo viene enmascarado o vacío
+        const tokenToSave = (botToken && !botToken.startsWith('****'))
+            ? botToken
+            : (existing?.botToken || process.env.TELEGRAM_BOT_TOKEN || '');
+
+        await prisma.telegramConfig.upsert({
+            where: { id: 1 },
+            update: { botToken: tokenToSave, chatId, allowedChatIds, enabled, staleHours },
+            create: { id: 1, botToken: tokenToSave, chatId, allowedChatIds, enabled, staleHours },
+        });
+
+        await reinitTelegramBot(prisma);
+        res.json({ success: true });
+    } catch (err) {
+        console.error('Error al guardar config de Telegram:', err);
+        res.status(500).json({ error: 'Error al guardar la configuración' });
+    }
+});
+
+/**
+ * RUTA [POST] /api/telegram/test
+ * Envía un mensaje de prueba al chat configurado.
+ */
+app.post('/api/telegram/test', async (_req: Request, res: Response) => {
+    try {
+        const config = await prisma.telegramConfig.findUnique({ where: { id: 1 } });
+        const token = config?.botToken || process.env.TELEGRAM_BOT_TOKEN;
+        const chatId = config?.chatId || process.env.TELEGRAM_CHAT_ID;
+
+        if (!token || !chatId) {
+            res.status(400).json({ error: 'Token o Chat ID no configurado' });
+            return;
+        }
+
+        await axios.post(`https://api.telegram.org/bot${token}/sendMessage`, {
+            chat_id: chatId,
+            text: '✅ Bot de PlantArte configurado correctamente!',
+        });
+
+        res.json({ success: true });
+    } catch (err) {
+        console.error('Error al enviar mensaje de prueba:', err);
+        res.status(500).json({ error: 'No se pudo enviar el mensaje. Verificá el token y el Chat ID.' });
+    }
+});
 
 // --- Iniciar el Servidor ---
 const port = process.env.PORT || 4000;

@@ -23,6 +23,46 @@ interface ProcessedOrder {
     lineItems: ProcessedLineItem[];
 }
 
+interface BotConfig {
+    token: string;
+    chatId: string;
+    allowedChatIds: string[];
+    staleHours: number;
+}
+
+// --- Instancia activa del bot ---
+let activeBotInstance: TelegramBot | null = null;
+let activeIntervals: ReturnType<typeof setInterval>[] = [];
+
+// --- Leer configuración desde DB (con fallback a env vars) ---
+async function getBotConfig(prisma: PrismaClient): Promise<BotConfig | null> {
+    try {
+        const dbConfig = await prisma.telegramConfig.findUnique({ where: { id: 1 } });
+        if (dbConfig && dbConfig.enabled && dbConfig.botToken) {
+            return {
+                token: dbConfig.botToken,
+                chatId: dbConfig.chatId,
+                allowedChatIds: dbConfig.allowedChatIds.split(',').map(s => s.trim()).filter(Boolean),
+                staleHours: dbConfig.staleHours,
+            };
+        }
+    } catch (err) {
+        console.error('Telegram: Error leyendo config de DB, usando env vars:', err);
+    }
+
+    // Fallback a variables de entorno
+    const token = process.env.TELEGRAM_BOT_TOKEN;
+    if (!token) return null;
+
+    return {
+        token,
+        chatId: process.env.TELEGRAM_CHAT_ID || '',
+        allowedChatIds: (process.env.TELEGRAM_ALLOWED_CHAT_IDS || '')
+            .split(',').map(s => s.trim()).filter(Boolean),
+        staleHours: 2,
+    };
+}
+
 // --- Helpers WooCommerce ---
 function getWooConfig() {
     const { WOO_URL, WOO_KEY, WOO_SECRET } = process.env;
@@ -72,6 +112,10 @@ async function fetchOrders(prisma: PrismaClient, status = 'processing,on-hold'):
 }
 
 // --- Formateo de mensajes ---
+function escapeMarkdown(text: string): string {
+    return text.replace(/[_*[\]()~`>#+=|{}.!-]/g, '\\$&');
+}
+
 function formatOrderMessage(order: ProcessedOrder, detailed = false): string {
     const date = new Date(order.dateCreated).toLocaleDateString('es-AR', {
         day: '2-digit',
@@ -105,29 +149,39 @@ function formatOrderMessage(order: ProcessedOrder, detailed = false): string {
     return msg;
 }
 
-function escapeMarkdown(text: string): string {
-    return text.replace(/[_*[\]()~`>#+=|{}.!-]/g, '\\$&');
+// --- Stop del bot activo ---
+async function stopActiveBot(): Promise<void> {
+    for (const interval of activeIntervals) {
+        clearInterval(interval);
+    }
+    activeIntervals = [];
+
+    if (activeBotInstance) {
+        try {
+            await activeBotInstance.stopPolling();
+        } catch {}
+        activeBotInstance = null;
+    }
 }
 
 // --- Inicialización del bot ---
-export function initTelegramBot(prisma: PrismaClient): TelegramBot | null {
-    const token = process.env.TELEGRAM_BOT_TOKEN;
-    if (!token) {
-        console.log('TELEGRAM_BOT_TOKEN no configurado. Bot de Telegram deshabilitado.');
+export async function initTelegramBot(prisma: PrismaClient): Promise<TelegramBot | null> {
+    await stopActiveBot();
+
+    const configOrNull = await getBotConfig(prisma);
+    if (!configOrNull) {
+        console.log('Telegram: Bot deshabilitado (sin token configurado).');
         return null;
     }
-
-    const allowedChatIds = (process.env.TELEGRAM_ALLOWED_CHAT_IDS || '')
-        .split(',')
-        .map(s => s.trim())
-        .filter(Boolean);
+    const config: BotConfig = configOrNull;
 
     function isAuthorized(chatId: number): boolean {
-        if (allowedChatIds.length === 0) return true;
-        return allowedChatIds.includes(String(chatId));
+        if (config.allowedChatIds.length === 0) return true;
+        return config.allowedChatIds.includes(String(chatId));
     }
 
-    const bot = new TelegramBot(token, { polling: true });
+    const bot = new TelegramBot(config.token, { polling: true });
+    activeBotInstance = bot;
 
     // --- /start ---
     bot.onText(/\/start/, (msg) => {
@@ -413,9 +467,7 @@ export function initTelegramBot(prisma: PrismaClient): TelegramBot | null {
     });
 
     // --- Notificaciones automáticas ---
-    const notifyChatId = process.env.TELEGRAM_CHAT_ID;
-
-    if (notifyChatId) {
+    if (config.chatId) {
         const knownOrderIds = new Set<number>();
         let isInitialized = false;
 
@@ -430,48 +482,53 @@ export function initTelegramBot(prisma: PrismaClient): TelegramBot | null {
         });
 
         // Polling cada 2 minutos para detectar nuevos pedidos
-        setInterval(async () => {
+        const newOrderInterval = setInterval(async () => {
             if (!isInitialized) return;
             try {
                 const orders = await fetchOrders(prisma);
                 const newOrders = orders.filter(o => !knownOrderIds.has(o.id));
-
                 for (const order of newOrders) {
                     knownOrderIds.add(order.id);
                     const notifMsg = `🆕 *Nuevo pedido recibido\\!*\n\n` + formatOrderMessage(order, true);
-                    await bot.sendMessage(notifyChatId, notifMsg, { parse_mode: 'MarkdownV2' });
+                    await bot.sendMessage(config.chatId, notifMsg, { parse_mode: 'MarkdownV2' });
                 }
             } catch (err) {
                 console.error('Telegram: Error en polling de nuevos pedidos:', err);
             }
         }, 2 * 60 * 1000);
 
-        // Alerta cada 30 minutos si hay pedidos sin atender por más de 2 horas
-        setInterval(async () => {
+        // Alerta cada 30 minutos si hay pedidos sin atender
+        const staleOrderInterval = setInterval(async () => {
             try {
                 const orders = await fetchOrders(prisma);
                 const now = Date.now();
-                const TWO_HOURS = 2 * 60 * 60 * 1000;
+                const threshold = config.staleHours * 60 * 60 * 1000;
 
                 const staleOrders = orders.filter(o => {
-                    const age = now - new Date(o.dateCreated).getTime();
-                    return age > TWO_HOURS;
+                    return now - new Date(o.dateCreated).getTime() > threshold;
                 });
 
                 if (staleOrders.length > 0) {
-                    let alertMsg = `⚠️ *${staleOrders.length} pedido\\(s\\) sin atender por más de 2 horas:*\n\n`;
+                    let alertMsg = `⚠️ *${staleOrders.length} pedido\\(s\\) sin atender por más de ${config.staleHours}h:*\n\n`;
                     staleOrders.forEach(o => {
                         const hours = Math.floor((now - new Date(o.dateCreated).getTime()) / (60 * 60 * 1000));
                         alertMsg += `• \\#${o.id} — ${escapeMarkdown(o.customer)} \\(hace ${hours}h\\)\n`;
                     });
-                    await bot.sendMessage(notifyChatId, alertMsg, { parse_mode: 'MarkdownV2' });
+                    await bot.sendMessage(config.chatId, alertMsg, { parse_mode: 'MarkdownV2' });
                 }
             } catch (err) {
                 console.error('Telegram: Error verificando pedidos sin atender:', err);
             }
         }, 30 * 60 * 1000);
+
+        activeIntervals.push(newOrderInterval, staleOrderInterval);
     }
 
     console.log('Bot de Telegram iniciado correctamente.');
     return bot;
+}
+
+// --- Reinicialización (llamado desde API al guardar config) ---
+export async function reinitTelegramBot(prisma: PrismaClient): Promise<void> {
+    await initTelegramBot(prisma);
 }

@@ -56,3 +56,36 @@ export const completeOrder = async (token: string, orderId: number): Promise<{ s
     });
     return handleResponse<{ success: boolean }>(response);
 };
+
+export interface TelegramConfigData {
+    botToken: string;
+    chatId: string;
+    allowedChatIds: string;
+    enabled: boolean;
+    staleHours: number;
+    hasToken: boolean;
+}
+
+export const getTelegramConfig = async (token: string): Promise<TelegramConfigData> => {
+    const response = await fetch(`${BACKEND_API_URL}/api/telegram/config`, {
+        headers: authHeaders(token),
+    });
+    return handleResponse<TelegramConfigData>(response);
+};
+
+export const saveTelegramConfig = async (token: string, data: Omit<TelegramConfigData, 'hasToken'>): Promise<{ success: boolean }> => {
+    const response = await fetch(`${BACKEND_API_URL}/api/telegram/config`, {
+        method: 'PUT',
+        headers: authHeaders(token),
+        body: JSON.stringify(data),
+    });
+    return handleResponse<{ success: boolean }>(response);
+};
+
+export const testTelegramBot = async (token: string): Promise<{ success: boolean }> => {
+    const response = await fetch(`${BACKEND_API_URL}/api/telegram/test`, {
+        method: 'POST',
+        headers: authHeaders(token),
+    });
+    return handleResponse<{ success: boolean }>(response);
+};

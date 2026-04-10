@@ -4,18 +4,19 @@ import React, { useState, useEffect } from 'react';
 import Login from './components/Login';
 import Dashboard from './components/Dashboard';
 import OrdersView from './components/OrdersView';
+import TelegramSettings from './components/TelegramSettings';
 import { ToastContainer } from './components/Toast';
 
 // Importa tus iconos para el Header
-import { LogoutIcon, UserCircleIcon, ShoppingCartIcon } from './components/icons';
+import { LogoutIcon, UserCircleIcon, ShoppingCartIcon, SettingsIcon } from './components/icons';
 
 // Define las vistas que tu aplicacion puede mostrar
-type AppView = 'login' | 'dashboard' | 'orders';
+type AppView = 'login' | 'dashboard' | 'orders' | 'settings';
 
 /**
  * Un componente de encabezado simple que se muestra cuando estas logueado.
  */
-const Header: React.FC<{ onLogout: () => void; setView: (view: AppView) => void }> = ({ onLogout, setView }) => {
+const Header: React.FC<{ onLogout: () => void; setView: (view: AppView) => void; currentView: AppView }> = ({ onLogout, setView, currentView }) => {
   return (
     <header className="bg-white shadow-sm sticky top-0 z-10">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -30,17 +31,24 @@ const Header: React.FC<{ onLogout: () => void; setView: (view: AppView) => void 
           </div>
 
           {/* Iconos de Usuario y Logout */}
-          <div className="flex items-center space-x-4">
+          <div className="flex items-center space-x-3">
             <span className="flex items-center text-sm font-medium text-slate-600">
               <UserCircleIcon className="w-5 h-5 mr-1" />
               admin
             </span>
             <button
+              onClick={() => setView('settings')}
+              title="Configuración del bot"
+              className={`p-1.5 rounded-lg transition-colors ${currentView === 'settings' ? 'text-indigo-600 bg-indigo-50' : 'text-slate-500 hover:text-indigo-600 hover:bg-slate-100'}`}
+            >
+              <SettingsIcon className="w-5 h-5" />
+            </button>
+            <button
               onClick={onLogout}
               title="Logout"
-              className="text-slate-500 hover:text-indigo-600"
+              className="text-slate-500 hover:text-indigo-600 p-1.5 rounded-lg hover:bg-slate-100 transition-colors"
             >
-              <LogoutIcon className="w-6 h-6" />
+              <LogoutIcon className="w-5 h-5" />
             </button>
           </div>
         </div>
@@ -111,6 +119,18 @@ const App: React.FC = () => {
             <OrdersView authToken={authToken!} onAuthError={handleAuthError} />
           </div>
         );
+      case 'settings':
+        return (
+          <div className="p-4 md:p-8 max-w-7xl mx-auto">
+            <button
+              onClick={() => setView('dashboard')}
+              className="text-indigo-600 hover:text-indigo-800 font-medium mb-4"
+            >
+              &larr; Regresar al Panel
+            </button>
+            <TelegramSettings authToken={authToken!} onAuthError={handleAuthError} />
+          </div>
+        );
       default:
         return <Login onLoginSuccess={handleLoginSuccess} />;
     }
@@ -119,7 +139,7 @@ const App: React.FC = () => {
   return (
     <div className="min-h-screen bg-slate-50">
       {/* Solo muestra el Header si esta autenticado */}
-      {isAuthenticated && <Header onLogout={handleLogout} setView={setView} />}
+      {isAuthenticated && <Header onLogout={handleLogout} setView={setView} currentView={view} />}
       <main>
         {renderView()}
       </main>
