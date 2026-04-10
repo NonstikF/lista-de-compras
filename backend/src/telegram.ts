@@ -262,6 +262,8 @@ export async function initTelegramBot(prisma: PrismaClient): Promise<TelegramBot
             `Comandos disponibles:\n\n` +
             `/pedidos — Ver pedidos pendientes\n` +
             `/pedido \\[id\\] — Detalle de un pedido\n` +
+            `/lista — Lista de compras consolidada\n` +
+            `/faltantes — Faltantes de pedidos completados\n` +
             `/buscar \\[texto\\] — Buscar en pedidos activos\n` +
             `/comprado \\[item\\_id\\] \\[cantidad\\] — Marcar ítem como comprado\n` +
             `/completar \\[order\\_id\\] — Marcar pedido como completado\n` +
