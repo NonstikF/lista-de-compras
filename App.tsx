@@ -63,6 +63,7 @@ const Header: React.FC<{ onLogout: () => void; setView: (view: AppView) => void;
  */
 const App: React.FC = () => {
   const [view, setView] = useState<AppView>('login');
+  const [highlightOrderId, setHighlightOrderId] = useState<number | null>(null);
 
   // Token JWT desde localStorage para persistencia
   const [authToken, setAuthToken] = useState<string | null>(() => {
@@ -75,7 +76,16 @@ const App: React.FC = () => {
   useEffect(() => {
     if (isAuthenticated) {
       if (view === 'login') {
-        setView('dashboard');
+        // Verificar si hay un pedido en la URL (?pedido=123)
+        const params = new URLSearchParams(window.location.search);
+        const pedidoId = params.get('pedido');
+        if (pedidoId && !isNaN(Number(pedidoId))) {
+          setHighlightOrderId(Number(pedidoId));
+          setView('orders');
+          window.history.replaceState({}, '', window.location.pathname);
+        } else {
+          setView('dashboard');
+        }
       }
     } else {
       setView('login');
@@ -116,7 +126,7 @@ const App: React.FC = () => {
             >
               &larr; Regresar al Panel
             </button>
-            <OrdersView authToken={authToken!} onAuthError={handleAuthError} />
+            <OrdersView authToken={authToken!} onAuthError={handleAuthError} highlightOrderId={highlightOrderId} />
           </div>
         );
       case 'settings':

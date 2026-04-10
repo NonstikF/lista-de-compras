@@ -508,7 +508,9 @@ export async function initTelegramBot(prisma: PrismaClient): Promise<TelegramBot
                 const newOrders = orders.filter(o => !knownOrderIds.has(o.id));
                 for (const order of newOrders) {
                     knownOrderIds.add(order.id);
-                    const notifMsg = `🆕 *Nuevo pedido recibido\\!*\n\n` + formatOrderMessage(order, true);
+                    const appUrl = process.env.FRONTEND_URL;
+                    const link = appUrl ? `\n🔗 [Abrir en PlantArte](${appUrl}?pedido=${order.id})` : '';
+                    const notifMsg = `🆕 *Nuevo pedido recibido\\!*\n\n` + formatOrderMessage(order, true) + link;
                     await bot.sendMessage(config.chatId, notifMsg, { parse_mode: 'MarkdownV2' });
                 }
             } catch (err) {

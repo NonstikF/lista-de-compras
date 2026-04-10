@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import type { Order, LineItem } from '../types';
 import { getOrders, saveItemStatus, completeOrder, AuthError, type OrderStatusType } from '../services/woocommerceService';
 import { CheckCircleIcon, ChevronDownIcon, XMarkIcon, EyeIcon } from './icons';
@@ -11,6 +11,7 @@ interface GroupedItems {
 interface OrdersViewProps {
   authToken: string;
   onAuthError: () => void;
+  highlightOrderId?: number | null;
 }
 
 // --- Componente Modal de Imagen ---
@@ -283,10 +284,11 @@ const OrderCard = React.memo<{
 });
 
 // --- COMPONENTE PRINCIPAL: OrdersView ---
-const OrdersView: React.FC<OrdersViewProps> = ({ authToken, onAuthError }) => {
+const OrdersView: React.FC<OrdersViewProps> = ({ authToken, onAuthError, highlightOrderId }) => {
     const [orders, setOrders] = useState<Order[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const orderRefs = useRef<Map<number, HTMLDivElement>>(new Map());
     const [viewMode, setViewMode] = useState<OrderStatusType>('processing');
     const [completingOrderId, setCompletingOrderId] = useState<number | null>(null);
     const [modalImageUrl, setModalImageUrl] = useState<string | null>(null);
@@ -324,6 +326,15 @@ const OrdersView: React.FC<OrdersViewProps> = ({ authToken, onAuthError }) => {
         };
         fetchOrders();
     }, [viewMode, authToken, onAuthError]);
+
+    // Scroll y resaltar el pedido indicado por el link de Telegram
+    useEffect(() => {
+        if (!highlightOrderId || isLoading) return;
+        const el = orderRefs.current.get(highlightOrderId);
+        if (el) {
+            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+    }, [highlightOrderId, isLoading, orders]);
     const handleQuantityChange = useCallback((itemId: number, newQuantity: number) => {
         setOrders(prevOrders => {
             let itemToSave: LineItem | null = null;
@@ -428,6 +439,11 @@ const OrdersView: React.FC<OrdersViewProps> = ({ authToken, onAuthError }) => {
             {!isLoading && !error && orders.length > 0 && (
                 <div className="space-y-8">
                     {orders.map(order => (
+                        <div
+                            key={order.id}
+                            ref={el => { if (el) orderRefs.current.set(order.id, el); }}
+                            className={highlightOrderId === order.id ? 'ring-2 ring-indigo-500 ring-offset-2 rounded-xl transition-shadow' : ''}
+                        >
                         <OrderCard
                             key={order.id}
                             order={order}
@@ -437,6 +453,7 @@ const OrdersView: React.FC<OrdersViewProps> = ({ authToken, onAuthError }) => {
                             onCompleteOrder={handleCompleteOrder}
                             onViewImage={handleViewImage}
                         />
+                        </div>
                     ))}
                 </div>
             )}
