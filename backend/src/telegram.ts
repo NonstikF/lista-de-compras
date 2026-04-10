@@ -2,6 +2,7 @@ import TelegramBot from 'node-telegram-bot-api';
 import axios from 'axios';
 import { PrismaClient } from '@prisma/client';
 import type { WooCommerceOrder, WooCommerceLineItem } from './types';
+import { getCachedProduct, setCachedProduct } from './productCache';
 
 // --- Tipos internos ---
 interface ProcessedLineItem {
@@ -30,10 +31,6 @@ interface BotConfig {
     allowedChatIds: string[];
     staleHours: number;
 }
-
-// --- Cache de categorías de productos (TTL 5 horas) ---
-const productCategoryCache = new Map<number, { category: string; cachedAt: number }>();
-const CATEGORY_CACHE_TTL = 5 * 60 * 60 * 1000;
 
 // --- Instancia activa del bot ---
 let activeBotInstance: TelegramBot | null = null;
@@ -99,8 +96,8 @@ async function fetchOrders(prisma: PrismaClient, status = 'processing,on-hold'):
     const uncachedIds: number[] = [];
 
     for (const id of productIds) {
-        const cached = productCategoryCache.get(id);
-        if (cached && Date.now() - cached.cachedAt < CATEGORY_CACHE_TTL) {
+        const cached = getCachedProduct(id);
+        if (cached) {
             categoryMap.set(id, cached.category);
         } else {
             uncachedIds.push(id);
@@ -117,7 +114,7 @@ async function fetchOrders(prisma: PrismaClient, status = 'processing,on-hold'):
             for (const product of productsResponse.data) {
                 const category: string = product.categories?.[0]?.name || 'Sin categoría';
                 categoryMap.set(product.id, category);
-                productCategoryCache.set(product.id, { category, cachedAt: Date.now() });
+                setCachedProduct(product.id, category, null);
             }
         } catch {
             // Si falla el fetch de categorías, continuamos sin ellas
@@ -446,8 +443,8 @@ export async function initTelegramBot(prisma: PrismaClient): Promise<TelegramBot
             const productIds = [...new Set(raw.line_items.map((i: WooCommerceLineItem) => i.product_id))];
             const singleCategoryMap = new Map<number, string>();
             const uncached = productIds.filter(id => {
-                const c = productCategoryCache.get(id);
-                if (c && Date.now() - c.cachedAt < CATEGORY_CACHE_TTL) { singleCategoryMap.set(id, c.category); return false; }
+                const c = getCachedProduct(id);
+                if (c) { singleCategoryMap.set(id, c.category); return false; }
                 return true;
             });
             if (uncached.length > 0) {
@@ -461,7 +458,7 @@ export async function initTelegramBot(prisma: PrismaClient): Promise<TelegramBot
                     for (const p of pr.data) {
                         const cat: string = p.categories?.[0]?.name || 'Sin categoría';
                         singleCategoryMap.set(p.id, cat);
-                        productCategoryCache.set(p.id, { category: cat, cachedAt: Date.now() });
+                        setCachedProduct(p.id, cat, null);
                     }
                 } catch { /* continuar sin categorías */ }
             }

@@ -8,32 +8,10 @@ import { PrismaClient } from '@prisma/client';
 import axios from 'axios';
 import type { WooCommerceOrder, WooCommerceProduct, WooCommerceLineItem } from './types';
 import { initTelegramBot, reinitTelegramBot, notifyMissingItems } from './telegram';
+import { getCachedProduct, setCachedProduct } from './productCache';
 
 // Inicializar Prisma Client
 const prisma = new PrismaClient();
-
-// --- Cache en memoria para productos ---
-const PRODUCT_CACHE_TTL = 10 * 60 * 1000; // 10 minutos
-interface CachedProduct {
-    category: string;
-    imageUrl: string | null;
-    cachedAt: number;
-}
-const productCache = new Map<number, CachedProduct>();
-
-function getCachedProduct(productId: number): { category: string; imageUrl: string | null } | null {
-    const cached = productCache.get(productId);
-    if (!cached) return null;
-    if (Date.now() - cached.cachedAt > PRODUCT_CACHE_TTL) {
-        productCache.delete(productId);
-        return null;
-    }
-    return { category: cached.category, imageUrl: cached.imageUrl };
-}
-
-function setCachedProduct(productId: number, category: string, imageUrl: string | null): void {
-    productCache.set(productId, { category, imageUrl, cachedAt: Date.now() });
-}
 
 // Inicializar Express App
 const app = express();
