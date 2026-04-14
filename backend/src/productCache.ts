@@ -19,5 +19,10 @@ export function getCachedProduct(productId: number): { category: string; imageUr
 }
 
 export function setCachedProduct(productId: number, category: string, imageUrl: string | null): void {
-    cache.set(productId, { category, imageUrl, cachedAt: Date.now() });
+    const existing = cache.get(productId);
+    cache.set(productId, {
+        category,
+        imageUrl: imageUrl ?? existing?.imageUrl ?? null,
+        cachedAt: Date.now(),
+    });
 }
