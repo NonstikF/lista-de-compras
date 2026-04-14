@@ -113,8 +113,9 @@ async function fetchOrders(prisma: PrismaClient, status = 'processing,on-hold'):
             });
             for (const product of productsResponse.data) {
                 const category: string = product.categories?.[0]?.name || 'Sin categoría';
+                const imageUrl: string | null = product.images?.[0]?.src || null;
                 categoryMap.set(product.id, category);
-                setCachedProduct(product.id, category, null);
+                setCachedProduct(product.id, category, imageUrl);
             }
         } catch {
             // Si falla el fetch de categorías, continuamos sin ellas
@@ -457,8 +458,9 @@ export async function initTelegramBot(prisma: PrismaClient): Promise<TelegramBot
                     });
                     for (const p of pr.data) {
                         const cat: string = p.categories?.[0]?.name || 'Sin categoría';
+                        const img: string | null = p.images?.[0]?.src || null;
                         singleCategoryMap.set(p.id, cat);
-                        setCachedProduct(p.id, cat, null);
+                        setCachedProduct(p.id, cat, img);
                     }
                 } catch { /* continuar sin categorías */ }
             }
