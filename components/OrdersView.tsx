@@ -53,7 +53,8 @@ const OrderItem = React.memo<{
     item: LineItem;
     onQuantityChange: (itemId: number, newQuantity: number) => void;
     onViewImage: (imageUrl: string, productName: string) => void;
-}>(({ item, onQuantityChange, onViewImage }) => {
+    onDelete: (itemId: number) => void;
+}>(({ item, onQuantityChange, onViewImage, onDelete }) => {
     const isPurchased = item.isPurchased;
     const isInProgress = item.quantityPurchased > 0 && !isPurchased;
 
@@ -73,6 +74,11 @@ const OrderItem = React.memo<{
             onQuantityChange(item.id, item.quantityPurchased - 1);
         }
     };
+    const handleDelete = () => {
+        if (window.confirm(`¿Eliminar "${item.name}" de este pedido?`)) {
+            onDelete(item.id);
+        }
+    };
 
     const getBackgroundColor = () => {
         if (isPurchased) return 'bg-green-50 text-slate-500';
@@ -90,7 +96,6 @@ const OrderItem = React.memo<{
                     <p className={`font-semibold text-slate-800 ${isPurchased ? 'line-through' : ''}`}>
                         {item.name}
                     </p>
-
                     <div className="flex items-center gap-2 text-xs text-slate-500">
                         <span>SKU: {item.sku || 'N/A'}</span>
                         <span>&bull;</span>
@@ -98,7 +103,6 @@ const OrderItem = React.memo<{
                             ${unitPrice.toFixed(2)} c/u
                         </span>
                     </div>
-
                 </div>
             </div>
 
@@ -119,7 +123,15 @@ const OrderItem = React.memo<{
                         <EyeIcon className="w-5 h-5" />
                     </button>
                 )}
-                 <button
+                <button
+                    onClick={handleDelete}
+                    aria-label={`Eliminar ${item.name}`}
+                    className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-red-400"
+                    title="Eliminar artículo"
+                >
+                    <XMarkIcon className="w-5 h-5" />
+                </button>
+                <button
                     onClick={handleToggle}
                     aria-label={`Mark ${item.name} as ${isPurchased ? 'not purchased' : 'purchased'}`}
                     className={`relative w-14 h-8 rounded-full flex items-center transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 ${ isPurchased ? 'bg-green-500 focus:ring-green-500' : 'bg-slate-300 focus:ring-indigo-500' }`}
@@ -137,7 +149,8 @@ const CategorySection = React.memo<{
     items: LineItem[];
     onQuantityChange: (itemId: number, newQuantity: number) => void;
     onViewImage: (imageUrl: string, productName: string) => void;
-}>(({ category, items, onQuantityChange, onViewImage }) => {
+    onDelete: (itemId: number) => void;
+}>(({ category, items, onQuantityChange, onViewImage, onDelete }) => {
 
     const [isExpanded, setIsExpanded] = useState(false);
 
@@ -181,6 +194,7 @@ const CategorySection = React.memo<{
                                 item={item}
                                 onQuantityChange={onQuantityChange}
                                 onViewImage={onViewImage}
+                                onDelete={onDelete}
                             />
                         ))}
                     </div>
@@ -198,7 +212,8 @@ const OrderCard = React.memo<{
     onQuantityChange: (itemId: number, newQuantity: number) => void;
     onCompleteOrder: (orderId: number) => void;
     onViewImage: (imageUrl: string, productName: string) => void;
-}>(({ order, viewMode, completingOrderId, onQuantityChange, onCompleteOrder, onViewImage }) => {
+    onDelete: (itemId: number) => void;
+}>(({ order, viewMode, completingOrderId, onQuantityChange, onCompleteOrder, onViewImage, onDelete }) => {
 
     const [isExpanded, setIsExpanded] = useState(false);
 
@@ -273,6 +288,7 @@ const OrderCard = React.memo<{
                                 items={sortedItems}
                                 onQuantityChange={onQuantityChange}
                                 onViewImage={onViewImage}
+                                onDelete={onDelete}
                             />
                         );
                     })}
@@ -371,6 +387,13 @@ const OrdersView: React.FC<OrdersViewProps> = ({ authToken, onAuthError }) => {
             return updatedOrders;
         });
     }, [authToken, onAuthError]);
+    const handleDeleteItem = useCallback((itemId: number) => {
+        setOrders(prev => prev.map(order => ({
+            ...order,
+            lineItems: order.lineItems.filter(i => i.id !== itemId),
+        })));
+        showToast('success', 'Artículo eliminado');
+    }, []);
     const handleCompleteOrder = useCallback(async (orderId: number) => {
         setCompletingOrderId(orderId);
         try {
@@ -436,6 +459,7 @@ const OrdersView: React.FC<OrdersViewProps> = ({ authToken, onAuthError }) => {
                             onQuantityChange={handleQuantityChange}
                             onCompleteOrder={handleCompleteOrder}
                             onViewImage={handleViewImage}
+                            onDelete={handleDeleteItem}
                         />
                     ))}
                 </div>

@@ -52,7 +52,7 @@ export const Modal: React.FC<ModalProps> = ({ open, onClose, title, children, fo
       onClick={onClose}
     >
       <div
-        className={`bg-surface-container-lowest rounded-2xl shadow-2xl ${maxWidth} w-full max-h-[92vh] flex flex-col overflow-hidden border border-surface-variant`}
+        className={`bg-white rounded-2xl shadow-2xl ${maxWidth} w-full max-h-[92vh] flex flex-col overflow-hidden border border-surface-variant`}
         onClick={e => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-6 py-4 border-b border-surface-variant">
