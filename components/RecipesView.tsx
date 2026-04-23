@@ -38,7 +38,7 @@ const RecipesView: React.FC<RecipesViewProps> = ({ authToken, onAuthError }) => 
     const [category, setCategory] = useState('Bebidas');
     const [ingredients, setIngredients] = useState<Ingredient[]>([]);
 
-    const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080';
+    const API_URL = import.meta.env.VITE_BACKEND_API_URL || 'http://localhost:8080';
 
     const fetchRecipes = async () => {
         setLoading(true);
