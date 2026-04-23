@@ -54,6 +54,12 @@ const ToastItem: React.FC<{ toast: Toast; onDismiss: (id: number) => void }> = (
     );
 };
 
+export const Toast = {
+    success: (message: string) => showToast('success', message),
+    error: (message: string) => showToast('error', message),
+    info: (message: string) => showToast('info', message),
+};
+
 export const ToastContainer: React.FC = () => {
     const [toasts, setToasts] = useState<Toast[]>([]);
 
