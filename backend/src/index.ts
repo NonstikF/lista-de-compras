@@ -16,6 +16,9 @@ const prisma = new PrismaClient();
 // Inicializar Express App
 const app = express();
 
+// Confiar en el proxy para que express-rate-limit funcione correctamente en Railway/herramientas de despliegue
+app.set('trust proxy', 1);
+
 // --- Security Middlewares ---
 app.use(helmet());
 
