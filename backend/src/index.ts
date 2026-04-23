@@ -471,6 +471,126 @@ app.post('/api/orders/:id/complete', async (req: Request, res: Response) => {
 });
 
 
+// --- Rutas de Recetas ---
+
+const recipeSchema = z.object({
+    name: z.string().min(1, 'Nombre es requerido'),
+    description: z.string().optional(),
+    instructions: z.string().optional(),
+    imageUrl: z.string().optional(),
+    category: z.string().optional(),
+    ingredients: z.array(z.object({
+        id: z.number().optional(),
+        name: z.string().min(1, 'Nombre del ingrediente es requerido'),
+        amount: z.string().optional(),
+    })).optional(),
+});
+
+/**
+ * RUTA [GET] /api/recipes
+ * Obtiene todas las recetas con sus ingredientes.
+ */
+app.get('/api/recipes', async (_req: Request, res: Response) => {
+    try {
+        const recipes = await prisma.recipe.findMany({
+            include: { ingredients: true },
+            orderBy: { createdAt: 'desc' },
+        });
+        res.json(recipes);
+    } catch (err) {
+        console.error('Error al obtener recetas:', err);
+        res.status(500).json({ error: 'Error al obtener recetas' });
+    }
+});
+
+/**
+ * RUTA [POST] /api/recipes
+ * Crea una nueva receta.
+ */
+app.post('/api/recipes', async (req: Request, res: Response) => {
+    const parsed = recipeSchema.safeParse(req.body);
+    if (!parsed.success) {
+        res.status(400).json({ error: parsed.error.issues[0].message });
+        return;
+    }
+
+    const { name, description, instructions, imageUrl, category, ingredients } = parsed.data;
+
+    try {
+        const recipe = await prisma.recipe.create({
+            data: {
+                name,
+                description: description || null,
+                instructions: instructions || null,
+                imageUrl: imageUrl || null,
+                category: category || "Bebidas",
+                ingredients: {
+                    create: ingredients || [],
+                },
+            },
+            include: { ingredients: true },
+        });
+        res.status(201).json(recipe);
+    } catch (err) {
+        console.error('Error al crear receta:', err);
+        res.status(500).json({ error: 'Error al crear la receta' });
+    }
+});
+
+/**
+ * RUTA [PUT] /api/recipes/:id
+ * Actualiza una receta existente.
+ */
+app.put('/api/recipes/:id', async (req: Request, res: Response) => {
+    const { id } = req.params;
+    const parsed = recipeSchema.safeParse(req.body);
+    if (!parsed.success) {
+        res.status(400).json({ error: parsed.error.issues[0].message });
+        return;
+    }
+
+    const { name, description, instructions, imageUrl, category, ingredients } = parsed.data;
+
+    try {
+        // Primero eliminamos los ingredientes existentes para reemplazarlos
+        await prisma.ingredient.deleteMany({ where: { recipeId: Number(id) } });
+
+        const recipe = await prisma.recipe.update({
+            where: { id: Number(id) },
+            data: {
+                name,
+                description: description || null,
+                instructions: instructions || null,
+                imageUrl: imageUrl || null,
+                category: category || "Bebidas",
+                ingredients: {
+                    create: ingredients || [],
+                },
+            },
+            include: { ingredients: true },
+        });
+        res.json(recipe);
+    } catch (err) {
+        console.error('Error al actualizar receta:', err);
+        res.status(500).json({ error: 'Error al actualizar la receta' });
+    }
+});
+
+/**
+ * RUTA [DELETE] /api/recipes/:id
+ * Elimina una receta.
+ */
+app.delete('/api/recipes/:id', async (req: Request, res: Response) => {
+    const { id } = req.params;
+    try {
+        await prisma.recipe.delete({ where: { id: Number(id) } });
+        res.json({ success: true });
+    } catch (err) {
+        console.error('Error al eliminar receta:', err);
+        res.status(500).json({ error: 'Error al eliminar la receta' });
+    }
+});
+
 // --- Rutas de Configuración del Bot de Telegram ---
 
 const telegramConfigSchema = z.object({

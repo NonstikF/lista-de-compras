@@ -43,3 +43,23 @@ model TelegramKnownChat {
   type     String
   seenAt   DateTime @updatedAt
 }
+
+model Recipe {
+  id           Int          @id @default(autoincrement())
+  name         String
+  description  String?
+  instructions String?
+  imageUrl     String?
+  category     String       @default("Bebidas")
+  ingredients  Ingredient[]
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+}
+
+model Ingredient {
+  id       Int     @id @default(autoincrement())
+  recipeId Int
+  recipe   Recipe  @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  name     String
+  amount   String?
+}
