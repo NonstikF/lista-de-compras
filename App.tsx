@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 
-// Importa tus componentes de vista
 import Login from './components/Login';
 import Dashboard from './components/Dashboard';
 import OrdersView from './components/OrdersView';
@@ -8,81 +7,89 @@ import TelegramSettings from './components/TelegramSettings';
 import RecipesView from './components/RecipesView';
 import { ToastContainer } from './components/Toast';
 
-// Importa tus iconos para el Header
-import { LogoutIcon, UserCircleIcon, ShoppingCartIcon, SettingsIcon, BookOpenIcon } from './components/icons';
-
 // Define las vistas que tu aplicacion puede mostrar
 type AppView = 'login' | 'dashboard' | 'orders' | 'settings' | 'recipes';
 
-/**
- * Un componente de encabezado simple que se muestra cuando estas logueado.
- */
+const navItems: { view: AppView; label: string; icon: string }[] = [
+  { view: 'dashboard', label: 'Panel',   icon: 'dashboard'   },
+  { view: 'orders',    label: 'Pedidos', icon: 'inventory_2' },
+  { view: 'recipes',   label: 'Recetas', icon: 'local_library' },
+];
+
 const Header: React.FC<{ onLogout: () => void; setView: (view: AppView) => void; currentView: AppView }> = ({ onLogout, setView, currentView }) => {
   return (
-    <header className="bg-white shadow-sm sticky top-0 z-10">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between items-center h-16">
-          {/* Titulo/Logo (clic para ir al dashboard) */}
-          <div
-            className="flex items-center cursor-pointer gap-2"
-            onClick={() => setView('dashboard')}
-          >
-            <ShoppingCartIcon className="w-7 h-7 text-indigo-600" />
-            <span className="text-xl font-bold text-slate-800">PlantArte</span>
-          </div>
+    <>
+      {/* Top bar */}
+      <header className="bg-white/90 backdrop-blur-md sticky top-0 z-50 border-b border-surface-variant shadow-sm">
+        <div className="max-w-5xl mx-auto px-6 h-16 flex items-center justify-between">
+          <button onClick={() => setView('dashboard')} className="font-epilogue text-xl font-extrabold text-primary tracking-tight">
+            PlantArte
+          </button>
 
-          {/* Navegación y Usuario */}
-          <div className="flex items-center space-x-2 sm:space-x-4">
-            <nav className="hidden md:flex items-center space-x-1">
+          {/* Nav desktop */}
+          <nav className="hidden md:flex items-center gap-1">
+            {navItems.map(({ view, label, icon }) => (
               <button
-                onClick={() => setView('dashboard')}
-                className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${currentView === 'dashboard' ? 'text-indigo-600 bg-indigo-50' : 'text-slate-600 hover:text-indigo-600 hover:bg-slate-50'}`}
+                key={view}
+                onClick={() => setView(view)}
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  currentView === view
+                    ? 'text-primary bg-primary/8 font-semibold border-b-2 border-primary'
+                    : 'text-on-surface-variant hover:text-primary hover:bg-surface-container-low'
+                }`}
               >
-                Panel
+                <span className="material-symbols-outlined text-lg" style={currentView === view ? { fontVariationSettings: "'FILL' 1" } : {}}>{icon}</span>
+                {label}
               </button>
-              <button
-                onClick={() => setView('orders')}
-                className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${currentView === 'orders' ? 'text-indigo-600 bg-indigo-50' : 'text-slate-600 hover:text-indigo-600 hover:bg-slate-50'}`}
-              >
-                Pedidos
-              </button>
-              <button
-                onClick={() => setView('recipes')}
-                className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${currentView === 'recipes' ? 'text-indigo-600 bg-indigo-50' : 'text-slate-600 hover:text-indigo-600 hover:bg-slate-50'}`}
-              >
-                Recetas
-              </button>
-            </nav>
+            ))}
+          </nav>
 
-            <div className="h-6 w-px bg-slate-200 hidden md:block"></div>
-
-            <div className="flex items-center space-x-2">
-              <button
-                onClick={() => setView('recipes')}
-                title="Recetas"
-                className={`md:hidden p-1.5 rounded-lg transition-colors ${currentView === 'recipes' ? 'text-indigo-600 bg-indigo-50' : 'text-slate-500 hover:text-indigo-600 hover:bg-slate-100'}`}
-              >
-                <BookOpenIcon className="w-5 h-5" />
-              </button>
-              <button
-                onClick={() => setView('settings')}
-                title="Configuración del bot"
-                className={`p-1.5 rounded-lg transition-colors ${currentView === 'settings' ? 'text-indigo-600 bg-indigo-50' : 'text-slate-500 hover:text-indigo-600 hover:bg-slate-100'}`}
-              >
-                <SettingsIcon className="w-5 h-5" />
-              </button>
-              <button
-                onClick={onLogout}
-                title="Logout"
-                className="text-slate-500 hover:text-indigo-600 p-1.5 rounded-lg hover:bg-slate-100 transition-colors"
-              >
-                <LogoutIcon className="w-5 h-5" />
-              </button>
-            </div>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setView('settings')}
+              title="Configuración"
+              className={`p-2 rounded-full transition-colors ${currentView === 'settings' ? 'text-primary bg-primary/8' : 'text-on-surface-variant hover:text-primary hover:bg-surface-container-low'}`}
+            >
+              <span className="material-symbols-outlined text-xl">settings</span>
+            </button>
+            <button
+              onClick={onLogout}
+              title="Cerrar sesión"
+              className="p-2 rounded-full text-on-surface-variant hover:text-error hover:bg-error-container/30 transition-colors"
+            >
+              <span className="material-symbols-outlined text-xl">logout</span>
+            </button>
           </div>
         </div>
-      </div>
-    </header>
+      </header>
+
+      {/* Bottom nav mobile */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-surface-variant shadow-lg flex justify-around items-center px-2 py-2">
+        {navItems.map(({ view, label, icon }) => (
+          <button
+            key={view}
+            onClick={() => setView(view)}
+            className={`flex flex-col items-center gap-0.5 px-5 py-1.5 rounded-2xl transition-all text-[10px] font-bold uppercase tracking-wider ${
+              currentView === view
+                ? 'text-primary bg-primary/8 scale-105'
+                : 'text-on-surface-variant'
+            }`}
+          >
+            <span className="material-symbols-outlined text-2xl" style={currentView === view ? { fontVariationSettings: "'FILL' 1" } : {}}>{icon}</span>
+            {label}
+          </button>
+        ))}
+        <button
+          onClick={() => setView('settings')}
+          className={`flex flex-col items-center gap-0.5 px-5 py-1.5 rounded-2xl transition-all text-[10px] font-bold uppercase tracking-wider ${
+            currentView === 'settings' ? 'text-primary bg-primary/8 scale-105' : 'text-on-surface-variant'
+          }`}
+        >
+          <span className="material-symbols-outlined text-2xl" style={currentView === 'settings' ? { fontVariationSettings: "'FILL' 1" } : {}}>settings</span>
+          Bot
+        </button>
+      </nav>
+    </>
   );
 };
 

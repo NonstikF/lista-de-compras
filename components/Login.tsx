@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { ShoppingCartIcon } from './icons';
 
 const BACKEND_API_URL = import.meta.env.VITE_BACKEND_API_URL || 'http://localhost:4000';
 
@@ -10,6 +9,7 @@ interface LoginProps {
 const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
@@ -17,100 +17,123 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
     e.preventDefault();
     setError('');
     setIsLoading(true);
-
     try {
       const response = await fetch(`${BACKEND_API_URL}/api/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password }),
       });
-
-      if (response.status === 429) {
-        setError('Demasiados intentos. Intenta de nuevo en 15 minutos.');
-        return;
-      }
-
+      if (response.status === 429) { setError('Demasiados intentos. Intenta en 15 minutos.'); return; }
       const data = await response.json();
-
-      if (!response.ok) {
-        setError(data.error || 'Credenciales invalidas');
-        return;
-      }
-
+      if (!response.ok) { setError(data.error || 'Credenciales inválidas'); return; }
       onLoginSuccess(data.token);
     } catch {
-      setError('Error de conexion. Verifica que el servidor este activo.');
+      setError('Error de conexión. Verifica que el servidor esté activo.');
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-100 to-slate-200 p-4">
-      <div className="w-full max-w-md">
-        <div className="bg-white rounded-2xl shadow-2xl p-8 space-y-6">
-          <div className="flex flex-col items-center space-y-2">
-            <div className="bg-indigo-500 text-white p-3 rounded-full">
-              <ShoppingCartIcon className="w-8 h-8" />
+    <div className="min-h-screen bg-background flex items-center justify-center p-4">
+      {/* Fondo decorativo */}
+      <div aria-hidden className="fixed inset-0 z-0 overflow-hidden pointer-events-none opacity-20">
+        <div className="absolute -top-24 -left-24 w-96 h-96 bg-primary-container rounded-full blur-3xl" />
+        <div className="absolute -bottom-24 -right-24 w-[30rem] h-[30rem] bg-category-chip-bg rounded-full blur-3xl" />
+      </div>
+
+      <main className="relative z-10 w-full max-w-md">
+        <div className="bg-surface-container-lowest rounded-xl shadow-lg border border-outline-variant/30 overflow-hidden">
+          {/* Header */}
+          <div className="p-8 pb-6 flex flex-col items-center text-center border-b border-surface-variant/50 bg-gradient-to-b from-surface-muted to-surface-container-lowest">
+            <div className="w-16 h-16 bg-primary-container flex items-center justify-center rounded-full mb-4 shadow-sm">
+              <span className="material-symbols-outlined text-3xl text-on-primary-container" style={{ fontVariationSettings: "'FILL' 1" }}>eco</span>
             </div>
-            <h1 className="text-3xl font-bold text-slate-800">Plataforma Para Compras</h1>
-            <p className="text-slate-500">Inicia Sesion para continuar</p>
+            <h1 className="font-epilogue text-4xl font-bold text-primary tracking-tight">PlantArte</h1>
+            <p className="text-on-surface-variant mt-2 text-sm">Acceso al sistema de gestión</p>
           </div>
 
-          <form onSubmit={handleLogin} className="space-y-6">
-            <div className="space-y-2">
-              <label
-                htmlFor="username"
-                className="text-sm font-medium text-slate-600"
-              >
+          {/* Formulario */}
+          <form onSubmit={handleLogin} className="p-8 space-y-5">
+            <div className="space-y-1.5">
+              <label htmlFor="username" className="text-xs font-bold text-on-surface-variant uppercase tracking-wider block">
                 Usuario
               </label>
-              <input
-                id="username"
-                type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition"
-                placeholder="ej., admin"
-                required
-              />
+              <div className="relative">
+                <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline text-lg">person</span>
+                <input
+                  id="username"
+                  type="text"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  placeholder="ej. admin"
+                  required
+                  className="w-full pl-10 pr-4 py-3 bg-surface border border-outline-variant rounded-lg focus:ring-2 focus:ring-primary focus:border-primary text-on-surface text-sm transition-colors placeholder:text-outline/60"
+                />
+              </div>
             </div>
 
-            <div className="space-y-2">
-              <label
-                htmlFor="password"
-                className="text-sm font-medium text-slate-600"
-              >
+            <div className="space-y-1.5">
+              <label htmlFor="password" className="text-xs font-bold text-on-surface-variant uppercase tracking-wider block">
                 Contraseña
               </label>
-              <input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition"
-                placeholder="ej., password"
-                required
-              />
+              <div className="relative">
+                <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline text-lg">lock</span>
+                <input
+                  id="password"
+                  type={showPassword ? 'text' : 'password'}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  required
+                  className="w-full pl-10 pr-10 py-3 bg-surface border border-outline-variant rounded-lg focus:ring-2 focus:ring-primary focus:border-primary text-on-surface text-sm transition-colors placeholder:text-outline/60"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-outline hover:text-on-surface-variant transition-colors"
+                >
+                  <span className="material-symbols-outlined text-lg">{showPassword ? 'visibility' : 'visibility_off'}</span>
+                </button>
+              </div>
             </div>
 
-            {error && <p className="text-sm text-red-500">{error}</p>}
+            {error && (
+              <div className="flex items-center gap-2 text-error text-sm bg-error-container/30 px-3 py-2 rounded-lg">
+                <span className="material-symbols-outlined text-base">error</span>
+                {error}
+              </div>
+            )}
 
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full bg-indigo-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:bg-indigo-400 transition-all duration-300 flex items-center justify-center"
+              className="w-full py-3 px-4 bg-primary text-on-primary rounded-lg font-semibold shadow-sm hover:bg-surface-tint hover:shadow-md transition-all active:scale-[0.98] flex items-center justify-center gap-2 disabled:opacity-60"
             >
               {isLoading ? (
-                <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                 </svg>
-              ) : 'Log In'}
+              ) : (
+                <>
+                  <span>Iniciar Sesión</span>
+                  <span className="material-symbols-outlined text-sm">arrow_forward</span>
+                </>
+              )}
             </button>
           </form>
+
+          <div className="bg-surface-muted px-8 py-4 text-center border-t border-surface-variant/50">
+            <p className="text-xs text-outline">Solo para personal autorizado.</p>
+          </div>
         </div>
-      </div>
+
+        <div className="mt-6 text-center text-outline opacity-50 flex flex-col items-center gap-1">
+          <span className="material-symbols-outlined text-sm">local_florist</span>
+          <p className="text-[10px]">PlantArte © 2025</p>
+        </div>
+      </main>
     </div>
   );
 };
