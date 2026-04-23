@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { Toast } from './Toast';
+import { showToast } from './Toast';
 import { CATEGORIES, type Product } from '../data/catalog';
 
 // ---------- Icon ----------
@@ -24,9 +24,7 @@ export const MIcon: React.FC<MIconProps> = ({ name, className = '', fill = false
 
 // ---------- Toast hook ----------
 export const useToast = () => (type: 'success' | 'error' | 'info', message: string) => {
-  if (type === 'success') Toast.success(message);
-  else if (type === 'error') Toast.error(message);
-  else Toast.info(message);
+  showToast(type, message);
 };
 
 // ---------- Modal ----------

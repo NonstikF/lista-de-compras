@@ -2,12 +2,11 @@ import React from 'react';
 
 interface DashboardProps {
     onNavigateToOrders: () => void;
-    onNavigateToRecipes: () => void;
     onNavigateToProducts: () => void;
     onNavigateToStore: () => void;
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ onNavigateToOrders, onNavigateToRecipes, onNavigateToProducts, onNavigateToStore }) => {
+const Dashboard: React.FC<DashboardProps> = ({ onNavigateToOrders, onNavigateToProducts, onNavigateToStore }) => {
     const cards = [
         {
             onClick: onNavigateToOrders,
@@ -33,14 +32,6 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigateToOrders, onNavigateToR
             tone: 'bg-tertiary-container/30 text-tertiary',
             badge: 'NUEVO',
         },
-        {
-            onClick: onNavigateToRecipes,
-            label: 'Recetas',
-            desc: 'Consulta ingredientes',
-            icon: 'local_library',
-            tone: 'bg-secondary-container/40 text-on-secondary-container',
-            badge: null,
-        },
     ];
 
     return (
@@ -50,7 +41,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigateToOrders, onNavigateToR
                 <p className="text-on-surface-variant mt-1">Selecciona una sección para comenzar.</p>
             </section>
 
-            <section className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <section className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 {cards.map(card => (
                     <button
                         key={card.label}

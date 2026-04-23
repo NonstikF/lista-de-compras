@@ -4,25 +4,22 @@ import Login from './components/Login';
 import Dashboard from './components/Dashboard';
 import OrdersView from './components/OrdersView';
 import TelegramSettings from './components/TelegramSettings';
-import RecipesView from './components/RecipesView';
 import ProductsView from './components/ProductsView';
 import StoreView from './components/StoreView';
 import { ToastContainer } from './components/Toast';
 
-type AppView = 'login' | 'dashboard' | 'orders' | 'settings' | 'recipes' | 'products' | 'store';
+type AppView = 'login' | 'dashboard' | 'orders' | 'settings' | 'products' | 'store';
 
 const navItems: { view: AppView; label: string; icon: string }[] = [
-  { view: 'dashboard', label: 'Panel',     icon: 'dashboard'    },
-  { view: 'orders',    label: 'Pedidos',   icon: 'inventory_2'  },
-  { view: 'products',  label: 'Productos', icon: 'inventory'    },
-  { view: 'store',     label: 'Tienda',    icon: 'storefront'   },
-  { view: 'recipes',   label: 'Recetas',   icon: 'local_library' },
+  { view: 'dashboard', label: 'Panel',     icon: 'dashboard'   },
+  { view: 'orders',    label: 'Pedidos',   icon: 'inventory_2' },
+  { view: 'products',  label: 'Productos', icon: 'inventory'   },
+  { view: 'store',     label: 'Tienda',    icon: 'storefront'  },
 ];
 
 const Header: React.FC<{ onLogout: () => void; setView: (view: AppView) => void; currentView: AppView }> = ({ onLogout, setView, currentView }) => {
   return (
     <>
-      {/* Top bar */}
       <header className="bg-white/90 backdrop-blur-md sticky top-0 z-50 border-b border-surface-variant shadow-sm">
         <div className="max-w-7xl mx-auto px-4 md:px-6 h-16 flex items-center justify-between gap-4">
           <button
@@ -35,7 +32,6 @@ const Header: React.FC<{ onLogout: () => void; setView: (view: AppView) => void;
             PlantArte
           </button>
 
-          {/* Nav desktop */}
           <nav className="hidden md:flex items-center gap-1">
             {navItems.map(({ view, label, icon }) => (
               <button
@@ -77,7 +73,6 @@ const Header: React.FC<{ onLogout: () => void; setView: (view: AppView) => void;
         </div>
       </header>
 
-      {/* Bottom nav mobile */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-surface-variant shadow-lg flex justify-around items-center px-1 py-1.5">
         {navItems.map(({ view, label, icon }) => (
           <button
@@ -103,7 +98,6 @@ const Header: React.FC<{ onLogout: () => void; setView: (view: AppView) => void;
 
 const App: React.FC = () => {
   const [view, setView] = useState<AppView>('login');
-  const [highlightOrderId, setHighlightOrderId] = useState<number | null>(null);
 
   const [authToken, setAuthToken] = useState<string | null>(() => {
     return localStorage.getItem('authToken');
@@ -113,17 +107,7 @@ const App: React.FC = () => {
 
   useEffect(() => {
     if (isAuthenticated) {
-      if (view === 'login') {
-        const params = new URLSearchParams(window.location.search);
-        const pedidoId = params.get('pedido');
-        if (pedidoId && !isNaN(Number(pedidoId))) {
-          setHighlightOrderId(Number(pedidoId));
-          setView('orders');
-          window.history.replaceState({}, '', window.location.pathname);
-        } else {
-          setView('dashboard');
-        }
-      }
+      if (view === 'login') setView('dashboard');
     } else {
       setView('login');
     }
@@ -151,7 +135,6 @@ const App: React.FC = () => {
         return (
           <Dashboard
             onNavigateToOrders={() => setView('orders')}
-            onNavigateToRecipes={() => setView('recipes')}
             onNavigateToProducts={() => setView('products')}
             onNavigateToStore={() => setView('store')}
           />
@@ -162,7 +145,7 @@ const App: React.FC = () => {
             <button onClick={() => setView('dashboard')} className="text-primary hover:text-primary-container font-medium mb-4 flex items-center gap-1">
               <span className="material-symbols-outlined text-base">arrow_back</span> Regresar al Panel
             </button>
-            <OrdersView authToken={authToken!} onAuthError={handleAuthError} highlightOrderId={highlightOrderId} />
+            <OrdersView authToken={authToken!} onAuthError={handleAuthError} />
           </div>
         );
       case 'settings':
@@ -172,15 +155,6 @@ const App: React.FC = () => {
               <span className="material-symbols-outlined text-base">arrow_back</span> Regresar al Panel
             </button>
             <TelegramSettings authToken={authToken!} onAuthError={handleAuthError} />
-          </div>
-        );
-      case 'recipes':
-        return (
-          <div className="p-4 md:p-8 max-w-7xl mx-auto">
-            <button onClick={() => setView('dashboard')} className="text-primary hover:text-primary-container font-medium mb-4 flex items-center gap-1">
-              <span className="material-symbols-outlined text-base">arrow_back</span> Regresar al Panel
-            </button>
-            <RecipesView authToken={authToken!} onAuthError={handleAuthError} />
           </div>
         );
       case 'products':
