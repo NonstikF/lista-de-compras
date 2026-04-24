@@ -1,28 +1,20 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL") // Carga la URL desde tu archivo .env
+  url      = env("DATABASE_URL")
 }
 
-// --- NUESTRO MODELO DE DATOS ---
-// Esta tabla guardará el estado de progreso de cada artículo de línea
 model PurchaseStatus {
-  id          Int      @id @default(autoincrement()) // ID único de esta fila
-
-  lineItemId  Int      @unique // El ID del artículo de línea de WooCommerce (¡debe ser único!)
-  orderId     Int      // El ID del pedido al que pertenece (para referencia)
-
-  isPurchased Boolean  @default(false) // Marcado como comprado (true/false)
-  quantityPurchased Int @default(0)   // Cantidad parcial comprada
-
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt // Se actualiza automaticamente
+  id                Int      @id @default(autoincrement())
+  lineItemId        Int      @unique
+  orderId           Int
+  isPurchased       Boolean  @default(false)
+  quantityPurchased Int      @default(0)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
   @@index([orderId])
 }
@@ -38,8 +30,84 @@ model TelegramConfig {
 }
 
 model TelegramKnownChat {
-  id       String   @id  // chat_id de Telegram
+  id     String   @id
+  name   String
+  type   String
+  seenAt DateTime @updatedAt
+}
+
+// ---------- Proveedores ----------
+model Supplier {
+  id        String            @id @default(cuid())
+  name      String
+  contact   String            @default("")
+  phone     String            @default("")
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+  articles  ArticleSupplier[]
+}
+
+// ---------- Artículos ----------
+model Article {
+  id        String            @id @default(cuid())
+  name      String
+  image     String?
+  price     Float
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+  suppliers ArticleSupplier[]
+}
+
+model ArticleSupplier {
+  articleId  String
+  supplierId String
+  article    Article  @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  supplier   Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+
+  @@id([articleId, supplierId])
+}
+
+// ---------- Recetas ----------
+model Recipe {
+  id           String             @id @default(cuid())
+  name         String
+  description  String             @default("")
+  category     String             // 'caliente' | 'fria' | 'especial'
+  image        String?
+  instructions String             @default("")
+  servings     Int                @default(1)
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+  ingredients  RecipeIngredient[]
+}
+
+model RecipeIngredient {
+  id       Int    @id @default(autoincrement())
+  recipeId String
   name     String
-  type     String
-  seenAt   DateTime @updatedAt
+  quantity String
+  unit     String
+  recipe   Recipe @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+}
+
+// ---------- Pedidos de Tienda ----------
+model StoreOrder {
+  id            Int              @id @default(autoincrement())
+  dateCreated   DateTime         @default(now())
+  status        String           @default("pending")
+  customerName  String
+  customerPhone String
+  notes         String           @default("")
+  total         Float
+  items         StoreOrderItem[]
+}
+
+model StoreOrderItem {
+  id        Int        @id @default(autoincrement())
+  orderId   Int
+  articleId String
+  name      String
+  price     Float
+  qty       Int
+  order     StoreOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
 }

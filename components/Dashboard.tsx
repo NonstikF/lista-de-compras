@@ -5,9 +5,10 @@ interface DashboardProps {
     onNavigateToRecipes: () => void;
     onNavigateToArticles: () => void;
     onNavigateToStore: () => void;
+    onNavigateToSuppliers: () => void;
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ onNavigateToOrders, onNavigateToRecipes, onNavigateToArticles, onNavigateToStore }) => {
+const Dashboard: React.FC<DashboardProps> = ({ onNavigateToOrders, onNavigateToRecipes, onNavigateToArticles, onNavigateToStore, onNavigateToSuppliers }) => {
     const cards = [
         {
             onClick: onNavigateToOrders,
@@ -23,7 +24,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigateToOrders, onNavigateToR
             desc: 'Recetas de bebidas',
             icon: 'menu_book',
             tone: 'bg-secondary-container/60 text-on-secondary-container',
-            badge: 'NUEVO',
+            badge: null,
         },
         {
             onClick: onNavigateToArticles,
@@ -41,6 +42,14 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigateToOrders, onNavigateToR
             tone: 'bg-primary/10 text-primary',
             badge: null,
         },
+        {
+            onClick: onNavigateToSuppliers,
+            label: 'Proveedores',
+            desc: 'Gestionar proveedores',
+            icon: 'local_shipping',
+            tone: 'bg-secondary-container/40 text-on-secondary-container',
+            badge: null,
+        },
     ];
 
     return (
@@ -50,7 +59,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigateToOrders, onNavigateToR
                 <p className="text-on-surface-variant mt-1">Selecciona una sección para comenzar.</p>
             </section>
 
-            <section className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <section className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
                 {cards.map(card => (
                     <button
                         key={card.label}

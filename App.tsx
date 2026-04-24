@@ -7,16 +7,18 @@ import TelegramSettings from './components/TelegramSettings';
 import ArticlesView from './components/ArticlesView';
 import RecipesView from './components/RecipesView';
 import StoreView from './components/StoreView';
+import SuppliersView from './components/SuppliersView';
 import { ToastContainer } from './components/Toast';
 
-type AppView = 'login' | 'dashboard' | 'orders' | 'settings' | 'articles' | 'recipes' | 'store';
+type AppView = 'login' | 'dashboard' | 'orders' | 'settings' | 'articles' | 'recipes' | 'store' | 'suppliers';
 
 const navItems: { view: AppView; label: string; shortLabel: string; icon: string }[] = [
-  { view: 'dashboard', label: 'Panel',     shortLabel: 'Panel',   icon: 'dashboard'   },
-  { view: 'orders',    label: 'Pedidos',   shortLabel: 'Pedidos', icon: 'inventory_2' },
-  { view: 'recipes',   label: 'Recetas',   shortLabel: 'Recetas', icon: 'menu_book'   },
-  { view: 'articles',  label: 'Artículos', shortLabel: 'Arts.',   icon: 'package_2'   },
-  { view: 'store',     label: 'Tienda',    shortLabel: 'Tienda',  icon: 'storefront'  },
+  { view: 'dashboard',  label: 'Panel',       shortLabel: 'Panel',    icon: 'dashboard'       },
+  { view: 'orders',     label: 'Pedidos',     shortLabel: 'Pedidos',  icon: 'inventory_2'     },
+  { view: 'recipes',    label: 'Recetas',     shortLabel: 'Recetas',  icon: 'menu_book'       },
+  { view: 'articles',   label: 'Artículos',   shortLabel: 'Arts.',    icon: 'package_2'       },
+  { view: 'store',      label: 'Tienda',      shortLabel: 'Tienda',   icon: 'storefront'      },
+  { view: 'suppliers',  label: 'Proveedores', shortLabel: 'Provs.',   icon: 'local_shipping'  },
 ];
 
 const Header: React.FC<{ onLogout: () => void; setView: (view: AppView) => void; currentView: AppView }> = ({ onLogout, setView, currentView }) => {
@@ -80,7 +82,7 @@ const Header: React.FC<{ onLogout: () => void; setView: (view: AppView) => void;
           <button
             key={view}
             onClick={() => setView(view)}
-            className={`flex flex-col items-center gap-0 px-2 py-1 rounded-xl transition text-[8px] font-bold uppercase tracking-wider ${
+            className={`flex flex-col items-center gap-0 px-1 py-1 rounded-xl transition text-[7px] font-bold uppercase tracking-wider ${
               currentView === view ? 'text-primary' : 'text-on-surface-variant'
             }`}
           >
@@ -140,6 +142,7 @@ const App: React.FC = () => {
             onNavigateToRecipes={() => setView('recipes')}
             onNavigateToArticles={() => setView('articles')}
             onNavigateToStore={() => setView('store')}
+            onNavigateToSuppliers={() => setView('suppliers')}
           />
         );
       case 'orders':
@@ -161,11 +164,13 @@ const App: React.FC = () => {
           </div>
         );
       case 'articles':
-        return <ArticlesView />;
+        return <ArticlesView authToken={authToken!} onAuthError={handleAuthError} />;
       case 'recipes':
-        return <RecipesView />;
+        return <RecipesView authToken={authToken!} onAuthError={handleAuthError} />;
       case 'store':
-        return <StoreView />;
+        return <StoreView authToken={authToken!} onAuthError={handleAuthError} />;
+      case 'suppliers':
+        return <SuppliersView authToken={authToken!} onAuthError={handleAuthError} />;
       default:
         return <Login onLoginSuccess={handleLoginSuccess} />;
     }

@@ -34,6 +34,15 @@ export interface AuthError {
   error: string;
 }
 
+// ---------- Proveedores ----------
+export interface Supplier {
+  id: string;
+  name: string;
+  contact: string;
+  phone: string;
+  createdAt: string;
+}
+
 // ---------- Artículos ----------
 export interface Article {
   id: string;

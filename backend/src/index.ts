@@ -626,6 +626,292 @@ app.post('/api/telegram/test', async (_req: Request, res: Response) => {
     }
 });
 
+// ============================================================
+// PROVEEDORES
+// ============================================================
+
+const supplierSchema = z.object({
+    name: z.string().min(1, 'Nombre requerido'),
+    contact: z.string().default(''),
+    phone: z.string().default(''),
+});
+
+app.get('/api/suppliers', async (_req: Request, res: Response) => {
+    try {
+        const suppliers = await prisma.supplier.findMany({ orderBy: { createdAt: 'asc' } });
+        res.json(suppliers);
+    } catch (err) {
+        console.error('Error al obtener proveedores:', err);
+        res.status(500).json({ error: 'Error al obtener proveedores' });
+    }
+});
+
+app.post('/api/suppliers', async (req: Request, res: Response) => {
+    const parsed = supplierSchema.safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: parsed.error.issues[0].message }); return; }
+    try {
+        const supplier = await prisma.supplier.create({ data: parsed.data });
+        res.status(201).json(supplier);
+    } catch (err) {
+        console.error('Error al crear proveedor:', err);
+        res.status(500).json({ error: 'Error al crear proveedor' });
+    }
+});
+
+app.put('/api/suppliers/:id', async (req: Request, res: Response) => {
+    const parsed = supplierSchema.safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: parsed.error.issues[0].message }); return; }
+    try {
+        const supplier = await prisma.supplier.update({ where: { id: req.params.id }, data: parsed.data });
+        res.json(supplier);
+    } catch (err) {
+        console.error('Error al actualizar proveedor:', err);
+        res.status(500).json({ error: 'Error al actualizar proveedor' });
+    }
+});
+
+app.delete('/api/suppliers/:id', async (req: Request, res: Response) => {
+    try {
+        await prisma.supplier.delete({ where: { id: req.params.id } });
+        res.json({ success: true });
+    } catch (err) {
+        console.error('Error al eliminar proveedor:', err);
+        res.status(500).json({ error: 'Error al eliminar proveedor' });
+    }
+});
+
+// ============================================================
+// ARTÍCULOS
+// ============================================================
+
+const articleSchema = z.object({
+    name: z.string().min(1, 'Nombre requerido'),
+    image: z.string().nullable().default(null),
+    price: z.number().min(0, 'Precio inválido'),
+    supplierIds: z.array(z.string()).default([]),
+});
+
+function formatArticle(a: { id: string; name: string; image: string | null; price: number; createdAt: Date; updatedAt: Date; suppliers: { supplierId: string }[] }) {
+    return {
+        id: a.id,
+        name: a.name,
+        image: a.image,
+        price: a.price,
+        supplierIds: a.suppliers.map((s: { supplierId: string }) => s.supplierId),
+        createdAt: a.createdAt,
+    };
+}
+
+app.get('/api/articles', async (_req: Request, res: Response) => {
+    try {
+        const articles = await prisma.article.findMany({
+            include: { suppliers: { select: { supplierId: true } } },
+            orderBy: { createdAt: 'asc' },
+        });
+        res.json(articles.map(formatArticle));
+    } catch (err) {
+        console.error('Error al obtener artículos:', err);
+        res.status(500).json({ error: 'Error al obtener artículos' });
+    }
+});
+
+app.post('/api/articles', async (req: Request, res: Response) => {
+    const parsed = articleSchema.safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: parsed.error.issues[0].message }); return; }
+    const { name, image, price, supplierIds } = parsed.data;
+    try {
+        const article = await prisma.article.create({
+            data: {
+                name, image, price,
+                suppliers: { create: supplierIds.map((sid: string) => ({ supplierId: sid })) },
+            },
+            include: { suppliers: { select: { supplierId: true } } },
+        });
+        res.status(201).json(formatArticle(article));
+    } catch (err) {
+        console.error('Error al crear artículo:', err);
+        res.status(500).json({ error: 'Error al crear artículo' });
+    }
+});
+
+app.put('/api/articles/:id', async (req: Request, res: Response) => {
+    const parsed = articleSchema.safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: parsed.error.issues[0].message }); return; }
+    const { name, image, price, supplierIds } = parsed.data;
+    try {
+        const article = await prisma.article.update({
+            where: { id: req.params.id },
+            data: {
+                name, image, price,
+                suppliers: {
+                    deleteMany: {},
+                    create: supplierIds.map((sid: string) => ({ supplierId: sid })),
+                },
+            },
+            include: { suppliers: { select: { supplierId: true } } },
+        });
+        res.json(formatArticle(article));
+    } catch (err) {
+        console.error('Error al actualizar artículo:', err);
+        res.status(500).json({ error: 'Error al actualizar artículo' });
+    }
+});
+
+app.delete('/api/articles/:id', async (req: Request, res: Response) => {
+    try {
+        await prisma.article.delete({ where: { id: req.params.id } });
+        res.json({ success: true });
+    } catch (err) {
+        console.error('Error al eliminar artículo:', err);
+        res.status(500).json({ error: 'Error al eliminar artículo' });
+    }
+});
+
+// ============================================================
+// RECETAS
+// ============================================================
+
+const recipeSchema = z.object({
+    name: z.string().min(1, 'Nombre requerido'),
+    description: z.string().default(''),
+    category: z.enum(['caliente', 'fria', 'especial']),
+    image: z.string().nullable().default(null),
+    instructions: z.string().default(''),
+    servings: z.number().int().min(1).default(1),
+    ingredients: z.array(z.object({
+        name: z.string(),
+        quantity: z.string(),
+        unit: z.string(),
+    })).default([]),
+});
+
+app.get('/api/recipes', async (_req: Request, res: Response) => {
+    try {
+        const recipes = await prisma.recipe.findMany({
+            include: { ingredients: true },
+            orderBy: { createdAt: 'asc' },
+        });
+        res.json(recipes);
+    } catch (err) {
+        console.error('Error al obtener recetas:', err);
+        res.status(500).json({ error: 'Error al obtener recetas' });
+    }
+});
+
+app.post('/api/recipes', async (req: Request, res: Response) => {
+    const parsed = recipeSchema.safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: parsed.error.issues[0].message }); return; }
+    const { ingredients, ...rest } = parsed.data;
+    try {
+        const recipe = await prisma.recipe.create({
+            data: { ...rest, ingredients: { create: ingredients } },
+            include: { ingredients: true },
+        });
+        res.status(201).json(recipe);
+    } catch (err) {
+        console.error('Error al crear receta:', err);
+        res.status(500).json({ error: 'Error al crear receta' });
+    }
+});
+
+app.put('/api/recipes/:id', async (req: Request, res: Response) => {
+    const parsed = recipeSchema.safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: parsed.error.issues[0].message }); return; }
+    const { ingredients, ...rest } = parsed.data;
+    try {
+        const recipe = await prisma.recipe.update({
+            where: { id: req.params.id },
+            data: {
+                ...rest,
+                ingredients: { deleteMany: {}, create: ingredients },
+            },
+            include: { ingredients: true },
+        });
+        res.json(recipe);
+    } catch (err) {
+        console.error('Error al actualizar receta:', err);
+        res.status(500).json({ error: 'Error al actualizar receta' });
+    }
+});
+
+app.delete('/api/recipes/:id', async (req: Request, res: Response) => {
+    try {
+        await prisma.recipe.delete({ where: { id: req.params.id } });
+        res.json({ success: true });
+    } catch (err) {
+        console.error('Error al eliminar receta:', err);
+        res.status(500).json({ error: 'Error al eliminar receta' });
+    }
+});
+
+// ============================================================
+// PEDIDOS DE TIENDA
+// ============================================================
+
+const storeOrderSchema = z.object({
+    customerName: z.string().min(1, 'Nombre requerido'),
+    customerPhone: z.string().min(1, 'Teléfono requerido'),
+    notes: z.string().default(''),
+    items: z.array(z.object({
+        articleId: z.string(),
+        name: z.string(),
+        price: z.number(),
+        qty: z.number().int().min(1),
+    })).min(1, 'El pedido necesita al menos un artículo'),
+});
+
+function formatStoreOrder(o: { id: number; dateCreated: Date; status: string; customerName: string; customerPhone: string; notes: string; total: number; items: { id: number; orderId: number; articleId: string; name: string; price: number; qty: number }[] }) {
+    return { ...o, id: `T-${o.id}`, dateCreated: o.dateCreated.toISOString() };
+}
+
+app.get('/api/store-orders', async (_req: Request, res: Response) => {
+    try {
+        const orders = await prisma.storeOrder.findMany({
+            include: { items: true },
+            orderBy: { dateCreated: 'desc' },
+        });
+        res.json(orders.map(formatStoreOrder));
+    } catch (err) {
+        console.error('Error al obtener pedidos de tienda:', err);
+        res.status(500).json({ error: 'Error al obtener pedidos de tienda' });
+    }
+});
+
+app.post('/api/store-orders', async (req: Request, res: Response) => {
+    const parsed = storeOrderSchema.safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: parsed.error.issues[0].message }); return; }
+    const { items, ...rest } = parsed.data;
+    const total = items.reduce((s, i) => s + i.price * i.qty, 0);
+    try {
+        const order = await prisma.storeOrder.create({
+            data: { ...rest, total, items: { create: items } },
+            include: { items: true },
+        });
+        res.status(201).json(formatStoreOrder(order));
+    } catch (err) {
+        console.error('Error al crear pedido de tienda:', err);
+        res.status(500).json({ error: 'Error al crear pedido de tienda' });
+    }
+});
+
+app.patch('/api/store-orders/:id/complete', async (req: Request, res: Response) => {
+    const rawId = req.params.id.startsWith('T-')
+        ? parseInt(req.params.id.slice(2), 10)
+        : parseInt(req.params.id, 10);
+    if (!Number.isFinite(rawId)) { res.status(400).json({ error: 'ID inválido' }); return; }
+    try {
+        const order = await prisma.storeOrder.update({
+            where: { id: rawId },
+            data: { status: 'completed' },
+            include: { items: true },
+        });
+        res.json(formatStoreOrder(order));
+    } catch (err) {
+        console.error('Error al completar pedido de tienda:', err);
+        res.status(500).json({ error: 'Error al completar pedido de tienda' });
+    }
+});
+
 // --- Iniciar el Servidor ---
 const port = process.env.PORT || 4000;
 app.listen(port, () => {

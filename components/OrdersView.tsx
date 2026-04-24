@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import type { Order, LineItem, StoreOrder } from '../types';
 import { getOrders, saveItemStatus, completeOrder, AuthError, type OrderStatusType } from '../services/woocommerceService';
+import { getStoreOrders, completeStoreOrder } from '../services/catalogService';
 import { CheckCircleIcon, ChevronDownIcon, XMarkIcon, EyeIcon } from './icons';
 import { showToast } from './Toast';
-import { useLocalStorage } from '../hooks/useLocalStorage';
 import { fmt } from './ui';
 
 type TabMode = OrderStatusType | 'store';
@@ -362,7 +362,8 @@ const OrdersView: React.FC<OrdersViewProps> = ({ authToken, onAuthError }) => {
     const [error, setError] = useState<string | null>(null);
     const [tabMode, setTabMode] = useState<TabMode>('processing');
     const viewMode: OrderStatusType = tabMode === 'store' ? 'processing' : tabMode;
-    const [storeOrders, setStoreOrders] = useLocalStorage<StoreOrder[]>('plantarte_store_orders', []);
+    const [storeOrders, setStoreOrders] = useState<StoreOrder[]>([]);
+    const [loadingStoreOrders, setLoadingStoreOrders] = useState(false);
     const [completingOrderId, setCompletingOrderId] = useState<number | null>(null);
     const [modalImageUrl, setModalImageUrl] = useState<string | null>(null);
     const [modalProductName, setModalProductName] = useState<string | null>(null);
@@ -374,10 +375,35 @@ const OrdersView: React.FC<OrdersViewProps> = ({ authToken, onAuthError }) => {
         setModalImageUrl(null);
         setModalProductName(null);
     };
-    const handleCompleteStoreOrder = useCallback((orderId: string) => {
-        setStoreOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: 'completed' } : o));
-        showToast('success', `Pedido ${orderId} completado`);
-    }, [setStoreOrders]);
+    const handleCompleteStoreOrder = useCallback(async (orderId: string) => {
+        try {
+            const updated = await completeStoreOrder(authToken, orderId);
+            setStoreOrders(prev => prev.map(o => o.id === orderId ? updated : o));
+            showToast('success', `Pedido ${orderId} completado`);
+        } catch (err) {
+            if (err instanceof AuthError) { onAuthError(); return; }
+            showToast('error', 'No se pudo completar el pedido');
+        }
+    }, [authToken, onAuthError]);
+
+    useEffect(() => {
+        if (tabMode !== 'store') return;
+        let cancelled = false;
+        const load = async () => {
+            setLoadingStoreOrders(true);
+            try {
+                const data = await getStoreOrders(authToken);
+                if (!cancelled) setStoreOrders(data);
+            } catch (err) {
+                if (err instanceof AuthError) { onAuthError(); return; }
+                if (!cancelled) showToast('error', 'Error al cargar pedidos de Tienda');
+            } finally {
+                if (!cancelled) setLoadingStoreOrders(false);
+            }
+        };
+        load();
+        return () => { cancelled = true; };
+    }, [tabMode, authToken, onAuthError]);
 
     useEffect(() => {
         if (tabMode === 'store') return;
@@ -517,11 +543,15 @@ const OrdersView: React.FC<OrdersViewProps> = ({ authToken, onAuthError }) => {
             {/* Tab Tienda */}
             {tabMode === 'store' && (
                 <div className="space-y-4">
-                    {storeOrders.length === 0 ? <EmptyStoreOrders /> : (
-                        storeOrders.map(order => (
-                            <StoreOrderCard key={order.id} order={order} onComplete={handleCompleteStoreOrder} />
-                        ))
+                    {loadingStoreOrders && (
+                        <div className="flex justify-center py-16">
+                            <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-indigo-500" />
+                        </div>
                     )}
+                    {!loadingStoreOrders && storeOrders.length === 0 && <EmptyStoreOrders />}
+                    {!loadingStoreOrders && storeOrders.map(order => (
+                        <StoreOrderCard key={order.id} order={order} onComplete={handleCompleteStoreOrder} />
+                    ))}
                 </div>
             )}
 
