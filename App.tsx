@@ -4,17 +4,19 @@ import Login from './components/Login';
 import Dashboard from './components/Dashboard';
 import OrdersView from './components/OrdersView';
 import TelegramSettings from './components/TelegramSettings';
-import ProductsView from './components/ProductsView';
+import ArticlesView from './components/ArticlesView';
+import RecipesView from './components/RecipesView';
 import StoreView from './components/StoreView';
 import { ToastContainer } from './components/Toast';
 
-type AppView = 'login' | 'dashboard' | 'orders' | 'settings' | 'products' | 'store';
+type AppView = 'login' | 'dashboard' | 'orders' | 'settings' | 'articles' | 'recipes' | 'store';
 
-const navItems: { view: AppView; label: string; icon: string }[] = [
-  { view: 'dashboard', label: 'Panel',     icon: 'dashboard'   },
-  { view: 'orders',    label: 'Pedidos',   icon: 'inventory_2' },
-  { view: 'products',  label: 'Productos', icon: 'inventory'   },
-  { view: 'store',     label: 'Tienda',    icon: 'storefront'  },
+const navItems: { view: AppView; label: string; shortLabel: string; icon: string }[] = [
+  { view: 'dashboard', label: 'Panel',     shortLabel: 'Panel',   icon: 'dashboard'   },
+  { view: 'orders',    label: 'Pedidos',   shortLabel: 'Pedidos', icon: 'inventory_2' },
+  { view: 'recipes',   label: 'Recetas',   shortLabel: 'Recetas', icon: 'menu_book'   },
+  { view: 'articles',  label: 'Artículos', shortLabel: 'Arts.',   icon: 'package_2'   },
+  { view: 'store',     label: 'Tienda',    shortLabel: 'Tienda',  icon: 'storefront'  },
 ];
 
 const Header: React.FC<{ onLogout: () => void; setView: (view: AppView) => void; currentView: AppView }> = ({ onLogout, setView, currentView }) => {
@@ -74,11 +76,11 @@ const Header: React.FC<{ onLogout: () => void; setView: (view: AppView) => void;
       </header>
 
       <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-surface-variant shadow-lg flex justify-around items-center px-1 py-1.5">
-        {navItems.map(({ view, label, icon }) => (
+        {navItems.map(({ view, shortLabel, icon }) => (
           <button
             key={view}
             onClick={() => setView(view)}
-            className={`flex flex-col items-center gap-0 px-2 py-1 rounded-xl transition text-[9px] font-bold uppercase tracking-wider ${
+            className={`flex flex-col items-center gap-0 px-2 py-1 rounded-xl transition text-[8px] font-bold uppercase tracking-wider ${
               currentView === view ? 'text-primary' : 'text-on-surface-variant'
             }`}
           >
@@ -88,7 +90,7 @@ const Header: React.FC<{ onLogout: () => void; setView: (view: AppView) => void;
             >
               {icon}
             </span>
-            {label}
+            {shortLabel}
           </button>
         ))}
       </nav>
@@ -135,7 +137,8 @@ const App: React.FC = () => {
         return (
           <Dashboard
             onNavigateToOrders={() => setView('orders')}
-            onNavigateToProducts={() => setView('products')}
+            onNavigateToRecipes={() => setView('recipes')}
+            onNavigateToArticles={() => setView('articles')}
             onNavigateToStore={() => setView('store')}
           />
         );
@@ -157,8 +160,10 @@ const App: React.FC = () => {
             <TelegramSettings authToken={authToken!} onAuthError={handleAuthError} />
           </div>
         );
-      case 'products':
-        return <ProductsView />;
+      case 'articles':
+        return <ArticlesView />;
+      case 'recipes':
+        return <RecipesView />;
       case 'store':
         return <StoreView />;
       default:

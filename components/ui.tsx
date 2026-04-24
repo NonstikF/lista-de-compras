@@ -1,6 +1,5 @@
 import React, { useEffect } from 'react';
 import { showToast } from './Toast';
-import { CATEGORIES, type Product } from '../data/catalog';
 
 // ---------- Icon ----------
 interface MIconProps {
@@ -184,48 +183,6 @@ export const Chip: React.FC<ChipProps> = ({ active, onClick, icon, children, cou
   </button>
 );
 
-// ---------- Product image placeholder ----------
-interface ProductThumbProps {
-  product: Product;
-  size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl';
-  className?: string;
-}
-
-export const ProductThumb: React.FC<ProductThumbProps> = ({ product, size = 'md', className = '' }) => {
-  const sizes = {
-    xs: 'w-8 h-8 text-[10px]',
-    sm: 'w-12 h-12 text-xs',
-    md: 'w-16 h-16 text-sm',
-    lg: 'w-24 h-24 text-base',
-    xl: 'w-full aspect-square text-lg',
-  };
-  const cat = CATEGORIES.find(c => c.id === product.category);
-  const initials = product.name.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase();
-
-  if (product.image) {
-    return <img src={product.image} alt={product.name} className={`${sizes[size]} rounded-xl object-cover ${className}`} />;
-  }
-  return (
-    <div
-      className={`${sizes[size]} rounded-xl flex items-center justify-center font-bold text-white relative overflow-hidden ${className}`}
-      style={{ backgroundColor: cat?.color ?? '#42493e' }}
-    >
-      <div
-        className="absolute inset-0 opacity-20"
-        style={{ backgroundImage: 'repeating-linear-gradient(45deg, transparent, transparent 4px, rgba(255,255,255,.3) 4px, rgba(255,255,255,.3) 5px)' }}
-      />
-      <span className="relative font-epilogue">{initials}</span>
-    </div>
-  );
-};
-
 // ---------- Currency ----------
 export const fmt = (n: number): string =>
   `$${Number(n).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-
-// ---------- Stock badge ----------
-export const StockBadge: React.FC<{ stock: number }> = ({ stock }) => {
-  if (stock === 0) return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-error-container text-on-error-container">Sin stock</span>;
-  if (stock < 5)   return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-secondary-container text-on-secondary-container">Bajo: {stock}</span>;
-  return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-primary-fixed text-on-primary-fixed">{stock} disp.</span>;
-};

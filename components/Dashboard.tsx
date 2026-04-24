@@ -2,11 +2,12 @@ import React from 'react';
 
 interface DashboardProps {
     onNavigateToOrders: () => void;
-    onNavigateToProducts: () => void;
+    onNavigateToRecipes: () => void;
+    onNavigateToArticles: () => void;
     onNavigateToStore: () => void;
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ onNavigateToOrders, onNavigateToProducts, onNavigateToStore }) => {
+const Dashboard: React.FC<DashboardProps> = ({ onNavigateToOrders, onNavigateToRecipes, onNavigateToArticles, onNavigateToStore }) => {
     const cards = [
         {
             onClick: onNavigateToOrders,
@@ -17,20 +18,28 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigateToOrders, onNavigateToP
             badge: null as string | null,
         },
         {
-            onClick: onNavigateToProducts,
-            label: 'Productos',
-            desc: 'Catálogo interno',
-            icon: 'inventory',
+            onClick: onNavigateToRecipes,
+            label: 'Recetas',
+            desc: 'Recetas de bebidas',
+            icon: 'menu_book',
             tone: 'bg-secondary-container/60 text-on-secondary-container',
             badge: 'NUEVO',
+        },
+        {
+            onClick: onNavigateToArticles,
+            label: 'Artículos',
+            desc: 'Catálogo de la tienda',
+            icon: 'package_2',
+            tone: 'bg-tertiary-container/30 text-tertiary',
+            badge: null,
         },
         {
             onClick: onNavigateToStore,
             label: 'Tienda',
             desc: 'Crear pedido manual',
             icon: 'storefront',
-            tone: 'bg-tertiary-container/30 text-tertiary',
-            badge: 'NUEVO',
+            tone: 'bg-primary/10 text-primary',
+            badge: null,
         },
     ];
 
@@ -41,12 +50,12 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigateToOrders, onNavigateToP
                 <p className="text-on-surface-variant mt-1">Selecciona una sección para comenzar.</p>
             </section>
 
-            <section className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <section className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 {cards.map(card => (
                     <button
                         key={card.label}
                         onClick={card.onClick}
-                        className="group relative overflow-hidden rounded-2xl bg-surface-container-lowest hover:shadow-lg transition-all border border-surface-variant p-5 flex flex-col justify-between text-left aspect-square"
+                        className="group relative overflow-hidden rounded-2xl bg-white hover:shadow-lg transition-all border border-surface-variant p-5 flex flex-col justify-between text-left aspect-square"
                     >
                         {card.badge && (
                             <span className="absolute top-3 right-3 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-secondary text-on-secondary">

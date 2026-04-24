@@ -1,8 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import type { Order, LineItem } from '../types';
+import type { Order, LineItem, StoreOrder } from '../types';
 import { getOrders, saveItemStatus, completeOrder, AuthError, type OrderStatusType } from '../services/woocommerceService';
 import { CheckCircleIcon, ChevronDownIcon, XMarkIcon, EyeIcon } from './icons';
 import { showToast } from './Toast';
+import { useLocalStorage } from '../hooks/useLocalStorage';
+import { fmt } from './ui';
+
+type TabMode = OrderStatusType | 'store';
 
 interface GroupedItems {
   [category: string]: LineItem[];
@@ -47,6 +51,59 @@ const EmptyState: React.FC = () => (
         <p className="mt-1 text-slate-500">No hay pedidos pendientes en este momento</p>
     </div>
 );
+
+// --- Estado vacío pedidos de Tienda ---
+const EmptyStoreOrders: React.FC = () => (
+    <div className="text-center py-16 px-6 bg-slate-100 rounded-lg">
+        <span className="material-symbols-outlined mx-auto h-12 w-12 text-slate-400 block text-5xl">storefront</span>
+        <h3 className="mt-2 text-xl font-medium text-slate-900">Sin pedidos de Tienda</h3>
+        <p className="mt-1 text-slate-500">Los pedidos creados desde la Tienda aparecerán aquí.</p>
+    </div>
+);
+
+// --- Tarjeta de pedido de Tienda ---
+const StoreOrderCard: React.FC<{
+    order: StoreOrder;
+    onComplete: (id: string) => void;
+}> = ({ order, onComplete }) => {
+    const isPending = order.status === 'pending';
+    const date = new Date(order.dateCreated).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' });
+    return (
+        <article className="bg-white rounded-xl shadow border border-slate-200 overflow-hidden">
+            <div className="p-4 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
+                <div>
+                    <div className="flex items-center gap-2">
+                        <span className="font-bold text-slate-800 text-lg">{order.id}</span>
+                        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${isPending ? 'bg-yellow-100 text-yellow-800' : 'bg-green-100 text-green-800'}`}>
+                            {isPending ? 'Pendiente' : 'Completado'}
+                        </span>
+                    </div>
+                    <p className="text-sm text-slate-500 mt-0.5">{order.customerName} · {order.customerPhone} · {date}</p>
+                    {order.notes && <p className="text-xs text-slate-400 italic mt-0.5">"{order.notes}"</p>}
+                </div>
+                <div className="flex items-center gap-3">
+                    <span className="font-bold text-slate-800 text-lg">{fmt(order.total)}</span>
+                    {isPending && (
+                        <button
+                            onClick={() => onComplete(order.id)}
+                            className="px-3 py-1 text-sm font-medium bg-green-500 text-white rounded-md hover:bg-green-600 transition"
+                        >
+                            Completar
+                        </button>
+                    )}
+                </div>
+            </div>
+            <div className="divide-y divide-slate-100">
+                {order.items.map((item, i) => (
+                    <div key={i} className="flex justify-between px-4 py-2 text-sm">
+                        <span className="text-slate-700">{item.name}</span>
+                        <span className="text-slate-500">{item.qty} × {fmt(item.price)} = <strong className="text-slate-700">{fmt(item.price * item.qty)}</strong></span>
+                    </div>
+                ))}
+            </div>
+        </article>
+    );
+};
 
 // --- Componente OrderItem ---
 const OrderItem = React.memo<{
@@ -303,7 +360,9 @@ const OrdersView: React.FC<OrdersViewProps> = ({ authToken, onAuthError }) => {
     const [orders, setOrders] = useState<Order[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-    const [viewMode, setViewMode] = useState<OrderStatusType>('processing');
+    const [tabMode, setTabMode] = useState<TabMode>('processing');
+    const viewMode: OrderStatusType = tabMode === 'store' ? 'processing' : tabMode;
+    const [storeOrders, setStoreOrders] = useLocalStorage<StoreOrder[]>('plantarte_store_orders', []);
     const [completingOrderId, setCompletingOrderId] = useState<number | null>(null);
     const [modalImageUrl, setModalImageUrl] = useState<string | null>(null);
     const [modalProductName, setModalProductName] = useState<string | null>(null);
@@ -315,7 +374,13 @@ const OrdersView: React.FC<OrdersViewProps> = ({ authToken, onAuthError }) => {
         setModalImageUrl(null);
         setModalProductName(null);
     };
+    const handleCompleteStoreOrder = useCallback((orderId: string) => {
+        setStoreOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: 'completed' } : o));
+        showToast('success', `Pedido ${orderId} completado`);
+    }, [setStoreOrders]);
+
     useEffect(() => {
+        if (tabMode === 'store') return;
         const fetchOrders = async () => {
             try {
                 setIsLoading(true);
@@ -339,7 +404,7 @@ const OrdersView: React.FC<OrdersViewProps> = ({ authToken, onAuthError }) => {
             }
         };
         fetchOrders();
-    }, [viewMode, authToken, onAuthError]);
+    }, [tabMode, viewMode, authToken, onAuthError]);
     const handleQuantityChange = useCallback((itemId: number, newQuantity: number) => {
         setOrders(prevOrders => {
             let itemToSave: LineItem | null = null;
@@ -431,38 +496,59 @@ const OrdersView: React.FC<OrdersViewProps> = ({ authToken, onAuthError }) => {
 
     return (
         <div className="space-y-6">
-            <div className="flex space-x-2 p-1 bg-slate-200 rounded-lg max-w-md">
+            <div className="flex space-x-2 p-1 bg-slate-200 rounded-lg max-w-lg">
                 <TabButton
                     label="Pendientes"
-                    isActive={viewMode === 'processing'}
-                    onClick={() => setViewMode('processing')}
+                    isActive={tabMode === 'processing'}
+                    onClick={() => setTabMode('processing')}
                 />
                 <TabButton
                     label="Completados"
-                    isActive={viewMode === 'completed'}
-                    onClick={() => setViewMode('completed')}
+                    isActive={tabMode === 'completed'}
+                    onClick={() => setTabMode('completed')}
+                />
+                <TabButton
+                    label="Tienda"
+                    isActive={tabMode === 'store'}
+                    onClick={() => setTabMode('store')}
                 />
             </div>
 
-            {isLoading && <LoadingSpinner />}
-            {!isLoading && error && <div className="text-center p-4 bg-red-100 text-red-700 rounded-lg">{error}</div>}
-            {!isLoading && !error && orders.length === 0 && <EmptyState />}
-
-            {!isLoading && !error && orders.length > 0 && (
-                <div className="space-y-8">
-                    {orders.map(order => (
-                        <OrderCard
-                            key={order.id}
-                            order={order}
-                            viewMode={viewMode}
-                            completingOrderId={completingOrderId}
-                            onQuantityChange={handleQuantityChange}
-                            onCompleteOrder={handleCompleteOrder}
-                            onViewImage={handleViewImage}
-                            onDelete={handleDeleteItem}
-                        />
-                    ))}
+            {/* Tab Tienda */}
+            {tabMode === 'store' && (
+                <div className="space-y-4">
+                    {storeOrders.length === 0 ? <EmptyStoreOrders /> : (
+                        storeOrders.map(order => (
+                            <StoreOrderCard key={order.id} order={order} onComplete={handleCompleteStoreOrder} />
+                        ))
+                    )}
                 </div>
+            )}
+
+            {/* Tabs WooCommerce */}
+            {tabMode !== 'store' && (
+                <>
+                    {isLoading && <LoadingSpinner />}
+                    {!isLoading && error && <div className="text-center p-4 bg-red-100 text-red-700 rounded-lg">{error}</div>}
+                    {!isLoading && !error && orders.length === 0 && <EmptyState />}
+
+                    {!isLoading && !error && orders.length > 0 && (
+                        <div className="space-y-8">
+                            {orders.map(order => (
+                                <OrderCard
+                                    key={order.id}
+                                    order={order}
+                                    viewMode={viewMode}
+                                    completingOrderId={completingOrderId}
+                                    onQuantityChange={handleQuantityChange}
+                                    onCompleteOrder={handleCompleteOrder}
+                                    onViewImage={handleViewImage}
+                                    onDelete={handleDeleteItem}
+                                />
+                            ))}
+                        </div>
+                    )}
+                </>
             )}
 
             {modalImageUrl && modalProductName && (
