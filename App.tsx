@@ -3,14 +3,13 @@ import React, { useState, useEffect } from 'react';
 import Login from './components/Login';
 import Dashboard from './components/Dashboard';
 import OrdersView from './components/OrdersView';
-import TelegramSettings from './components/TelegramSettings';
 import ArticlesView from './components/ArticlesView';
 import RecipesView from './components/RecipesView';
 import StoreView from './components/StoreView';
 import SuppliersView from './components/SuppliersView';
 import { ToastContainer } from './components/Toast';
 
-type AppView = 'login' | 'dashboard' | 'orders' | 'settings' | 'articles' | 'recipes' | 'store' | 'suppliers';
+type AppView = 'login' | 'dashboard' | 'orders' | 'articles' | 'recipes' | 'store' | 'suppliers';
 
 const navItems: { view: AppView; label: string; shortLabel: string; icon: string }[] = [
   { view: 'dashboard',  label: 'Panel',       shortLabel: 'Panel',    icon: 'dashboard'       },
@@ -59,13 +58,6 @@ const Header: React.FC<{ onLogout: () => void; setView: (view: AppView) => void;
           </nav>
 
           <div className="flex items-center gap-1">
-            <button
-              onClick={() => setView('settings')}
-              title="Configuración"
-              className={`p-2 rounded-full transition-colors ${currentView === 'settings' ? 'text-primary bg-primary/8' : 'text-on-surface-variant hover:text-primary hover:bg-surface-container-low'}`}
-            >
-              <span className="material-symbols-outlined text-xl">settings</span>
-            </button>
             <button
               onClick={onLogout}
               title="Cerrar sesión"
@@ -152,15 +144,6 @@ const App: React.FC = () => {
               <span className="material-symbols-outlined text-base">arrow_back</span> Regresar al Panel
             </button>
             <OrdersView authToken={authToken!} onAuthError={handleAuthError} />
-          </div>
-        );
-      case 'settings':
-        return (
-          <div className="p-4 md:p-8 max-w-7xl mx-auto">
-            <button onClick={() => setView('dashboard')} className="text-primary hover:text-primary-container font-medium mb-4 flex items-center gap-1">
-              <span className="material-symbols-outlined text-base">arrow_back</span> Regresar al Panel
-            </button>
-            <TelegramSettings authToken={authToken!} onAuthError={handleAuthError} />
           </div>
         );
       case 'articles':
