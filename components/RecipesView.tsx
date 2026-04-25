@@ -14,11 +14,30 @@ const CATEGORY_META = {
     especial: { label: 'Especial', icon: 'auto_awesome',          color: 'bg-tertiary-container/50 text-tertiary' },
 } as const;
 
+type RecipeCategory = keyof typeof CATEGORY_META;
+
+const normalizeCategory = (category: unknown): RecipeCategory => {
+    if (category === 'caliente' || category === 'fria' || category === 'especial') return category;
+    return 'especial';
+};
+
+const getCategoryMeta = (category: unknown) => CATEGORY_META[normalizeCategory(category)];
+
+const normalizeRecipe = (recipe: Recipe): Recipe => ({
+    ...recipe,
+    category: normalizeCategory(recipe.category),
+    image: recipe.image ?? null,
+    ingredients: Array.isArray(recipe.ingredients) ? recipe.ingredients : [],
+    instructions: recipe.instructions ?? '',
+    description: recipe.description ?? '',
+    servings: Math.max(1, Number(recipe.servings) || 1),
+});
+
 const UNITS = ['g', 'kg', 'ml', 'L', 'pza', 'cdta', 'cda', 'taza', 'al gusto'];
 
 // ---------- Imagen o placeholder ----------
 const RecipeImage: React.FC<{ recipe: Recipe; className?: string }> = ({ recipe, className = '' }) => {
-    const meta = CATEGORY_META[recipe.category];
+    const meta = getCategoryMeta(recipe.category);
     if (recipe.image) {
         return <img src={recipe.image} alt={recipe.name} className={`w-full h-full object-cover ${className}`} />;
     }
@@ -36,7 +55,7 @@ const RecipeCard: React.FC<{
     onEdit: (r: Recipe) => void;
     onDelete: (r: Recipe) => void;
 }> = ({ recipe, onView, onEdit, onDelete }) => {
-    const meta = CATEGORY_META[recipe.category];
+    const meta = getCategoryMeta(recipe.category);
     return (
         <div className="bg-white rounded-2xl border border-surface-variant shadow-sm overflow-hidden flex flex-col hover:shadow-md transition-shadow">
             <div className="h-40 overflow-hidden">
@@ -77,7 +96,7 @@ const RecipeCard: React.FC<{
 
 // ---------- Modal detalle ----------
 const RecipeDetailModal: React.FC<{ recipe: Recipe; onClose: () => void; onEdit: (r: Recipe) => void }> = ({ recipe, onClose, onEdit }) => {
-    const meta = CATEGORY_META[recipe.category];
+    const meta = getCategoryMeta(recipe.category);
     return (
         <Modal
             open
@@ -198,7 +217,7 @@ const RecipeEditModal: React.FC<{
     const initial: RecipeForm = isNew ? blank : {
         name: (recipe as Recipe).name,
         description: (recipe as Recipe).description,
-        category: (recipe as Recipe).category,
+        category: normalizeCategory((recipe as Recipe).category),
         image: (recipe as Recipe).image,
         ingredients: (recipe as Recipe).ingredients.map(({ name, quantity, unit }) => ({ name, quantity, unit })),
         instructions: (recipe as Recipe).instructions,
@@ -385,7 +404,7 @@ const RecipesView: React.FC<RecipesViewProps> = ({ authToken, onAuthError }) => 
             setIsLoading(true);
             try {
                 const data = await getRecipes(authToken);
-                if (!cancelled) setRecipes(data);
+                if (!cancelled) setRecipes(data.map(normalizeRecipe));
             } catch (err) {
                 if (err instanceof AuthError) { onAuthError(); return; }
                 if (!cancelled) toast('error', err instanceof Error ? err.message : 'Error al cargar recetas');
@@ -397,17 +416,17 @@ const RecipesView: React.FC<RecipesViewProps> = ({ authToken, onAuthError }) => 
         return () => { cancelled = true; };
     }, [authToken]);
 
-    const filtered = catFilter === 'todas' ? recipes : recipes.filter(r => r.category === catFilter);
+    const filtered = catFilter === 'todas' ? recipes : recipes.filter(r => normalizeCategory(r.category) === catFilter);
 
     const handleSave = async (data: RecipeForm) => {
         const isNew = editing === 'new';
         try {
             if (isNew) {
-                const created = await createRecipe(authToken, data);
+                const created = normalizeRecipe(await createRecipe(authToken, data));
                 setRecipes(prev => [...prev, created]);
                 toast('success', `${data.name} creada`);
             } else {
-                const updated = await updateRecipe(authToken, (editing as Recipe).id, data);
+                const updated = normalizeRecipe(await updateRecipe(authToken, (editing as Recipe).id, data));
                 setRecipes(prev => prev.map(r => r.id === updated.id ? updated : r));
                 toast('success', `${data.name} actualizada`);
             }

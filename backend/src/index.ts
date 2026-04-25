@@ -610,10 +610,40 @@ app.delete('/api/articles/:id', async (req: Request, res: Response) => {
 // RECETAS
 // ============================================================
 
+const recipeCategories = ['caliente', 'fria', 'especial'] as const;
+type RecipeCategory = typeof recipeCategories[number];
+
+function normalizeRecipeCategory(category: unknown): RecipeCategory {
+    return recipeCategories.includes(category as RecipeCategory) ? category as RecipeCategory : 'especial';
+}
+
+function formatRecipe(recipe: {
+    id: string;
+    name: string;
+    description: string;
+    category: string;
+    image: string | null;
+    instructions: string;
+    servings: number;
+    createdAt: Date;
+    updatedAt: Date;
+    ingredients: { name: string; quantity: string; unit: string }[];
+}) {
+    return {
+        ...recipe,
+        category: normalizeRecipeCategory(recipe.category),
+        image: recipe.image ?? null,
+        description: recipe.description ?? '',
+        instructions: recipe.instructions ?? '',
+        servings: Math.max(1, Number(recipe.servings) || 1),
+        ingredients: recipe.ingredients ?? [],
+    };
+}
+
 const recipeSchema = z.object({
     name: z.string().min(1, 'Nombre requerido'),
     description: z.string().default(''),
-    category: z.enum(['caliente', 'fria', 'especial']),
+    category: z.string().default('especial').transform(normalizeRecipeCategory),
     image: z.string().nullable().default(null),
     instructions: z.string().default(''),
     servings: z.number().int().min(1).default(1),
@@ -630,7 +660,7 @@ app.get('/api/recipes', async (_req: Request, res: Response) => {
             include: { ingredients: true },
             orderBy: { createdAt: 'asc' },
         });
-        res.json(recipes);
+        res.json(recipes.map(formatRecipe));
     } catch (err) {
         console.error('Error al obtener recetas:', err);
         res.status(500).json({ error: 'Error al obtener recetas' });
@@ -646,7 +676,7 @@ app.post('/api/recipes', async (req: Request, res: Response) => {
             data: { ...rest, ingredients: { create: ingredients } },
             include: { ingredients: true },
         });
-        res.status(201).json(recipe);
+        res.status(201).json(formatRecipe(recipe));
     } catch (err) {
         console.error('Error al crear receta:', err);
         res.status(500).json({ error: 'Error al crear receta' });
@@ -666,7 +696,7 @@ app.put('/api/recipes/:id', async (req: Request, res: Response) => {
             },
             include: { ingredients: true },
         });
-        res.json(recipe);
+        res.json(formatRecipe(recipe));
     } catch (err) {
         console.error('Error al actualizar receta:', err);
         res.status(500).json({ error: 'Error al actualizar receta' });
