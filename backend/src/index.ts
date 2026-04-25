@@ -50,7 +50,15 @@ app.use(cors({
     credentials: true,
 }));
 
-app.use(express.json());
+app.use(express.json({ limit: '2mb' }));
+
+app.use((err: unknown, _req: Request, res: Response, next: NextFunction) => {
+    if (err instanceof Error && 'type' in err && err.type === 'entity.too.large') {
+        res.status(413).json({ error: 'La imagen es demasiado grande. Usa una imagen de menos de 500 KB.' });
+        return;
+    }
+    next(err);
+});
 
 // Rate limiting general: 100 requests por 15 minutos
 const generalLimiter = rateLimit({
