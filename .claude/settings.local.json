@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx prisma *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git push *)",
+      "WebFetch(domain:api.anthropic.com)",
+      "Bash(grep -E \"\\\\.\\(tsx?|css|scss\\)$\")",
+      "Bash(curl -s \"https://api.anthropic.com/v1/design/h/CxaSB-qNC2dHHaB4n5x0fg?open_file=index.html\")",
+      "Bash(gunzip)",
+      "Bash(curl -s \"https://api.anthropic.com/v1/design/h/CxaSB-qNC2dHHaB4n5x0fg?open_file=index.html\" -H \"Accept-Encoding: identity\")",
+      "PowerShell($response = Invoke-WebRequest -Uri \"https://api.anthropic.com/v1/design/h/CxaSB-qNC2dHHaB4n5x0fg?open_file=index.html\" -UseBasicParsing; $response.Content)",
+      "Read(//c/Users/admin/AppData/Local/Temp/plantarte-design2/compras/**)",
+      "Read(//c/Users/admin/AppData/Local/Temp/plantarte-design2/compras/chats/**)",
+      "Read(//c/Users/admin/AppData/Local/Temp/plantarte-design2/compras/project/**)",
+      "Bash(npx tsc *)",
+      "Bash(git checkout *)",
+      "Bash(git merge *)",
+      "Bash(git stash *)"
+    ]
+  }
+}

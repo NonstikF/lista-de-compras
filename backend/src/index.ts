@@ -7,16 +7,37 @@ import { z } from 'zod';
 import { PrismaClient } from '@prisma/client';
 import axios from 'axios';
 import type { WooCommerceOrder, WooCommerceProduct, WooCommerceLineItem } from './types';
-import { initTelegramBot, reinitTelegramBot, notifyMissingItems } from './telegram';
-import { getCachedProduct, setCachedProduct } from './productCache';
 
 // Inicializar Prisma Client
 const prisma = new PrismaClient();
 
+// --- Cache en memoria para productos ---
+const PRODUCT_CACHE_TTL = 10 * 60 * 1000; // 10 minutos
+interface CachedProduct {
+    category: string;
+    imageUrl: string | null;
+    cachedAt: number;
+}
+const productCache = new Map<number, CachedProduct>();
+
+function getCachedProduct(productId: number): { category: string; imageUrl: string | null } | null {
+    const cached = productCache.get(productId);
+    if (!cached) return null;
+    if (Date.now() - cached.cachedAt > PRODUCT_CACHE_TTL) {
+        productCache.delete(productId);
+        return null;
+    }
+    return { category: cached.category, imageUrl: cached.imageUrl };
+}
+
+function setCachedProduct(productId: number, category: string, imageUrl: string | null): void {
+    productCache.set(productId, { category, imageUrl, cachedAt: Date.now() });
+}
+
 // Inicializar Express App
 const app = express();
 
-// Confiar en el proxy para que express-rate-limit funcione correctamente en Railway/herramientas de despliegue
+// Railway (y otros proxies) inyectan X-Forwarded-For
 app.set('trust proxy', 1);
 
 // --- Security Middlewares ---
@@ -399,37 +420,7 @@ app.post('/api/orders/:id/complete', async (req: Request, res: Response) => {
         );
 
         if (response.status >= 200 && response.status < 300) {
-            const rawOrder = response.data;
-
-            // Detectar faltantes y notificar por Telegram
-            try {
-                const lineItemIds: number[] = rawOrder.line_items.map((i: { id: number }) => i.id);
-                const statuses = await prisma.purchaseStatus.findMany({
-                    where: { lineItemId: { in: lineItemIds } },
-                });
-                const statusMap = new Map(statuses.map(s => [s.lineItemId, s]));
-
-                const missingItems = rawOrder.line_items
-                    .map((item: { id: number; name: string; quantity: number; product_id: number }) => {
-                        const status = statusMap.get(item.id);
-                        const quantityPurchased = status?.quantityPurchased ?? 0;
-                        if (!status?.isPurchased) {
-                            const category = getCachedProduct(item.product_id)?.category || 'Sin categoría';
-                            return { name: item.name, category, quantity: item.quantity, quantityPurchased };
-                        }
-                        return null;
-                    })
-                    .filter(Boolean) as Array<{ name: string; category: string; quantity: number; quantityPurchased: number }>;
-
-                if (missingItems.length > 0) {
-                    const customer = `${rawOrder.billing.first_name} ${rawOrder.billing.last_name}`.trim();
-                    await notifyMissingItems(prisma, orderIdNum, customer, missingItems);
-                }
-            } catch (notifErr) {
-                console.error('Error notificando faltantes por Telegram:', notifErr);
-            }
-
-            res.status(200).json({ success: true, updatedOrder: rawOrder });
+            res.status(200).json({ success: true, updatedOrder: response.data });
             return;
         }
 
@@ -474,30 +465,170 @@ app.post('/api/orders/:id/complete', async (req: Request, res: Response) => {
 });
 
 
-// --- Rutas de Recetas ---
+// ============================================================
+// PROVEEDORES
+// ============================================================
 
-const recipeSchema = z.object({
-    name: z.string().min(1, 'Nombre es requerido'),
-    description: z.string().optional(),
-    instructions: z.string().optional(),
-    imageUrl: z.string().optional(),
-    category: z.string().optional(),
-    ingredients: z.array(z.object({
-        id: z.number().optional(),
-        name: z.string().min(1, 'Nombre del ingrediente es requerido'),
-        amount: z.string().optional(),
-    })).optional(),
+const supplierSchema = z.object({
+    name: z.string().min(1, 'Nombre requerido'),
+    contact: z.string().default(''),
+    phone: z.string().default(''),
 });
 
-/**
- * RUTA [GET] /api/recipes
- * Obtiene todas las recetas con sus ingredientes.
- */
+app.get('/api/suppliers', async (_req: Request, res: Response) => {
+    try {
+        const suppliers = await prisma.supplier.findMany({ orderBy: { createdAt: 'asc' } });
+        res.json(suppliers);
+    } catch (err) {
+        console.error('Error al obtener proveedores:', err);
+        res.status(500).json({ error: 'Error al obtener proveedores' });
+    }
+});
+
+app.post('/api/suppliers', async (req: Request, res: Response) => {
+    const parsed = supplierSchema.safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: parsed.error.issues[0].message }); return; }
+    try {
+        const supplier = await prisma.supplier.create({ data: parsed.data });
+        res.status(201).json(supplier);
+    } catch (err) {
+        console.error('Error al crear proveedor:', err);
+        res.status(500).json({ error: 'Error al crear proveedor' });
+    }
+});
+
+app.put('/api/suppliers/:id', async (req: Request, res: Response) => {
+    const parsed = supplierSchema.safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: parsed.error.issues[0].message }); return; }
+    try {
+        const supplier = await prisma.supplier.update({ where: { id: req.params.id }, data: parsed.data });
+        res.json(supplier);
+    } catch (err) {
+        console.error('Error al actualizar proveedor:', err);
+        res.status(500).json({ error: 'Error al actualizar proveedor' });
+    }
+});
+
+app.delete('/api/suppliers/:id', async (req: Request, res: Response) => {
+    try {
+        await prisma.supplier.delete({ where: { id: req.params.id } });
+        res.json({ success: true });
+    } catch (err) {
+        console.error('Error al eliminar proveedor:', err);
+        res.status(500).json({ error: 'Error al eliminar proveedor' });
+    }
+});
+
+// ============================================================
+// ARTÍCULOS
+// ============================================================
+
+const articleSchema = z.object({
+    name: z.string().min(1, 'Nombre requerido'),
+    image: z.string().nullable().default(null),
+    price: z.number().min(0, 'Precio inválido'),
+    supplierIds: z.array(z.string()).default([]),
+});
+
+function formatArticle(a: { id: string; name: string; image: string | null; price: number; createdAt: Date; updatedAt: Date; suppliers: { supplierId: string }[] }) {
+    return {
+        id: a.id,
+        name: a.name,
+        image: a.image,
+        price: a.price,
+        supplierIds: a.suppliers.map((s: { supplierId: string }) => s.supplierId),
+        createdAt: a.createdAt,
+    };
+}
+
+app.get('/api/articles', async (_req: Request, res: Response) => {
+    try {
+        const articles = await prisma.article.findMany({
+            include: { suppliers: { select: { supplierId: true } } },
+            orderBy: { createdAt: 'asc' },
+        });
+        res.json(articles.map(formatArticle));
+    } catch (err) {
+        console.error('Error al obtener artículos:', err);
+        res.status(500).json({ error: 'Error al obtener artículos' });
+    }
+});
+
+app.post('/api/articles', async (req: Request, res: Response) => {
+    const parsed = articleSchema.safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: parsed.error.issues[0].message }); return; }
+    const { name, image, price, supplierIds } = parsed.data;
+    try {
+        const article = await prisma.article.create({
+            data: {
+                name, image, price,
+                suppliers: { create: supplierIds.map((sid: string) => ({ supplierId: sid })) },
+            },
+            include: { suppliers: { select: { supplierId: true } } },
+        });
+        res.status(201).json(formatArticle(article));
+    } catch (err) {
+        console.error('Error al crear artículo:', err);
+        res.status(500).json({ error: 'Error al crear artículo' });
+    }
+});
+
+app.put('/api/articles/:id', async (req: Request, res: Response) => {
+    const parsed = articleSchema.safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: parsed.error.issues[0].message }); return; }
+    const { name, image, price, supplierIds } = parsed.data;
+    try {
+        const article = await prisma.article.update({
+            where: { id: req.params.id },
+            data: {
+                name, image, price,
+                suppliers: {
+                    deleteMany: {},
+                    create: supplierIds.map((sid: string) => ({ supplierId: sid })),
+                },
+            },
+            include: { suppliers: { select: { supplierId: true } } },
+        });
+        res.json(formatArticle(article));
+    } catch (err) {
+        console.error('Error al actualizar artículo:', err);
+        res.status(500).json({ error: 'Error al actualizar artículo' });
+    }
+});
+
+app.delete('/api/articles/:id', async (req: Request, res: Response) => {
+    try {
+        await prisma.article.delete({ where: { id: req.params.id } });
+        res.json({ success: true });
+    } catch (err) {
+        console.error('Error al eliminar artículo:', err);
+        res.status(500).json({ error: 'Error al eliminar artículo' });
+    }
+});
+
+// ============================================================
+// RECETAS
+// ============================================================
+
+const recipeSchema = z.object({
+    name: z.string().min(1, 'Nombre requerido'),
+    description: z.string().default(''),
+    category: z.enum(['caliente', 'fria', 'especial']),
+    image: z.string().nullable().default(null),
+    instructions: z.string().default(''),
+    servings: z.number().int().min(1).default(1),
+    ingredients: z.array(z.object({
+        name: z.string(),
+        quantity: z.string(),
+        unit: z.string(),
+    })).default([]),
+});
+
 app.get('/api/recipes', async (_req: Request, res: Response) => {
     try {
         const recipes = await prisma.recipe.findMany({
             include: { ingredients: true },
-            orderBy: { createdAt: 'desc' },
+            orderBy: { createdAt: 'asc' },
         });
         res.json(recipes);
     } catch (err) {
@@ -506,254 +637,117 @@ app.get('/api/recipes', async (_req: Request, res: Response) => {
     }
 });
 
-/**
- * RUTA [POST] /api/recipes
- * Crea una nueva receta.
- */
 app.post('/api/recipes', async (req: Request, res: Response) => {
     const parsed = recipeSchema.safeParse(req.body);
-    if (!parsed.success) {
-        res.status(400).json({ error: parsed.error.issues[0].message });
-        return;
-    }
-
-    const { name, description, instructions, imageUrl, category, ingredients } = parsed.data;
-
+    if (!parsed.success) { res.status(400).json({ error: parsed.error.issues[0].message }); return; }
+    const { ingredients, ...rest } = parsed.data;
     try {
         const recipe = await prisma.recipe.create({
-            data: {
-                name,
-                description: description || null,
-                instructions: instructions || null,
-                imageUrl: imageUrl || null,
-                category: category || "Bebidas",
-                ingredients: {
-                    create: ingredients || [],
-                },
-            },
+            data: { ...rest, ingredients: { create: ingredients } },
             include: { ingredients: true },
         });
         res.status(201).json(recipe);
     } catch (err) {
         console.error('Error al crear receta:', err);
-        res.status(500).json({ error: 'Error al crear la receta' });
+        res.status(500).json({ error: 'Error al crear receta' });
     }
 });
 
-/**
- * RUTA [PUT] /api/recipes/:id
- * Actualiza una receta existente.
- */
 app.put('/api/recipes/:id', async (req: Request, res: Response) => {
-    const { id } = req.params;
     const parsed = recipeSchema.safeParse(req.body);
-    if (!parsed.success) {
-        res.status(400).json({ error: parsed.error.issues[0].message });
-        return;
-    }
-
-    const { name, description, instructions, imageUrl, category, ingredients } = parsed.data;
-
+    if (!parsed.success) { res.status(400).json({ error: parsed.error.issues[0].message }); return; }
+    const { ingredients, ...rest } = parsed.data;
     try {
-        // Primero eliminamos los ingredientes existentes para reemplazarlos
-        await prisma.ingredient.deleteMany({ where: { recipeId: Number(id) } });
-
         const recipe = await prisma.recipe.update({
-            where: { id: Number(id) },
+            where: { id: req.params.id },
             data: {
-                name,
-                description: description || null,
-                instructions: instructions || null,
-                imageUrl: imageUrl || null,
-                category: category || "Bebidas",
-                ingredients: {
-                    create: ingredients || [],
-                },
+                ...rest,
+                ingredients: { deleteMany: {}, create: ingredients },
             },
             include: { ingredients: true },
         });
         res.json(recipe);
     } catch (err) {
         console.error('Error al actualizar receta:', err);
-        res.status(500).json({ error: 'Error al actualizar la receta' });
+        res.status(500).json({ error: 'Error al actualizar receta' });
     }
 });
 
-/**
- * RUTA [DELETE] /api/recipes/:id
- * Elimina una receta.
- */
 app.delete('/api/recipes/:id', async (req: Request, res: Response) => {
-    const { id } = req.params;
     try {
-        await prisma.recipe.delete({ where: { id: Number(id) } });
+        await prisma.recipe.delete({ where: { id: req.params.id } });
         res.json({ success: true });
     } catch (err) {
         console.error('Error al eliminar receta:', err);
-        res.status(500).json({ error: 'Error al eliminar la receta' });
+        res.status(500).json({ error: 'Error al eliminar receta' });
     }
 });
 
-// --- Rutas de Configuración del Bot de Telegram ---
+// ============================================================
+// PEDIDOS DE TIENDA
+// ============================================================
 
-const telegramConfigSchema = z.object({
-    botToken: z.string().optional(),
-    chatId: z.string(),
-    allowedChatIds: z.string(),
-    enabled: z.boolean(),
-    staleHours: z.number().int().min(1).max(72),
+const storeOrderSchema = z.object({
+    customerName: z.string().min(1, 'Nombre requerido'),
+    customerPhone: z.string().default(''),
+    notes: z.string().default(''),
+    items: z.array(z.object({
+        articleId: z.string(),
+        name: z.string(),
+        price: z.number(),
+        qty: z.number().int().min(1),
+    })).min(1, 'El pedido necesita al menos un artículo'),
 });
 
-/**
- * RUTA [GET] /api/telegram/config
- * Devuelve la configuración actual del bot (token enmascarado).
- */
-app.get('/api/telegram/config', async (_req: Request, res: Response) => {
+function formatStoreOrder(o: { id: number; dateCreated: Date; status: string; customerName: string; customerPhone: string; notes: string; total: number; items: { id: number; orderId: number; articleId: string; name: string; price: number; qty: number }[] }) {
+    return { ...o, id: `T-${o.id}`, dateCreated: o.dateCreated.toISOString() };
+}
+
+app.get('/api/store-orders', async (_req: Request, res: Response) => {
     try {
-        const config = await prisma.telegramConfig.findUnique({ where: { id: 1 } });
-
-        if (!config) {
-            const envToken = process.env.TELEGRAM_BOT_TOKEN || '';
-            res.json({
-                botToken: envToken ? `****${envToken.slice(-4)}` : '',
-                chatId: process.env.TELEGRAM_CHAT_ID || '',
-                allowedChatIds: process.env.TELEGRAM_ALLOWED_CHAT_IDS || '',
-                enabled: !!envToken,
-                staleHours: 2,
-                hasToken: !!envToken,
-            });
-            return;
-        }
-
-        res.json({
-            botToken: config.botToken ? `****${config.botToken.slice(-4)}` : '',
-            chatId: config.chatId,
-            allowedChatIds: config.allowedChatIds,
-            enabled: config.enabled,
-            staleHours: config.staleHours,
-            hasToken: !!config.botToken,
+        const orders = await prisma.storeOrder.findMany({
+            include: { items: true },
+            orderBy: { dateCreated: 'desc' },
         });
+        res.json(orders.map(formatStoreOrder));
     } catch (err) {
-        console.error('Error al obtener config de Telegram:', err);
-        res.status(500).json({ error: 'Error al obtener la configuración' });
+        console.error('Error al obtener pedidos de tienda:', err);
+        res.status(500).json({ error: 'Error al obtener pedidos de tienda' });
     }
 });
 
-/**
- * RUTA [PUT] /api/telegram/config
- * Guarda la configuración del bot y lo reinicia.
- */
-app.put('/api/telegram/config', async (req: Request, res: Response) => {
-    const parsed = telegramConfigSchema.safeParse(req.body);
-    if (!parsed.success) {
-        res.status(400).json({ error: parsed.error.issues[0].message });
-        return;
-    }
-
-    const { botToken, chatId, allowedChatIds, enabled, staleHours } = parsed.data;
-
+app.post('/api/store-orders', async (req: Request, res: Response) => {
+    const parsed = storeOrderSchema.safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: parsed.error.issues[0].message }); return; }
+    const { items, ...rest } = parsed.data;
+    const total = items.reduce((s, i) => s + i.price * i.qty, 0);
     try {
-        const existing = await prisma.telegramConfig.findUnique({ where: { id: 1 } });
-
-        // Conservar token anterior si el nuevo viene enmascarado o vacío
-        const tokenToSave = (botToken && !botToken.startsWith('****'))
-            ? botToken
-            : (existing?.botToken || process.env.TELEGRAM_BOT_TOKEN || '');
-
-        await prisma.telegramConfig.upsert({
-            where: { id: 1 },
-            update: { botToken: tokenToSave, chatId, allowedChatIds, enabled, staleHours },
-            create: { id: 1, botToken: tokenToSave, chatId, allowedChatIds, enabled, staleHours },
+        const order = await prisma.storeOrder.create({
+            data: { ...rest, total, items: { create: items } },
+            include: { items: true },
         });
-
-        await reinitTelegramBot(prisma);
-        res.json({ success: true });
+        res.status(201).json(formatStoreOrder(order));
     } catch (err) {
-        console.error('Error al guardar config de Telegram:', err);
-        res.status(500).json({ error: 'Error al guardar la configuración' });
+        console.error('Error al crear pedido de tienda:', err);
+        res.status(500).json({ error: 'Error al crear pedido de tienda' });
     }
 });
 
-/**
- * RUTA [GET] /api/telegram/chats
- * Detecta los chats recientes que han enviado mensajes al bot.
- */
-app.get('/api/telegram/chats', async (_req: Request, res: Response) => {
+app.patch('/api/store-orders/:id/complete', async (req: Request, res: Response) => {
+    const rawId = req.params.id.startsWith('T-')
+        ? parseInt(req.params.id.slice(2), 10)
+        : parseInt(req.params.id, 10);
+    if (!Number.isFinite(rawId)) { res.status(400).json({ error: 'ID inválido' }); return; }
     try {
-        const config = await prisma.telegramConfig.findUnique({ where: { id: 1 } });
-        const token = config?.botToken || process.env.TELEGRAM_BOT_TOKEN;
-
-        if (!token) {
-            res.status(400).json({ error: 'Token no configurado' });
-            return;
-        }
-
-        // Primero intentar desde la DB (chats vistos por el bot en polling)
-        const knownChats = await prisma.telegramKnownChat.findMany({
-            orderBy: { seenAt: 'desc' },
+        const order = await prisma.storeOrder.update({
+            where: { id: rawId },
+            data: { status: 'completed' },
+            include: { items: true },
         });
-
-        if (knownChats.length > 0) {
-            res.json({ chats: knownChats.map(c => ({ id: c.id, name: c.name, type: c.type })) });
-            return;
-        }
-
-        // Fallback: getUpdates (funciona solo si el bot no está en polling activo)
-        const response = await axios.get(`https://api.telegram.org/bot${token}/getUpdates`, {
-            params: { limit: 100 },
-            timeout: 10000,
-        });
-
-        const updates = response.data?.result ?? [];
-
-        const chatsMap = new Map<string, { id: string; name: string; type: string }>();
-        for (const update of updates) {
-            const chat = update.message?.chat ?? update.channel_post?.chat;
-            if (!chat) continue;
-
-            const id = String(chat.id);
-            if (!chatsMap.has(id)) {
-                let name = '';
-                if (chat.type === 'private') {
-                    name = [chat.first_name, chat.last_name].filter(Boolean).join(' ');
-                } else {
-                    name = chat.title || chat.username || `Grupo ${id}`;
-                }
-                chatsMap.set(id, { id, name, type: chat.type });
-            }
-        }
-
-        res.json({ chats: Array.from(chatsMap.values()) });
+        res.json(formatStoreOrder(order));
     } catch (err) {
-        console.error('Error al obtener chats de Telegram:', err);
-        res.status(500).json({ error: 'No se pudieron obtener los chats. Asegurate de que el token sea válido.' });
-    }
-});
-
-/**
- * RUTA [POST] /api/telegram/test
- * Envía un mensaje de prueba al chat configurado.
- */
-app.post('/api/telegram/test', async (_req: Request, res: Response) => {
-    try {
-        const config = await prisma.telegramConfig.findUnique({ where: { id: 1 } });
-        const token = config?.botToken || process.env.TELEGRAM_BOT_TOKEN;
-        const chatId = config?.chatId || process.env.TELEGRAM_CHAT_ID;
-
-        if (!token || !chatId) {
-            res.status(400).json({ error: 'Token o Chat ID no configurado' });
-            return;
-        }
-
-        await axios.post(`https://api.telegram.org/bot${token}/sendMessage`, {
-            chat_id: chatId,
-            text: '✅ Bot de PlantArte configurado correctamente!',
-        });
-
-        res.json({ success: true });
-    } catch (err) {
-        console.error('Error al enviar mensaje de prueba:', err);
-        res.status(500).json({ error: 'No se pudo enviar el mensaje. Verificá el token y el Chat ID.' });
+        console.error('Error al completar pedido de tienda:', err);
+        res.status(500).json({ error: 'Error al completar pedido de tienda' });
     }
 });
 
@@ -761,5 +755,4 @@ app.post('/api/telegram/test', async (_req: Request, res: Response) => {
 const port = process.env.PORT || 4000;
 app.listen(port, () => {
     console.log(`Servidor Backend escuchando en http://localhost:${port}`);
-    initTelegramBot(prisma);
 });

@@ -1,8 +1,12 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import type { Order, LineItem } from '../types';
+import React, { useState, useEffect, useCallback } from 'react';
+import type { Order, LineItem, StoreOrder } from '../types';
 import { getOrders, saveItemStatus, completeOrder, AuthError, type OrderStatusType } from '../services/woocommerceService';
+import { getStoreOrders, completeStoreOrder } from '../services/catalogService';
 import { CheckCircleIcon, ChevronDownIcon, XMarkIcon, EyeIcon } from './icons';
 import { showToast } from './Toast';
+import { fmt } from './ui';
+
+type TabMode = OrderStatusType | 'store';
 
 interface GroupedItems {
   [category: string]: LineItem[];
@@ -11,7 +15,6 @@ interface GroupedItems {
 interface OrdersViewProps {
   authToken: string;
   onAuthError: () => void;
-  highlightOrderId?: number | null;
 }
 
 // --- Componente Modal de Imagen ---
@@ -49,12 +52,66 @@ const EmptyState: React.FC = () => (
     </div>
 );
 
+// --- Estado vacío pedidos de Tienda ---
+const EmptyStoreOrders: React.FC = () => (
+    <div className="text-center py-16 px-6 bg-slate-100 rounded-lg">
+        <span className="material-symbols-outlined mx-auto h-12 w-12 text-slate-400 block text-5xl">storefront</span>
+        <h3 className="mt-2 text-xl font-medium text-slate-900">Sin pedidos de Tienda</h3>
+        <p className="mt-1 text-slate-500">Los pedidos creados desde la Tienda aparecerán aquí.</p>
+    </div>
+);
+
+// --- Tarjeta de pedido de Tienda ---
+const StoreOrderCard: React.FC<{
+    order: StoreOrder;
+    onComplete: (id: string) => void;
+}> = ({ order, onComplete }) => {
+    const isPending = order.status === 'pending';
+    const date = new Date(order.dateCreated).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' });
+    return (
+        <article className="bg-white rounded-xl shadow border border-slate-200 overflow-hidden">
+            <div className="p-4 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
+                <div>
+                    <div className="flex items-center gap-2">
+                        <span className="font-bold text-slate-800 text-lg">{order.id}</span>
+                        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${isPending ? 'bg-yellow-100 text-yellow-800' : 'bg-green-100 text-green-800'}`}>
+                            {isPending ? 'Pendiente' : 'Completado'}
+                        </span>
+                    </div>
+                    <p className="text-sm text-slate-500 mt-0.5">{order.customerName} · {order.customerPhone} · {date}</p>
+                    {order.notes && <p className="text-xs text-slate-400 italic mt-0.5">"{order.notes}"</p>}
+                </div>
+                <div className="flex items-center gap-3">
+                    <span className="font-bold text-slate-800 text-lg">{fmt(order.total)}</span>
+                    {isPending && (
+                        <button
+                            onClick={() => onComplete(order.id)}
+                            className="px-3 py-1 text-sm font-medium bg-green-500 text-white rounded-md hover:bg-green-600 transition"
+                        >
+                            Completar
+                        </button>
+                    )}
+                </div>
+            </div>
+            <div className="divide-y divide-slate-100">
+                {order.items.map((item, i) => (
+                    <div key={i} className="flex justify-between px-4 py-2 text-sm">
+                        <span className="text-slate-700">{item.name}</span>
+                        <span className="text-slate-500">{item.qty} × {fmt(item.price)} = <strong className="text-slate-700">{fmt(item.price * item.qty)}</strong></span>
+                    </div>
+                ))}
+            </div>
+        </article>
+    );
+};
+
 // --- Componente OrderItem ---
 const OrderItem = React.memo<{
     item: LineItem;
     onQuantityChange: (itemId: number, newQuantity: number) => void;
     onViewImage: (imageUrl: string, productName: string) => void;
-}>(({ item, onQuantityChange, onViewImage }) => {
+    onDelete: (itemId: number) => void;
+}>(({ item, onQuantityChange, onViewImage, onDelete }) => {
     const isPurchased = item.isPurchased;
     const isInProgress = item.quantityPurchased > 0 && !isPurchased;
 
@@ -74,6 +131,11 @@ const OrderItem = React.memo<{
             onQuantityChange(item.id, item.quantityPurchased - 1);
         }
     };
+    const handleDelete = () => {
+        if (window.confirm(`¿Eliminar "${item.name}" de este pedido?`)) {
+            onDelete(item.id);
+        }
+    };
 
     const getBackgroundColor = () => {
         if (isPurchased) return 'bg-green-50 text-slate-500';
@@ -91,7 +153,6 @@ const OrderItem = React.memo<{
                     <p className={`font-semibold text-slate-800 ${isPurchased ? 'line-through' : ''}`}>
                         {item.name}
                     </p>
-
                     <div className="flex items-center gap-2 text-xs text-slate-500">
                         <span>SKU: {item.sku || 'N/A'}</span>
                         <span>&bull;</span>
@@ -99,7 +160,6 @@ const OrderItem = React.memo<{
                             ${unitPrice.toFixed(2)} c/u
                         </span>
                     </div>
-
                 </div>
             </div>
 
@@ -120,7 +180,15 @@ const OrderItem = React.memo<{
                         <EyeIcon className="w-5 h-5" />
                     </button>
                 )}
-                 <button
+                <button
+                    onClick={handleDelete}
+                    aria-label={`Eliminar ${item.name}`}
+                    className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-red-400"
+                    title="Eliminar artículo"
+                >
+                    <XMarkIcon className="w-5 h-5" />
+                </button>
+                <button
                     onClick={handleToggle}
                     aria-label={`Mark ${item.name} as ${isPurchased ? 'not purchased' : 'purchased'}`}
                     className={`relative w-14 h-8 rounded-full flex items-center transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 ${ isPurchased ? 'bg-green-500 focus:ring-green-500' : 'bg-slate-300 focus:ring-indigo-500' }`}
@@ -138,7 +206,8 @@ const CategorySection = React.memo<{
     items: LineItem[];
     onQuantityChange: (itemId: number, newQuantity: number) => void;
     onViewImage: (imageUrl: string, productName: string) => void;
-}>(({ category, items, onQuantityChange, onViewImage }) => {
+    onDelete: (itemId: number) => void;
+}>(({ category, items, onQuantityChange, onViewImage, onDelete }) => {
 
     const [isExpanded, setIsExpanded] = useState(false);
 
@@ -182,6 +251,7 @@ const CategorySection = React.memo<{
                                 item={item}
                                 onQuantityChange={onQuantityChange}
                                 onViewImage={onViewImage}
+                                onDelete={onDelete}
                             />
                         ))}
                     </div>
@@ -199,10 +269,10 @@ const OrderCard = React.memo<{
     onQuantityChange: (itemId: number, newQuantity: number) => void;
     onCompleteOrder: (orderId: number) => void;
     onViewImage: (imageUrl: string, productName: string) => void;
-}>(({ order, viewMode, completingOrderId, onQuantityChange, onCompleteOrder, onViewImage }) => {
+    onDelete: (itemId: number) => void;
+}>(({ order, viewMode, completingOrderId, onQuantityChange, onCompleteOrder, onViewImage, onDelete }) => {
 
     const [isExpanded, setIsExpanded] = useState(false);
-    const [showConfirm, setShowConfirm] = useState(false);
 
     const itemsByCategory = order.lineItems.reduce((acc, item) => {
         const category = item.category || 'Products';
@@ -215,7 +285,6 @@ const OrderCard = React.memo<{
 
     const categories = Object.keys(itemsByCategory).sort();
     const allItemsPurchased = order.lineItems.every(item => item.isPurchased);
-    const missingItems = order.lineItems.filter(item => !item.isPurchased);
 
     return (
         <article aria-labelledby={`order-heading-${order.id}`} className="bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden">
@@ -245,13 +314,9 @@ const OrderCard = React.memo<{
                         <button
                             onClick={(e) => {
                                 e.stopPropagation();
-                                if (!allItemsPurchased) {
-                                    setShowConfirm(true);
-                                } else {
-                                    onCompleteOrder(order.id);
-                                }
+                                onCompleteOrder(order.id);
                             }}
-                            disabled={completingOrderId === order.id}
+                            disabled={!allItemsPurchased || completingOrderId === order.id}
                             className="px-3 py-1 text-sm font-medium bg-green-500 text-white rounded-md shadow-sm hover:bg-green-600 disabled:bg-gray-400 disabled:opacity-70 disabled:cursor-not-allowed"
                         >
                             {completingOrderId === order.id ? 'Completando...' : 'Completar Pedido'}
@@ -280,38 +345,10 @@ const OrderCard = React.memo<{
                                 items={sortedItems}
                                 onQuantityChange={onQuantityChange}
                                 onViewImage={onViewImage}
+                                onDelete={onDelete}
                             />
                         );
                     })}
-                </div>
-            )}
-
-            {/* Modal de confirmación de faltantes */}
-            {showConfirm && (
-                <div className="m-4 p-4 bg-amber-50 border border-amber-300 rounded-lg">
-                    <p className="font-semibold text-amber-800 mb-2">⚠️ Hay ítems sin surtir. ¿Deseas completar el pedido de todos modos?</p>
-                    <ul className="text-sm text-amber-700 mb-3 space-y-0.5 pl-2">
-                        {missingItems.map(item => (
-                            <li key={item.id}>
-                                • {item.name} — {item.quantityPurchased}/{item.quantity} surtidos
-                            </li>
-                        ))}
-                    </ul>
-                    <p className="text-xs text-amber-600 mb-3">Se enviará una notificación a Telegram con los faltantes.</p>
-                    <div className="flex gap-2">
-                        <button
-                            onClick={() => { setShowConfirm(false); onCompleteOrder(order.id); }}
-                            className="px-4 py-1.5 text-sm font-medium bg-amber-600 text-white rounded-md hover:bg-amber-700"
-                        >
-                            Sí, completar
-                        </button>
-                        <button
-                            onClick={() => setShowConfirm(false)}
-                            className="px-4 py-1.5 text-sm font-medium bg-white text-slate-700 rounded-md border border-slate-300 hover:bg-slate-50"
-                        >
-                            Cancelar
-                        </button>
-                    </div>
                 </div>
             )}
         </article>
@@ -319,12 +356,14 @@ const OrderCard = React.memo<{
 });
 
 // --- COMPONENTE PRINCIPAL: OrdersView ---
-const OrdersView: React.FC<OrdersViewProps> = ({ authToken, onAuthError, highlightOrderId }) => {
+const OrdersView: React.FC<OrdersViewProps> = ({ authToken, onAuthError }) => {
     const [orders, setOrders] = useState<Order[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-    const orderRefs = useRef<Map<number, HTMLDivElement>>(new Map());
-    const [viewMode, setViewMode] = useState<OrderStatusType>('processing');
+    const [tabMode, setTabMode] = useState<TabMode>('processing');
+    const viewMode: OrderStatusType = tabMode === 'store' ? 'processing' : tabMode;
+    const [storeOrders, setStoreOrders] = useState<StoreOrder[]>([]);
+    const [loadingStoreOrders, setLoadingStoreOrders] = useState(false);
     const [completingOrderId, setCompletingOrderId] = useState<number | null>(null);
     const [modalImageUrl, setModalImageUrl] = useState<string | null>(null);
     const [modalProductName, setModalProductName] = useState<string | null>(null);
@@ -336,7 +375,38 @@ const OrdersView: React.FC<OrdersViewProps> = ({ authToken, onAuthError, highlig
         setModalImageUrl(null);
         setModalProductName(null);
     };
+    const handleCompleteStoreOrder = useCallback(async (orderId: string) => {
+        try {
+            const updated = await completeStoreOrder(authToken, orderId);
+            setStoreOrders(prev => prev.map(o => o.id === orderId ? updated : o));
+            showToast('success', `Pedido ${orderId} completado`);
+        } catch (err) {
+            if (err instanceof AuthError) { onAuthError(); return; }
+            showToast('error', 'No se pudo completar el pedido');
+        }
+    }, [authToken, onAuthError]);
+
     useEffect(() => {
+        if (tabMode !== 'store') return;
+        let cancelled = false;
+        const load = async () => {
+            setLoadingStoreOrders(true);
+            try {
+                const data = await getStoreOrders(authToken);
+                if (!cancelled) setStoreOrders(data);
+            } catch (err) {
+                if (err instanceof AuthError) { onAuthError(); return; }
+                if (!cancelled) showToast('error', 'Error al cargar pedidos de Tienda');
+            } finally {
+                if (!cancelled) setLoadingStoreOrders(false);
+            }
+        };
+        load();
+        return () => { cancelled = true; };
+    }, [tabMode, authToken, onAuthError]);
+
+    useEffect(() => {
+        if (tabMode === 'store') return;
         const fetchOrders = async () => {
             try {
                 setIsLoading(true);
@@ -360,16 +430,7 @@ const OrdersView: React.FC<OrdersViewProps> = ({ authToken, onAuthError, highlig
             }
         };
         fetchOrders();
-    }, [viewMode, authToken, onAuthError]);
-
-    // Scroll y resaltar el pedido indicado por el link de Telegram
-    useEffect(() => {
-        if (!highlightOrderId || isLoading) return;
-        const el = orderRefs.current.get(highlightOrderId);
-        if (el) {
-            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }
-    }, [highlightOrderId, isLoading, orders]);
+    }, [tabMode, viewMode, authToken, onAuthError]);
     const handleQuantityChange = useCallback((itemId: number, newQuantity: number) => {
         setOrders(prevOrders => {
             let itemToSave: LineItem | null = null;
@@ -417,6 +478,13 @@ const OrdersView: React.FC<OrdersViewProps> = ({ authToken, onAuthError, highlig
             return updatedOrders;
         });
     }, [authToken, onAuthError]);
+    const handleDeleteItem = useCallback((itemId: number) => {
+        setOrders(prev => prev.map(order => ({
+            ...order,
+            lineItems: order.lineItems.filter(i => i.id !== itemId),
+        })));
+        showToast('success', 'Artículo eliminado');
+    }, []);
     const handleCompleteOrder = useCallback(async (orderId: number) => {
         setCompletingOrderId(orderId);
         try {
@@ -454,43 +522,63 @@ const OrdersView: React.FC<OrdersViewProps> = ({ authToken, onAuthError, highlig
 
     return (
         <div className="space-y-6">
-            <div className="flex space-x-2 p-1 bg-slate-200 rounded-lg max-w-md">
+            <div className="flex space-x-2 p-1 bg-slate-200 rounded-lg max-w-lg">
                 <TabButton
                     label="Pendientes"
-                    isActive={viewMode === 'processing'}
-                    onClick={() => setViewMode('processing')}
+                    isActive={tabMode === 'processing'}
+                    onClick={() => setTabMode('processing')}
                 />
                 <TabButton
                     label="Completados"
-                    isActive={viewMode === 'completed'}
-                    onClick={() => setViewMode('completed')}
+                    isActive={tabMode === 'completed'}
+                    onClick={() => setTabMode('completed')}
+                />
+                <TabButton
+                    label="Tienda"
+                    isActive={tabMode === 'store'}
+                    onClick={() => setTabMode('store')}
                 />
             </div>
 
-            {isLoading && <LoadingSpinner />}
-            {!isLoading && error && <div className="text-center p-4 bg-red-100 text-red-700 rounded-lg">{error}</div>}
-            {!isLoading && !error && orders.length === 0 && <EmptyState />}
-
-            {!isLoading && !error && orders.length > 0 && (
-                <div className="space-y-8">
-                    {orders.map(order => (
-                        <div
-                            key={order.id}
-                            ref={el => { if (el) orderRefs.current.set(order.id, el); }}
-                            className={highlightOrderId === order.id ? 'ring-2 ring-indigo-500 ring-offset-2 rounded-xl transition-shadow' : ''}
-                        >
-                        <OrderCard
-                            key={order.id}
-                            order={order}
-                            viewMode={viewMode}
-                            completingOrderId={completingOrderId}
-                            onQuantityChange={handleQuantityChange}
-                            onCompleteOrder={handleCompleteOrder}
-                            onViewImage={handleViewImage}
-                        />
+            {/* Tab Tienda */}
+            {tabMode === 'store' && (
+                <div className="space-y-4">
+                    {loadingStoreOrders && (
+                        <div className="flex justify-center py-16">
+                            <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-indigo-500" />
                         </div>
+                    )}
+                    {!loadingStoreOrders && storeOrders.length === 0 && <EmptyStoreOrders />}
+                    {!loadingStoreOrders && storeOrders.map(order => (
+                        <StoreOrderCard key={order.id} order={order} onComplete={handleCompleteStoreOrder} />
                     ))}
                 </div>
+            )}
+
+            {/* Tabs WooCommerce */}
+            {tabMode !== 'store' && (
+                <>
+                    {isLoading && <LoadingSpinner />}
+                    {!isLoading && error && <div className="text-center p-4 bg-red-100 text-red-700 rounded-lg">{error}</div>}
+                    {!isLoading && !error && orders.length === 0 && <EmptyState />}
+
+                    {!isLoading && !error && orders.length > 0 && (
+                        <div className="space-y-8">
+                            {orders.map(order => (
+                                <OrderCard
+                                    key={order.id}
+                                    order={order}
+                                    viewMode={viewMode}
+                                    completingOrderId={completingOrderId}
+                                    onQuantityChange={handleQuantityChange}
+                                    onCompleteOrder={handleCompleteOrder}
+                                    onViewImage={handleViewImage}
+                                    onDelete={handleDeleteItem}
+                                />
+                            ))}
+                        </div>
+                    )}
+                </>
             )}
 
             {modalImageUrl && modalProductName && (
