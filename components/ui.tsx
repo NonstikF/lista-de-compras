@@ -82,7 +82,7 @@ interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   iconFill?: boolean;
 }
 
-export const Button: React.FC<ButtonProps> = ({ variant = 'filled', size = 'md', icon, iconFill, children, className = '', ...rest }) => {
+export const Button: React.FC<ButtonProps> = ({ variant = 'filled', size = 'md', icon, iconFill, children, className = '', type = 'button', ...rest }) => {
   const base = 'inline-flex items-center justify-center gap-2 font-semibold rounded-full transition-all focus:outline-none focus:ring-2 focus:ring-primary/40 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap';
   const sizes: Record<ButtonSize, string> = {
     sm: 'px-3 py-1.5 text-sm',
@@ -98,7 +98,7 @@ export const Button: React.FC<ButtonProps> = ({ variant = 'filled', size = 'md',
     neutral: 'bg-surface-container-high text-on-surface hover:bg-surface-container-highest',
   };
   return (
-    <button className={`${base} ${sizes[size]} ${variants[variant]} ${className}`} {...rest}>
+    <button type={type} className={`${base} ${sizes[size]} ${variants[variant]} ${className}`} {...rest}>
       {icon && <MIcon name={icon} fill={iconFill} className="text-lg" />}
       {children}
     </button>

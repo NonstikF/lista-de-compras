@@ -35,8 +35,11 @@ const SupplierEditModal: React.FC<{
         e.preventDefault();
         if (!form.name.trim()) { setNameError('El nombre es requerido'); return; }
         setSaving(true);
-        await onSave({ name: form.name.trim(), contact: form.contact.trim(), phone: form.phone.trim() });
-        setSaving(false);
+        try {
+            await onSave({ name: form.name.trim(), contact: form.contact.trim(), phone: form.phone.trim() });
+        } finally {
+            setSaving(false);
+        }
     };
 
     return (
@@ -48,13 +51,13 @@ const SupplierEditModal: React.FC<{
             footer={
                 <>
                     <Button variant="neutral" onClick={onClose} disabled={saving}>Cancelar</Button>
-                    <Button variant="filled" icon="save" onClick={handleSubmit} disabled={saving}>
+                    <Button type="submit" form="supplier-form" variant="filled" icon="save" disabled={saving}>
                         {saving ? 'Guardando…' : 'Guardar'}
                     </Button>
                 </>
             }
         >
-            <form onSubmit={handleSubmit} className="p-6 space-y-4">
+            <form id="supplier-form" onSubmit={handleSubmit} className="p-6 space-y-4">
                 <Field label="Nombre" required error={nameError}>
                     <Input
                         value={form.name}

@@ -136,13 +136,16 @@ const ArticleEditModal: React.FC<{
         e.preventDefault();
         if (!validate()) return;
         setSaving(true);
-        await onSave({
-            name: form.name.trim(),
-            price: parseFloat(form.price),
-            image: form.image,
-            supplierIds: form.supplierIds,
-        });
-        setSaving(false);
+        try {
+            await onSave({
+                name: form.name.trim(),
+                price: parseFloat(form.price),
+                image: form.image,
+                supplierIds: form.supplierIds,
+            });
+        } finally {
+            setSaving(false);
+        }
     };
 
     return (
@@ -153,13 +156,13 @@ const ArticleEditModal: React.FC<{
             footer={
                 <>
                     <Button variant="neutral" onClick={onClose} disabled={saving}>Cancelar</Button>
-                    <Button variant="filled" onClick={handleSubmit} icon="save" disabled={saving}>
+                    <Button type="submit" form="article-form" variant="filled" icon="save" disabled={saving}>
                         {saving ? 'Guardando…' : 'Guardar'}
                     </Button>
                 </>
             }
         >
-            <form onSubmit={handleSubmit} className="p-6 grid grid-cols-1 md:grid-cols-3 gap-6">
+            <form id="article-form" onSubmit={handleSubmit} className="p-6 grid grid-cols-1 md:grid-cols-3 gap-6">
                 {/* Imagen */}
                 <div className="md:col-span-1">
                     <span className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant block mb-2">Imagen</span>

@@ -233,12 +233,15 @@ const RecipeEditModal: React.FC<{
         e.preventDefault();
         if (!form.name.trim()) { setNameError('El nombre es requerido'); return; }
         setSaving(true);
-        await onSave({
-            ...form,
-            name: form.name.trim(),
-            servings: Math.max(1, Number(form.servings) || 1),
-        });
-        setSaving(false);
+        try {
+            await onSave({
+                ...form,
+                name: form.name.trim(),
+                servings: Math.max(1, Number(form.servings) || 1),
+            });
+        } finally {
+            setSaving(false);
+        }
     };
 
     return (
@@ -250,13 +253,13 @@ const RecipeEditModal: React.FC<{
             footer={
                 <>
                     <Button variant="neutral" onClick={onClose} disabled={saving}>Cancelar</Button>
-                    <Button variant="filled" icon="save" onClick={handleSubmit} disabled={saving}>
+                    <Button type="submit" form="recipe-form" variant="filled" icon="save" disabled={saving}>
                         {saving ? 'Guardando…' : 'Guardar'}
                     </Button>
                 </>
             }
         >
-            <form onSubmit={handleSubmit} className="p-6 space-y-5">
+            <form id="recipe-form" onSubmit={handleSubmit} className="p-6 space-y-5">
                 {/* Imagen */}
                 <div
                     className="w-full h-36 rounded-2xl border-2 border-dashed border-outline-variant hover:border-primary cursor-pointer overflow-hidden flex items-center justify-center bg-surface-container-low transition"
