@@ -146,9 +146,10 @@ const CartDrawer: React.FC<{
 };
 
 // ---------- Modal de checkout ----------
+const LAST_CUSTOMER_KEY = 'plantarte_last_customer_name';
+
 interface CheckoutForm {
     customerName: string;
-    customerPhone: string;
     notes: string;
 }
 
@@ -161,34 +162,38 @@ const CheckoutModal: React.FC<{
     onConfirm: (form: CheckoutForm) => void;
 }> = ({ open, loading, onClose, cart, articles, onConfirm }) => {
     const [step, setStep] = useState<1 | 2>(1);
-    const [form, setForm] = useState<CheckoutForm>({ customerName: '', customerPhone: '', notes: '' });
-    const [errors, setErrors] = useState<Partial<CheckoutForm>>({});
+    const [form, setForm] = useState<CheckoutForm>({
+        customerName: localStorage.getItem(LAST_CUSTOMER_KEY) ?? '',
+        notes: '',
+    });
+    const [nameError, setNameError] = useState('');
 
     const articleMap = useMemo(() => Object.fromEntries(articles.map(a => [a.id, a])), [articles]);
     const items = cart.map(e => ({ ...e, article: articleMap[e.articleId] })).filter(e => e.article);
     const subtotal = items.reduce((s, e) => s + e.article.price * e.qty, 0);
 
-    const update = (k: keyof CheckoutForm, v: string) => setForm(f => ({ ...f, [k]: v }));
-
-    const validate = () => {
-        const e: Partial<CheckoutForm> = {};
-        if (!form.customerName.trim()) e.customerName = 'Nombre requerido';
-        if (!form.customerPhone.trim()) e.customerPhone = 'Teléfono requerido';
-        setErrors(e);
-        return Object.keys(e).length === 0;
-    };
-
     const handleClose = () => {
         if (loading) return;
         setStep(1);
-        setForm({ customerName: '', customerPhone: '', notes: '' });
-        setErrors({});
+        setForm(f => ({ ...f, notes: '' }));
+        setNameError('');
         onClose();
+    };
+
+    const handleNext = () => {
+        if (!form.customerName.trim()) { setNameError('Nombre requerido'); return; }
+        setNameError('');
+        setStep(2);
+    };
+
+    const handleConfirm = () => {
+        localStorage.setItem(LAST_CUSTOMER_KEY, form.customerName.trim());
+        onConfirm(form);
     };
 
     if (!open) return null;
     return (
-        <Modal open onClose={handleClose} title="Checkout" maxWidth="max-w-lg">
+        <Modal open onClose={handleClose} title="Confirmar pedido" maxWidth="max-w-lg">
             <div className="px-6 pt-4 flex items-center gap-2">
                 {[1, 2].map(s => (
                     <React.Fragment key={s}>
@@ -202,18 +207,24 @@ const CheckoutModal: React.FC<{
 
             {step === 1 && (
                 <div className="p-6 space-y-4">
-                    <Field label="Nombre del cliente" required error={errors.customerName}>
-                        <Input value={form.customerName} onChange={e => { update('customerName', e.target.value); setErrors(p => ({ ...p, customerName: '' })); }} placeholder="Ej. María García" />
+                    <Field label="Nombre" required error={nameError}>
+                        <Input
+                            value={form.customerName}
+                            onChange={e => { setForm(f => ({ ...f, customerName: e.target.value })); setNameError(''); }}
+                            placeholder="Ej. María García"
+                            autoFocus
+                        />
                     </Field>
-                    <Field label="Teléfono" required error={errors.customerPhone}>
-                        <Input type="tel" value={form.customerPhone} onChange={e => { update('customerPhone', e.target.value); setErrors(p => ({ ...p, customerPhone: '' })); }} placeholder="55 1234 5678" />
-                    </Field>
-                    <Field label="Notas u observaciones">
-                        <Textarea value={form.notes} onChange={e => update('notes', e.target.value)} placeholder="Instrucciones especiales, alergias, etc." />
+                    <Field label="Notas">
+                        <Textarea
+                            value={form.notes}
+                            onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
+                            placeholder="Instrucciones especiales, alergias, etc."
+                        />
                     </Field>
                     <div className="flex justify-end gap-2 pt-2">
                         <Button variant="neutral" onClick={handleClose}>Cancelar</Button>
-                        <Button variant="filled" icon="arrow_forward" onClick={() => { if (validate()) setStep(2); }}>Continuar</Button>
+                        <Button variant="filled" icon="arrow_forward" onClick={handleNext}>Continuar</Button>
                     </div>
                 </div>
             )}
@@ -222,7 +233,6 @@ const CheckoutModal: React.FC<{
                 <div className="p-6 space-y-4">
                     <div className="bg-surface-container-low rounded-xl p-4 space-y-1">
                         <p className="text-sm font-semibold text-on-background">{form.customerName}</p>
-                        <p className="text-sm text-on-surface-variant">{form.customerPhone}</p>
                         {form.notes && <p className="text-sm text-on-surface-variant italic">{form.notes}</p>}
                     </div>
                     <div className="space-y-2">
@@ -239,7 +249,7 @@ const CheckoutModal: React.FC<{
                     </div>
                     <div className="flex justify-end gap-2 pt-2">
                         <Button variant="neutral" onClick={() => setStep(1)} disabled={loading}>Atrás</Button>
-                        <Button variant="filled" icon="check_circle" onClick={() => onConfirm(form)} disabled={loading}>
+                        <Button variant="filled" icon="check_circle" onClick={handleConfirm} disabled={loading}>
                             {loading ? 'Creando pedido…' : 'Confirmar pedido'}
                         </Button>
                     </div>
@@ -310,7 +320,7 @@ const StoreView: React.FC<StoreViewProps> = ({ authToken, onAuthError }) => {
         return entry.qty <= 1 ? prev.filter(e => e.articleId !== id) : prev.map(e => e.articleId === id ? { ...e, qty: e.qty - 1 } : e);
     });
 
-    const handleConfirm = async (form: { customerName: string; customerPhone: string; notes: string }) => {
+    const handleConfirm = async (form: CheckoutForm) => {
         const articleMap = Object.fromEntries(articles.map(a => [a.id, a]));
         const items: StoreOrderItem[] = cart.map(e => ({
             articleId: e.articleId,
@@ -322,7 +332,6 @@ const StoreView: React.FC<StoreViewProps> = ({ authToken, onAuthError }) => {
         try {
             const order = await createStoreOrder(authToken, {
                 customerName: form.customerName,
-                customerPhone: form.customerPhone,
                 notes: form.notes,
                 items,
             });

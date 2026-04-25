@@ -689,7 +689,7 @@ app.delete('/api/recipes/:id', async (req: Request, res: Response) => {
 
 const storeOrderSchema = z.object({
     customerName: z.string().min(1, 'Nombre requerido'),
-    customerPhone: z.string().min(1, 'Teléfono requerido'),
+    customerPhone: z.string().default(''),
     notes: z.string().default(''),
     items: z.array(z.object({
         articleId: z.string(),
