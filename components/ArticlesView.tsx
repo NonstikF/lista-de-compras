@@ -118,10 +118,12 @@ const ArticleEditModal: React.FC<{
     };
 
     const toggleSupplier = (id: string) =>
-        update('supplierIds', form.supplierIds.includes(id)
-            ? form.supplierIds.filter(s => s !== id)
-            : [...form.supplierIds, id]
-        );
+        setForm(f => ({
+            ...f,
+            supplierIds: f.supplierIds.includes(id)
+                ? f.supplierIds.filter(s => s !== id)
+                : [...f.supplierIds, id],
+        }));
 
     const validate = (): boolean => {
         const e: typeof errors = {};
@@ -156,13 +158,13 @@ const ArticleEditModal: React.FC<{
             footer={
                 <>
                     <Button variant="neutral" onClick={onClose} disabled={saving}>Cancelar</Button>
-                    <Button type="submit" form="article-form" variant="filled" icon="save" disabled={saving}>
+                    <Button variant="filled" onClick={handleSubmit} icon="save" disabled={saving}>
                         {saving ? 'Guardando…' : 'Guardar'}
                     </Button>
                 </>
             }
         >
-            <form id="article-form" onSubmit={handleSubmit} className="p-6 grid grid-cols-1 md:grid-cols-3 gap-6">
+            <form onSubmit={handleSubmit} className="p-6 grid grid-cols-1 md:grid-cols-3 gap-6">
                 {/* Imagen */}
                 <div className="md:col-span-1">
                     <span className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant block mb-2">Imagen</span>

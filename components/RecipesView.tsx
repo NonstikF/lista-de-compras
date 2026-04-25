@@ -253,13 +253,13 @@ const RecipeEditModal: React.FC<{
             footer={
                 <>
                     <Button variant="neutral" onClick={onClose} disabled={saving}>Cancelar</Button>
-                    <Button type="submit" form="recipe-form" variant="filled" icon="save" disabled={saving}>
+                    <Button variant="filled" icon="save" onClick={handleSubmit} disabled={saving}>
                         {saving ? 'Guardando…' : 'Guardar'}
                     </Button>
                 </>
             }
         >
-            <form id="recipe-form" onSubmit={handleSubmit} className="p-6 space-y-5">
+            <form onSubmit={handleSubmit} className="p-6 space-y-5">
                 {/* Imagen */}
                 <div
                     className="w-full h-36 rounded-2xl border-2 border-dashed border-outline-variant hover:border-primary cursor-pointer overflow-hidden flex items-center justify-center bg-surface-container-low transition"

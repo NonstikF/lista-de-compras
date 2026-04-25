@@ -8,8 +8,9 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Epilogue:wght@500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet" />
+    <script src="https://cdn.tailwindcss.com"></script>
     <script>
-      window.tailwind = { config: {
+      tailwind.config = {
         theme: {
           extend: {
             colors: {
@@ -46,7 +47,7 @@
               "background":              "#f9faf2",
               "on-background":           "#191c18",
               "surface":                 "#f9faf2",
-              "on-surface":              "#191c18",
+              "on-surface":             "#191c18",
               "surface-variant":         "#e2e3dc",
               "on-surface-variant":      "#42493e",
               "surface-container-lowest":"#ffffff",
@@ -63,18 +64,16 @@
               "inverse-on-surface":      "#f0f1ea",
               "warning-missing":         "#E07A5F",
               "success-purchased":       "#40916C",
-              "telegram-blue":           "#0088CC",
               "category-chip-bg":        "#E9EDC9",
             },
             fontFamily: {
-              sans:   ["Plus Jakarta Sans", "sans-serif"],
+              sans:     ["Plus Jakarta Sans", "sans-serif"],
               epilogue: ["Epilogue", "sans-serif"],
             },
           }
         }
-      }};
+      }
     </script>
-    <script src="https://cdn.tailwindcss.com"></script>
     <style>
       body { font-family: "Plus Jakarta Sans", sans-serif; }
       h1, h2, h3, .font-epilogue { font-family: "Epilogue", sans-serif; }

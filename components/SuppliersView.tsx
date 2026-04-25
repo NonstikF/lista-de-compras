@@ -51,13 +51,13 @@ const SupplierEditModal: React.FC<{
             footer={
                 <>
                     <Button variant="neutral" onClick={onClose} disabled={saving}>Cancelar</Button>
-                    <Button type="submit" form="supplier-form" variant="filled" icon="save" disabled={saving}>
+                    <Button variant="filled" icon="save" onClick={handleSubmit} disabled={saving}>
                         {saving ? 'Guardando…' : 'Guardar'}
                     </Button>
                 </>
             }
         >
-            <form id="supplier-form" onSubmit={handleSubmit} className="p-6 space-y-4">
+            <form onSubmit={handleSubmit} className="p-6 space-y-4">
                 <Field label="Nombre" required error={nameError}>
                     <Input
                         value={form.name}
