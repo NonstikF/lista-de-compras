@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import type { Article, Supplier } from '../types';
-import { AuthError, getArticles, createArticle, updateArticle, deleteArticle, getSuppliers } from '../services/catalogService';
+import { AuthError, getArticles, createArticle, updateArticle, deleteArticle, getSuppliers, importWooCommerceArticles } from '../services/catalogService';
 import { Modal, Button, Field, Input, MIcon, fmt, useToast } from './ui';
 
 interface ArticlesViewProps {
@@ -50,6 +50,20 @@ const ArticleCard: React.FC<{
             <div className="p-3 flex-1 flex flex-col gap-1">
                 <p className="font-epilogue font-semibold text-on-background text-sm leading-tight line-clamp-2">{article.name}</p>
                 <p className="text-primary font-bold text-base">{fmt(article.price)}</p>
+                {article.description && (
+                    <p className="text-[11px] leading-snug text-on-surface-variant line-clamp-2">{article.description}</p>
+                )}
+                {(article.category || article.sku || article.stockStatus) && (
+                    <div className="flex flex-col gap-0.5 text-[11px] text-on-surface-variant">
+                        {article.category && <span className="truncate">{article.category}</span>}
+                        {article.sku && <span className="truncate">SKU: {article.sku}</span>}
+                        {article.stockStatus && (
+                            <span className="truncate">
+                                {article.stockStatus === 'instock' ? 'En stock' : article.stockStatus === 'outofstock' ? 'Sin stock' : article.stockStatus}
+                            </span>
+                        )}
+                    </div>
+                )}
                 {articleSuppliers.length > 0 && (
                     <div className="flex flex-wrap gap-1 mt-0.5">
                         {visibleSuppliers.map(s => (
@@ -256,6 +270,7 @@ const ArticlesView: React.FC<ArticlesViewProps> = ({ authToken, onAuthError }) =
     const [editing, setEditing] = useState<Article | 'new' | null>(null);
     const [confirmDelete, setConfirmDelete] = useState<Article | null>(null);
     const [deleting, setDeleting] = useState(false);
+    const [importing, setImporting] = useState(false);
     const toast = useToast();
 
     useEffect(() => {
@@ -284,7 +299,15 @@ const ArticlesView: React.FC<ArticlesViewProps> = ({ authToken, onAuthError }) =
                 setArticles(prev => [...prev, created]);
                 toast('success', `${data.name} agregado`);
             } else {
-                const updated = await updateArticle(authToken, (editing as Article).id, data);
+                const current = editing as Article;
+                const updated = await updateArticle(authToken, current.id, {
+                    wooProductId: current.wooProductId,
+                    sku: current.sku,
+                    category: current.category,
+                    description: current.description,
+                    stockStatus: current.stockStatus,
+                    ...data,
+                });
                 setArticles(prev => prev.map(a => a.id === updated.id ? updated : a));
                 toast('success', `${data.name} actualizado`);
             }
@@ -311,6 +334,20 @@ const ArticlesView: React.FC<ArticlesViewProps> = ({ authToken, onAuthError }) =
         }
     };
 
+    const handleImportWooCommerce = async () => {
+        setImporting(true);
+        try {
+            const result = await importWooCommerceArticles(authToken);
+            setArticles(result.articles);
+            toast('success', `Importacion lista: ${result.created} nuevos, ${result.updated} actualizados`);
+        } catch (err) {
+            if (err instanceof AuthError) { onAuthError(); return; }
+            toast('error', err instanceof Error ? err.message : 'Error al importar desde WooCommerce');
+        } finally {
+            setImporting(false);
+        }
+    };
+
     return (
         <main className="max-w-6xl mx-auto px-4 md:px-6 py-8 pb-28 md:pb-10">
             <div className="flex items-center justify-between mb-6">
@@ -320,9 +357,14 @@ const ArticlesView: React.FC<ArticlesViewProps> = ({ authToken, onAuthError }) =
                         {isLoading ? 'Cargando…' : articles.length === 0 ? 'Sin artículos' : `${articles.length} artículo${articles.length !== 1 ? 's' : ''}`}
                     </p>
                 </div>
-                <Button variant="filled" icon="add" onClick={() => setEditing('new')}>
-                    Nuevo artículo
-                </Button>
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                    <Button variant="tonal" icon="download" onClick={handleImportWooCommerce} disabled={importing || isLoading}>
+                        {importing ? 'Importando...' : 'Importar WooCommerce'}
+                    </Button>
+                    <Button variant="filled" icon="add" onClick={() => setEditing('new')}>
+                        Nuevo artículo
+                    </Button>
+                </div>
             </div>
 
             {isLoading && (
@@ -342,6 +384,9 @@ const ArticlesView: React.FC<ArticlesViewProps> = ({ authToken, onAuthError }) =
                     </p>
                     <Button variant="filled" icon="add" onClick={() => setEditing('new')}>
                         Crear artículo
+                    </Button>
+                    <Button variant="tonal" icon="download" className="mt-2" onClick={handleImportWooCommerce} disabled={importing}>
+                        {importing ? 'Importando...' : 'Importar desde WooCommerce'}
                     </Button>
                 </div>
             )}

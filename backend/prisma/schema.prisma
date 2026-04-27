@@ -32,13 +32,18 @@ model Supplier {
 
 // ---------- Artículos ----------
 model Article {
-  id        String            @id @default(cuid())
-  name      String
-  image     String?
-  price     Float
-  createdAt DateTime          @default(now())
-  updatedAt DateTime          @updatedAt
-  suppliers ArticleSupplier[]
+  id           String            @id @default(cuid())
+  wooProductId Int?              @unique
+  name         String
+  image        String?
+  price        Float
+  sku          String            @default("")
+  category     String            @default("")
+  description  String            @default("")
+  stockStatus  String            @default("")
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  suppliers    ArticleSupplier[]
 }
 
 model ArticleSupplier {

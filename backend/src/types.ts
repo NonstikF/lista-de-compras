@@ -22,6 +22,15 @@ export interface WooCommerceOrder {
 
 export interface WooCommerceProduct {
     id: number;
+    name: string;
+    price?: string;
+    regular_price?: string;
+    sale_price?: string;
+    sku?: string;
+    description?: string;
+    short_description?: string;
+    stock_status?: string;
+    status?: string;
     categories: { id: number; name: string }[];
     images: { src: string }[];
 }

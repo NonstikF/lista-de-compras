@@ -46,9 +46,14 @@ export interface Supplier {
 // ---------- Artículos ----------
 export interface Article {
   id: string;
+  wooProductId?: number | null;
   name: string;
   image: string | null;
   price: number;
+  sku?: string;
+  category?: string;
+  description?: string;
+  stockStatus?: string;
   supplierIds: string[];
 }
 

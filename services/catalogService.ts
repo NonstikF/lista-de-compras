@@ -69,6 +69,20 @@ export async function deleteArticle(token: string, id: string): Promise<void> {
     }));
 }
 
+export interface ImportWooCommerceArticlesResult {
+    created: number;
+    updated: number;
+    skipped: number;
+    total: number;
+    articles: Article[];
+}
+
+export async function importWooCommerceArticles(token: string): Promise<ImportWooCommerceArticlesResult> {
+    return handleResponse(await fetch(`${BASE}/api/articles/import-woocommerce`, {
+        method: 'POST', headers: authHeaders(token),
+    }));
+}
+
 // ---- Recetas ----
 
 export async function getRecipes(token: string): Promise<Recipe[]> {
