@@ -1,4 +1,4 @@
-import type { Supplier, Article, Recipe, StoreOrder, StoreOrderItem, SupplierTicket, SupplierTicketUpload } from '../types';
+import type { Supplier, Article, Recipe, StoreOrder, StoreOrderItem, SupplierTicket, SupplierTicketUpload, OrderTicket, OrderTicketUpload } from '../types';
 import { AuthError } from './woocommerceService';
 
 export { AuthError };
@@ -41,6 +41,33 @@ export async function updateSupplier(token: string, id: string, data: Omit<Suppl
 
 export async function deleteSupplier(token: string, id: string): Promise<void> {
     await handleResponse(await fetch(`${BASE}/api/suppliers/${id}`, {
+        method: 'DELETE', headers: authHeaders(token),
+    }));
+}
+
+// ---- Tickets de pedido ----
+
+export async function getOrderTickets(token: string, orderId: number, supplierName?: string): Promise<OrderTicket[]> {
+    const params = supplierName ? `?supplierName=${encodeURIComponent(supplierName)}` : '';
+    return handleResponse(await fetch(`${BASE}/api/orders/${orderId}/tickets${params}`, {
+        headers: authHeaders(token),
+    }));
+}
+
+export async function getOrderTicketContent(token: string, orderId: number, ticketId: string): Promise<OrderTicket> {
+    return handleResponse(await fetch(`${BASE}/api/orders/${orderId}/tickets/${ticketId}`, {
+        headers: authHeaders(token),
+    }));
+}
+
+export async function createOrderTicket(token: string, orderId: number, data: OrderTicketUpload): Promise<OrderTicket> {
+    return handleResponse(await fetch(`${BASE}/api/orders/${orderId}/tickets`, {
+        method: 'POST', headers: authHeaders(token), body: JSON.stringify(data),
+    }));
+}
+
+export async function deleteOrderTicket(token: string, orderId: number, ticketId: string): Promise<void> {
+    await handleResponse(await fetch(`${BASE}/api/orders/${orderId}/tickets/${ticketId}`, {
         method: 'DELETE', headers: authHeaders(token),
     }));
 }

@@ -600,6 +600,91 @@ app.delete('/api/suppliers/:id/tickets/:ticketId', async (req: Request, res: Res
 });
 
 // ============================================================
+// TICKETS DE PEDIDO
+// ============================================================
+
+const orderTicketSchema = z.object({
+    supplierName: z.string().min(1, 'Nombre de proveedor requerido'),
+    filename: z.string().min(1, 'Nombre de archivo requerido'),
+    mimeType: z.string().refine(
+        v => ['image/jpeg', 'image/png', 'application/pdf'].includes(v),
+        { message: 'Tipo de archivo no permitido. Usa JPG, PNG o PDF.' }
+    ),
+    size: z.number().int().min(1).max(1_000_000, 'El archivo no puede superar 1 MB'),
+    content: z.string().min(1, 'Contenido requerido'),
+});
+
+// Lista de tickets de un pedido (opcionalmente filtrado por proveedor)
+app.get('/api/orders/:orderId/tickets', async (req: Request, res: Response) => {
+    const orderId = parseInt(req.params.orderId);
+    if (isNaN(orderId)) { res.status(400).json({ error: 'orderId inválido' }); return; }
+    const { supplierName } = req.query;
+    try {
+        const tickets = await prisma.orderTicket.findMany({
+            where: {
+                orderId,
+                ...(supplierName ? { supplierName: String(supplierName) } : {}),
+            },
+            select: { id: true, orderId: true, supplierName: true, filename: true, mimeType: true, size: true, createdAt: true },
+            orderBy: { createdAt: 'desc' },
+        });
+        res.json(tickets);
+    } catch (err) {
+        console.error('Error al obtener tickets de pedido:', err);
+        res.status(500).json({ error: 'Error al obtener tickets' });
+    }
+});
+
+// Ticket individual con contenido
+app.get('/api/orders/:orderId/tickets/:ticketId', async (req: Request, res: Response) => {
+    const orderId = parseInt(req.params.orderId);
+    if (isNaN(orderId)) { res.status(400).json({ error: 'orderId inválido' }); return; }
+    try {
+        const ticket = await prisma.orderTicket.findFirst({
+            where: { id: req.params.ticketId, orderId },
+        });
+        if (!ticket) { res.status(404).json({ error: 'Ticket no encontrado' }); return; }
+        res.json(ticket);
+    } catch (err) {
+        console.error('Error al obtener ticket de pedido:', err);
+        res.status(500).json({ error: 'Error al obtener ticket' });
+    }
+});
+
+// Crear ticket
+app.post('/api/orders/:orderId/tickets', async (req: Request, res: Response) => {
+    const orderId = parseInt(req.params.orderId);
+    if (isNaN(orderId)) { res.status(400).json({ error: 'orderId inválido' }); return; }
+    const parsed = orderTicketSchema.safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: parsed.error.issues[0].message }); return; }
+    try {
+        const ticket = await prisma.orderTicket.create({
+            data: { orderId, ...parsed.data },
+        });
+        res.status(201).json(ticket);
+    } catch (err) {
+        console.error('Error al crear ticket de pedido:', err);
+        res.status(500).json({ error: 'Error al crear ticket' });
+    }
+});
+
+// Eliminar ticket
+app.delete('/api/orders/:orderId/tickets/:ticketId', async (req: Request, res: Response) => {
+    const orderId = parseInt(req.params.orderId);
+    if (isNaN(orderId)) { res.status(400).json({ error: 'orderId inválido' }); return; }
+    try {
+        await prisma.orderTicket.delete({ where: { id: req.params.ticketId } });
+        res.json({ success: true });
+    } catch (err: unknown) {
+        if (err && typeof err === 'object' && 'code' in err && (err as { code: string }).code === 'P2025') {
+            res.status(404).json({ error: 'Ticket no encontrado' }); return;
+        }
+        console.error('Error al eliminar ticket de pedido:', err);
+        res.status(500).json({ error: 'Error al eliminar ticket' });
+    }
+});
+
+// ============================================================
 // ARTÍCULOS
 // ============================================================
 

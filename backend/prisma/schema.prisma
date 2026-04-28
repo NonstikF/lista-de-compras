@@ -101,6 +101,21 @@ model StoreOrderItem {
   order     StoreOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
 }
 
+// ---------- Tickets de pedido ----------
+model OrderTicket {
+  id           String   @id @default(cuid())
+  orderId      Int
+  supplierName String
+  filename     String
+  mimeType     String
+  size         Int
+  content      String
+  createdAt    DateTime @default(now())
+
+  @@index([orderId])
+  @@index([orderId, supplierName])
+}
+
 // ---------- Tickets de proveedor ----------
 model SupplierTicket {
   id         String   @id @default(cuid())
