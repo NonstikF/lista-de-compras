@@ -528,6 +528,78 @@ app.delete('/api/suppliers/:id', async (req: Request, res: Response) => {
 });
 
 // ============================================================
+// TICKETS DE PROVEEDOR
+// ============================================================
+
+const ticketSchema = z.object({
+    filename: z.string().min(1, 'Nombre de archivo requerido'),
+    mimeType: z.string().refine(
+        v => ['image/jpeg', 'image/png', 'application/pdf'].includes(v),
+        { message: 'Tipo de archivo no permitido. Usa JPG, PNG o PDF.' }
+    ),
+    size: z.number().int().min(1).max(1_000_000, 'El archivo no puede superar 1 MB'),
+    content: z.string().min(1, 'Contenido requerido'),
+});
+
+app.get('/api/suppliers/:id/tickets', async (req: Request, res: Response) => {
+    try {
+        const supplier = await prisma.supplier.findUnique({ where: { id: req.params.id }, select: { id: true } });
+        if (!supplier) { res.status(404).json({ error: 'Proveedor no encontrado' }); return; }
+        const tickets = await prisma.supplierTicket.findMany({
+            where: { supplierId: req.params.id },
+            select: { id: true, supplierId: true, filename: true, mimeType: true, size: true, createdAt: true },
+            orderBy: { createdAt: 'desc' },
+        });
+        res.json(tickets);
+    } catch (err) {
+        console.error('Error al obtener tickets:', err);
+        res.status(500).json({ error: 'Error al obtener tickets' });
+    }
+});
+
+app.get('/api/suppliers/:id/tickets/:ticketId', async (req: Request, res: Response) => {
+    try {
+        const ticket = await prisma.supplierTicket.findFirst({
+            where: { id: req.params.ticketId, supplierId: req.params.id },
+        });
+        if (!ticket) { res.status(404).json({ error: 'Ticket no encontrado' }); return; }
+        res.json(ticket);
+    } catch (err) {
+        console.error('Error al obtener ticket:', err);
+        res.status(500).json({ error: 'Error al obtener ticket' });
+    }
+});
+
+app.post('/api/suppliers/:id/tickets', async (req: Request, res: Response) => {
+    const parsed = ticketSchema.safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: parsed.error.issues[0].message }); return; }
+    try {
+        const supplier = await prisma.supplier.findUnique({ where: { id: req.params.id }, select: { id: true } });
+        if (!supplier) { res.status(404).json({ error: 'Proveedor no encontrado' }); return; }
+        const ticket = await prisma.supplierTicket.create({
+            data: { supplierId: req.params.id, ...parsed.data },
+        });
+        res.status(201).json(ticket);
+    } catch (err) {
+        console.error('Error al crear ticket:', err);
+        res.status(500).json({ error: 'Error al crear ticket' });
+    }
+});
+
+app.delete('/api/suppliers/:id/tickets/:ticketId', async (req: Request, res: Response) => {
+    try {
+        await prisma.supplierTicket.delete({ where: { id: req.params.ticketId } });
+        res.json({ success: true });
+    } catch (err: unknown) {
+        if (err && typeof err === 'object' && 'code' in err && (err as { code: string }).code === 'P2025') {
+            res.status(404).json({ error: 'Ticket no encontrado' }); return;
+        }
+        console.error('Error al eliminar ticket:', err);
+        res.status(500).json({ error: 'Error al eliminar ticket' });
+    }
+});
+
+// ============================================================
 // ARTÍCULOS
 // ============================================================
 

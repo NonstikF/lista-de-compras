@@ -28,6 +28,7 @@ model Supplier {
   createdAt DateTime          @default(now())
   updatedAt DateTime          @updatedAt
   articles  ArticleSupplier[]
+  tickets   SupplierTicket[]
 }
 
 // ---------- Artículos ----------
@@ -98,4 +99,19 @@ model StoreOrderItem {
   price     Float
   qty       Int
   order     StoreOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+}
+
+// ---------- Tickets de proveedor ----------
+model SupplierTicket {
+  id         String   @id @default(cuid())
+  supplierId String
+  filename   String
+  mimeType   String
+  size       Int
+  content    String
+  createdAt  DateTime @default(now())
+
+  supplier   Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+
+  @@index([supplierId])
 }

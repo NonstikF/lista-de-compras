@@ -1,4 +1,4 @@
-import type { Supplier, Article, Recipe, StoreOrder, StoreOrderItem } from '../types';
+import type { Supplier, Article, Recipe, StoreOrder, StoreOrderItem, SupplierTicket, SupplierTicketUpload } from '../types';
 import { AuthError } from './woocommerceService';
 
 export { AuthError };
@@ -41,6 +41,32 @@ export async function updateSupplier(token: string, id: string, data: Omit<Suppl
 
 export async function deleteSupplier(token: string, id: string): Promise<void> {
     await handleResponse(await fetch(`${BASE}/api/suppliers/${id}`, {
+        method: 'DELETE', headers: authHeaders(token),
+    }));
+}
+
+// ---- Tickets de proveedor ----
+
+export async function getSupplierTickets(token: string, supplierId: string): Promise<SupplierTicket[]> {
+    return handleResponse(await fetch(`${BASE}/api/suppliers/${supplierId}/tickets`, {
+        headers: authHeaders(token),
+    }));
+}
+
+export async function getSupplierTicketContent(token: string, supplierId: string, ticketId: string): Promise<SupplierTicket> {
+    return handleResponse(await fetch(`${BASE}/api/suppliers/${supplierId}/tickets/${ticketId}`, {
+        headers: authHeaders(token),
+    }));
+}
+
+export async function createSupplierTicket(token: string, supplierId: string, data: SupplierTicketUpload): Promise<SupplierTicket> {
+    return handleResponse(await fetch(`${BASE}/api/suppliers/${supplierId}/tickets`, {
+        method: 'POST', headers: authHeaders(token), body: JSON.stringify(data),
+    }));
+}
+
+export async function deleteSupplierTicket(token: string, supplierId: string, ticketId: string): Promise<void> {
+    await handleResponse(await fetch(`${BASE}/api/suppliers/${supplierId}/tickets/${ticketId}`, {
         method: 'DELETE', headers: authHeaders(token),
     }));
 }

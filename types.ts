@@ -43,6 +43,24 @@ export interface Supplier {
   createdAt: string;
 }
 
+// ---------- Tickets de proveedor ----------
+export interface SupplierTicket {
+  id: string;
+  supplierId: string;
+  filename: string;
+  mimeType: string;
+  size: number;
+  createdAt: string;
+  content?: string;
+}
+
+export interface SupplierTicketUpload {
+  filename: string;
+  mimeType: string;
+  size: number;
+  content: string;
+}
+
 // ---------- Artículos ----------
 export interface Article {
   id: string;
