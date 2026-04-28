@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import Cropper from 'react-easy-crop';
+import type { Area } from 'react-easy-crop';
 import type { Order, LineItem, StoreOrder, OrderTicket } from '../types';
 import { getOrders, saveItemStatus, completeOrder, AuthError, type OrderStatusType } from '../services/woocommerceService';
 import { getStoreOrders, completeStoreOrder, getOrderTickets, getOrderTicketContent, createOrderTicket, deleteOrderTicket } from '../services/catalogService';
@@ -225,24 +227,27 @@ function openPdfBlob(dataUrl: string, filename: string) {
 }
 
 const TICKET_ALLOWED_TYPES = ['image/jpeg', 'image/png', 'application/pdf'];
-const MAX_IMAGE_PX = 1920;
 const JPEG_QUALITY = 0.82;
 
-function compressImage(dataUrl: string): Promise<string> {
+// Recorta y comprime una imagen según el área seleccionada en el cropper
+function cropAndCompress(dataUrl: string, pixelCrop: Area): Promise<string> {
     return new Promise((resolve, reject) => {
         const img = new Image();
         img.onload = () => {
-            let { width, height } = img;
-            if (width > MAX_IMAGE_PX || height > MAX_IMAGE_PX) {
-                if (width >= height) { height = Math.round(height * MAX_IMAGE_PX / width); width = MAX_IMAGE_PX; }
-                else { width = Math.round(width * MAX_IMAGE_PX / height); height = MAX_IMAGE_PX; }
-            }
             const canvas = document.createElement('canvas');
-            canvas.width = width;
-            canvas.height = height;
+            // Limitar la salida a 1920px en el lado mayor
+            const scale = Math.min(1, 1920 / Math.max(pixelCrop.width, pixelCrop.height));
+            canvas.width = Math.round(pixelCrop.width * scale);
+            canvas.height = Math.round(pixelCrop.height * scale);
             const ctx = canvas.getContext('2d');
             if (!ctx) { reject(new Error('Canvas no disponible')); return; }
-            ctx.drawImage(img, 0, 0, width, height);
+            ctx.drawImage(
+                img,
+                pixelCrop.x, pixelCrop.y,
+                pixelCrop.width, pixelCrop.height,
+                0, 0,
+                canvas.width, canvas.height,
+            );
             resolve(canvas.toDataURL('image/jpeg', JPEG_QUALITY));
         };
         img.onerror = () => reject(new Error('No se pudo leer la imagen'));
@@ -267,6 +272,12 @@ const OrderTicketModal: React.FC<{
     const [viewingContent, setViewingContent] = useState<string | null>(null);
     const [viewingFilename, setViewingFilename] = useState<string | null>(null);
     const fileRef = useRef<HTMLInputElement>(null);
+
+    // Estado del cropper
+    const [cropSource, setCropSource] = useState<{ dataUrl: string; file: File } | null>(null);
+    const [crop, setCrop] = useState({ x: 0, y: 0 });
+    const [zoom, setZoom] = useState(1);
+    const [croppedAreaPixels, setCroppedAreaPixels] = useState<Area | null>(null);
 
     useEffect(() => {
         let cancelled = false;
@@ -294,53 +305,55 @@ const OrderTicketModal: React.FC<{
             setFileError('Solo se permiten archivos JPG, PNG o PDF.');
             return;
         }
-        // PDFs: validar tamaño directo (no se pueden comprimir)
+        // PDFs: sin crop, subir directo
         if (file.type === 'application/pdf') {
-            if (file.size > 1_000_000) {
-                setFileError('El PDF no puede superar 1 MB.');
-                return;
-            }
+            if (file.size > 1_000_000) { setFileError('El PDF no puede superar 1 MB.'); return; }
             setFileError('');
             const reader = new FileReader();
-            reader.onload = ev => handleUpload(file, ev.target?.result as string);
+            reader.onload = ev => handleUpload(file, ev.target?.result as string, 'application/pdf');
             reader.readAsDataURL(file);
             return;
         }
-        // Imágenes: comprimir antes de subir
+        // Imágenes: abrir cropper
         setFileError('');
-        setUploading(true);
         const reader = new FileReader();
-        reader.onload = async ev => {
-            try {
-                const compressed = await compressImage(ev.target?.result as string);
-                // Calcular tamaño aproximado del base64 comprimido
-                const approxBytes = Math.round((compressed.length * 3) / 4);
-                if (approxBytes > 1_000_000) {
-                    setFileError('La imagen es demasiado grande incluso comprimida. Intenta con una foto de menor resolución.');
-                    setUploading(false);
-                    return;
-                }
-                await handleUpload(file, compressed, 'image/jpeg');
-            } catch {
-                setFileError('No se pudo procesar la imagen.');
-                setUploading(false);
-            }
+        reader.onload = ev => {
+            setCrop({ x: 0, y: 0 });
+            setZoom(1);
+            setCroppedAreaPixels(null);
+            setCropSource({ dataUrl: ev.target?.result as string, file });
         };
         reader.readAsDataURL(file);
     };
 
-    const handleUpload = async (file: File, content: string, mimeType?: string) => {
-        // setUploading ya puede estar en true si viene de la ruta de compresión
-        if (!mimeType) setUploading(true);
-        const resolvedMime = mimeType ?? file.type;
+    const handleCropConfirm = async () => {
+        if (!cropSource || !croppedAreaPixels) return;
+        setUploading(true);
+        setCropSource(null);
+        try {
+            const compressed = await cropAndCompress(cropSource.dataUrl, croppedAreaPixels);
+            const approxSize = Math.round((compressed.length * 3) / 4);
+            if (approxSize > 1_000_000) {
+                setFileError('La imagen es demasiado grande incluso comprimida. Intenta con una foto de menor resolución.');
+                setUploading(false);
+                return;
+            }
+            await handleUpload(cropSource.file, compressed, 'image/jpeg');
+        } catch {
+            setFileError('No se pudo procesar la imagen.');
+            setUploading(false);
+        }
+    };
+
+    const handleUpload = async (file: File, content: string, mimeType: string) => {
         const approxSize = Math.round((content.length * 3) / 4);
         try {
             const ticket = await createOrderTicket(authToken, orderId, {
                 supplierName,
-                filename: resolvedMime === 'image/jpeg' && file.type !== 'image/jpeg'
+                filename: mimeType === 'image/jpeg' && !file.name.match(/\.jpe?g$/i)
                     ? file.name.replace(/\.[^.]+$/, '.jpg')
                     : file.name,
-                mimeType: resolvedMime,
+                mimeType,
                 size: approxSize,
                 content,
             });
@@ -427,7 +440,7 @@ const OrderTicketModal: React.FC<{
                                     : <span className="material-symbols-outlined text-slate-400 text-4xl">upload_file</span>
                                 }
                                 <span className="text-sm text-slate-500">
-                                    {uploading ? 'Subiendo…' : 'Subir ticket (JPG, PNG o PDF — máx. 1 MB)'}
+                                    {uploading ? 'Subiendo…' : 'Foto o PDF del ticket'}
                                 </span>
                             </button>
                             {fileError && (
@@ -522,6 +535,48 @@ const OrderTicketModal: React.FC<{
                     </div>
                 </div>
             </div>
+
+            {/* Pantalla de crop */}
+            {cropSource && (
+                <div className="fixed inset-0 z-50 bg-black flex flex-col">
+                    {/* Área del cropper */}
+                    <div className="relative flex-1">
+                        <Cropper
+                            image={cropSource.dataUrl}
+                            crop={crop}
+                            zoom={zoom}
+                            aspect={undefined}
+                            onCropChange={setCrop}
+                            onZoomChange={setZoom}
+                            onCropComplete={(_: Area, pixels: Area) => setCroppedAreaPixels(pixels)}
+                            style={{
+                                containerStyle: { background: '#000' },
+                                cropAreaStyle: { border: '2px solid #6366f1' },
+                            }}
+                        />
+                    </div>
+                    {/* Instrucción */}
+                    <p className="text-center text-white/60 text-xs py-2 bg-black">
+                        Pellizca para hacer zoom · Arrastra para encuadrar el ticket
+                    </p>
+                    {/* Controles */}
+                    <div className="flex items-center gap-3 bg-black px-5 pb-6 pt-2">
+                        <button
+                            onClick={() => setCropSource(null)}
+                            className="flex-1 py-3 rounded-xl text-sm font-medium bg-slate-700 text-white hover:bg-slate-600 transition"
+                        >
+                            Cancelar
+                        </button>
+                        <button
+                            onClick={handleCropConfirm}
+                            disabled={!croppedAreaPixels}
+                            className="flex-1 py-3 rounded-xl text-sm font-semibold bg-indigo-600 text-white hover:bg-indigo-500 disabled:opacity-50 transition"
+                        >
+                            Usar esta área
+                        </button>
+                    </div>
+                </div>
+            )}
 
             {/* Confirmar eliminar */}
             {confirmDeleteId && (

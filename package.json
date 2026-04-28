@@ -6,7 +6,8 @@
   "type": "module",
   "dependencies": {
     "react": "^19.2.0",
-    "react-dom": "^19.2.0"
+    "react-dom": "^19.2.0",
+    "react-easy-crop": "^5.5.7"
   },
   "devDependencies": {
     "@types/node": "^20.14.9",
