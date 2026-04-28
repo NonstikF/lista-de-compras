@@ -399,29 +399,60 @@ const OrderTicketModal: React.FC<{
                         {!isLoading && tickets.length > 0 && (
                             <div className="space-y-2">
                                 {tickets.map(ticket => (
-                                    <div key={ticket.id} className="flex items-center gap-3 border border-slate-200 rounded-lg px-3 py-2.5 bg-slate-50">
-                                        <span className="material-symbols-outlined text-slate-400 text-xl flex-shrink-0">
-                                            {ticket.mimeType === 'application/pdf' ? 'picture_as_pdf' : 'image'}
-                                        </span>
-                                        <div className="flex-1 min-w-0">
-                                            <p className="text-sm font-medium text-slate-700 truncate">{ticket.filename}</p>
-                                            <p className="text-xs text-slate-400">
-                                                {formatTicketSize(ticket.size)} · {new Date(ticket.createdAt).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' })}
-                                            </p>
-                                        </div>
-                                        <div className="flex gap-1 flex-shrink-0">
+                                    <div key={ticket.id} className="border border-slate-200 rounded-lg overflow-hidden bg-slate-50">
+                                        {/* Miniatura — visible solo si hay content (recién subido) */}
+                                        {ticket.content && ticket.mimeType !== 'application/pdf' && (
                                             <button
-                                                onClick={() => handleView(ticket)}
-                                                className="px-2.5 py-1 text-xs font-medium bg-indigo-100 text-indigo-700 rounded-md hover:bg-indigo-200 transition"
+                                                type="button"
+                                                onClick={() => { setViewingContent(ticket.content!); setViewingFilename(ticket.filename); }}
+                                                className="block w-full"
                                             >
-                                                Ver
+                                                <img
+                                                    src={ticket.content}
+                                                    alt={ticket.filename}
+                                                    className="w-full max-h-48 object-cover"
+                                                />
                                             </button>
+                                        )}
+                                        {ticket.content && ticket.mimeType === 'application/pdf' && (
                                             <button
-                                                onClick={() => setConfirmDeleteId(ticket.id)}
-                                                className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition"
+                                                type="button"
+                                                onClick={() => openPdfBlob(ticket.content!, ticket.filename)}
+                                                className="w-full flex items-center justify-center gap-2 py-4 bg-red-50 hover:bg-red-100 transition text-red-700 text-sm font-medium"
                                             >
-                                                <XMarkIcon className="w-4 h-4" />
+                                                <span className="material-symbols-outlined text-2xl">picture_as_pdf</span>
+                                                Abrir PDF
                                             </button>
+                                        )}
+                                        {/* Fila con metadata */}
+                                        <div className="flex items-center gap-3 px-3 py-2.5">
+                                            {!ticket.content && (
+                                                <span className="material-symbols-outlined text-slate-400 text-xl flex-shrink-0">
+                                                    {ticket.mimeType === 'application/pdf' ? 'picture_as_pdf' : 'image'}
+                                                </span>
+                                            )}
+                                            <div className="flex-1 min-w-0">
+                                                <p className="text-sm font-medium text-slate-700 truncate">{ticket.filename}</p>
+                                                <p className="text-xs text-slate-400">
+                                                    {formatTicketSize(ticket.size)} · {new Date(ticket.createdAt).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                                </p>
+                                            </div>
+                                            <div className="flex gap-1 flex-shrink-0">
+                                                {!ticket.content && (
+                                                    <button
+                                                        onClick={() => handleView(ticket)}
+                                                        className="px-2.5 py-1 text-xs font-medium bg-indigo-100 text-indigo-700 rounded-md hover:bg-indigo-200 transition"
+                                                    >
+                                                        Ver
+                                                    </button>
+                                                )}
+                                                <button
+                                                    onClick={() => setConfirmDeleteId(ticket.id)}
+                                                    className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition"
+                                                >
+                                                    <XMarkIcon className="w-4 h-4" />
+                                                </button>
+                                            </div>
                                         </div>
                                     </div>
                                 ))}
