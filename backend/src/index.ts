@@ -614,6 +614,25 @@ const orderTicketSchema = z.object({
     content: z.string().min(1, 'Contenido requerido'),
 });
 
+// Conteo de tickets por proveedor para un pedido: { [supplierName]: count }
+app.get('/api/orders/:orderId/ticket-counts', async (req: Request, res: Response) => {
+    const orderId = parseInt(req.params.orderId);
+    if (isNaN(orderId)) { res.status(400).json({ error: 'orderId inválido' }); return; }
+    try {
+        const rows = await prisma.orderTicket.groupBy({
+            by: ['supplierName'],
+            where: { orderId },
+            _count: { id: true },
+        });
+        const counts: Record<string, number> = {};
+        for (const row of rows) counts[row.supplierName] = row._count.id;
+        res.json(counts);
+    } catch (err) {
+        console.error('Error al obtener conteos de tickets:', err);
+        res.status(500).json({ error: 'Error al obtener conteos' });
+    }
+});
+
 // Lista de tickets de un pedido (opcionalmente filtrado por proveedor)
 app.get('/api/orders/:orderId/tickets', async (req: Request, res: Response) => {
     const orderId = parseInt(req.params.orderId);

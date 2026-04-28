@@ -3,7 +3,7 @@ import Cropper from 'react-easy-crop';
 import type { Area } from 'react-easy-crop';
 import type { Order, LineItem, StoreOrder, OrderTicket } from '../types';
 import { getOrders, saveItemStatus, completeOrder, AuthError, type OrderStatusType } from '../services/woocommerceService';
-import { getStoreOrders, completeStoreOrder, getOrderTickets, getOrderTicketContent, createOrderTicket, deleteOrderTicket } from '../services/catalogService';
+import { getStoreOrders, completeStoreOrder, getOrderTickets, getOrderTicketContent, createOrderTicket, deleteOrderTicket, getOrderTicketCounts } from '../services/catalogService';
 import { CheckCircleIcon, ChevronDownIcon, XMarkIcon, EyeIcon } from './icons';
 import { showToast } from './Toast';
 import { fmt } from './ui';
@@ -271,7 +271,9 @@ const OrderTicketModal: React.FC<{
     authToken: string;
     onAuthError: () => void;
     onClose: () => void;
-}> = ({ orderId, supplierName, authToken, onAuthError, onClose }) => {
+    onTicketUploaded: () => void;
+    onTicketDeleted: () => void;
+}> = ({ orderId, supplierName, authToken, onAuthError, onClose, onTicketUploaded, onTicketDeleted }) => {
     const [tickets, setTickets] = useState<OrderTicket[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [uploading, setUploading] = useState(false);
@@ -368,6 +370,7 @@ const OrderTicketModal: React.FC<{
                 content,
             });
             setTickets(prev => [ticket, ...prev]);
+            onTicketUploaded();
             showToast('success', 'Ticket subido');
         } catch (err) {
             if (err instanceof AuthError) { onAuthError(); return; }
@@ -399,6 +402,7 @@ const OrderTicketModal: React.FC<{
         try {
             await deleteOrderTicket(authToken, orderId, confirmDeleteId);
             setTickets(prev => prev.filter(t => t.id !== confirmDeleteId));
+            onTicketDeleted();
             showToast('success', 'Ticket eliminado');
             setConfirmDeleteId(null);
         } catch (err) {
@@ -629,12 +633,14 @@ const CategorySection = React.memo<{
     category: string;
     items: LineItem[];
     orderId: number;
+    ticketCount: number;
     authToken: string;
     onAuthError: () => void;
+    onTicketUploaded: (supplierName: string) => void;
     onQuantityChange: (itemId: number, newQuantity: number) => void;
     onViewImage: (imageUrl: string, productName: string) => void;
     onDelete: (itemId: number) => void;
-}>(({ category, items, orderId, authToken, onAuthError, onQuantityChange, onViewImage, onDelete }) => {
+}>(({ category, items, orderId, ticketCount, authToken, onAuthError, onTicketUploaded, onQuantityChange, onViewImage, onDelete }) => {
 
     const [isExpanded, setIsExpanded] = useState(false);
     const [showTickets, setShowTickets] = useState(false);
@@ -671,10 +677,15 @@ const CategorySection = React.memo<{
                             <button
                                 type="button"
                                 onClick={e => { e.stopPropagation(); setShowTickets(true); }}
-                                title="Subir ticket"
-                                className="p-1.5 rounded-md text-slate-500 hover:text-indigo-600 hover:bg-indigo-100 transition-colors"
+                                title="Tickets de compra"
+                                className="relative p-1.5 rounded-md text-slate-500 hover:text-indigo-600 hover:bg-indigo-100 transition-colors"
                             >
-                                <span className="material-symbols-outlined text-xl leading-none">receipt_long</span>
+                                <span className={`material-symbols-outlined text-xl leading-none ${ticketCount > 0 ? 'text-indigo-600' : ''}`}>receipt_long</span>
+                                {ticketCount > 0 && (
+                                    <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-0.5 bg-indigo-600 text-white text-[10px] font-bold rounded-full flex items-center justify-center leading-none">
+                                        {ticketCount}
+                                    </span>
+                                )}
                             </button>
                         </div>
                     </div>
@@ -702,6 +713,8 @@ const CategorySection = React.memo<{
                     authToken={authToken}
                     onAuthError={onAuthError}
                     onClose={() => setShowTickets(false)}
+                    onTicketUploaded={() => onTicketUploaded(category)}
+                    onTicketDeleted={() => onTicketUploaded(category)}
                 />
             )}
         </>
@@ -722,6 +735,22 @@ const OrderCard = React.memo<{
 }>(({ order, viewMode, completingOrderId, authToken, onAuthError, onQuantityChange, onCompleteOrder, onViewImage, onDelete }) => {
 
     const [isExpanded, setIsExpanded] = useState(false);
+    const [ticketCounts, setTicketCounts] = useState<Record<string, number>>({});
+
+    useEffect(() => {
+        if (!isExpanded) return;
+        let cancelled = false;
+        getOrderTicketCounts(authToken, order.id)
+            .then(counts => { if (!cancelled) setTicketCounts(counts); })
+            .catch(() => {});
+        return () => { cancelled = true; };
+    }, [isExpanded, order.id, authToken]);
+
+    const handleTicketChange = useCallback((supplierName: string) => {
+        getOrderTicketCounts(authToken, order.id)
+            .then(counts => setTicketCounts(counts))
+            .catch(() => {});
+    }, [authToken, order.id]);
 
     const itemsByCategory = order.lineItems.reduce((acc, item) => {
         const category = item.category || 'Products';
@@ -793,8 +822,10 @@ const OrderCard = React.memo<{
                                 category={category}
                                 items={sortedItems}
                                 orderId={order.id}
+                                ticketCount={ticketCounts[category] ?? 0}
                                 authToken={authToken}
                                 onAuthError={onAuthError}
+                                onTicketUploaded={handleTicketChange}
                                 onQuantityChange={onQuantityChange}
                                 onViewImage={onViewImage}
                                 onDelete={onDelete}

@@ -47,6 +47,12 @@ export async function deleteSupplier(token: string, id: string): Promise<void> {
 
 // ---- Tickets de pedido ----
 
+export async function getOrderTicketCounts(token: string, orderId: number): Promise<Record<string, number>> {
+    return handleResponse(await fetch(`${BASE}/api/orders/${orderId}/ticket-counts`, {
+        headers: authHeaders(token),
+    }));
+}
+
 export async function getOrderTickets(token: string, orderId: number, supplierName?: string): Promise<OrderTicket[]> {
     const params = supplierName ? `?supplierName=${encodeURIComponent(supplierName)}` : '';
     return handleResponse(await fetch(`${BASE}/api/orders/${orderId}/tickets${params}`, {
