@@ -225,6 +225,30 @@ function openPdfBlob(dataUrl: string, filename: string) {
 }
 
 const TICKET_ALLOWED_TYPES = ['image/jpeg', 'image/png', 'application/pdf'];
+const MAX_IMAGE_PX = 1920;
+const JPEG_QUALITY = 0.82;
+
+function compressImage(dataUrl: string): Promise<string> {
+    return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => {
+            let { width, height } = img;
+            if (width > MAX_IMAGE_PX || height > MAX_IMAGE_PX) {
+                if (width >= height) { height = Math.round(height * MAX_IMAGE_PX / width); width = MAX_IMAGE_PX; }
+                else { width = Math.round(width * MAX_IMAGE_PX / height); height = MAX_IMAGE_PX; }
+            }
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) { reject(new Error('Canvas no disponible')); return; }
+            ctx.drawImage(img, 0, 0, width, height);
+            resolve(canvas.toDataURL('image/jpeg', JPEG_QUALITY));
+        };
+        img.onerror = () => reject(new Error('No se pudo leer la imagen'));
+        img.src = dataUrl;
+    });
+}
 
 // --- Modal de tickets por proveedor en un pedido ---
 const OrderTicketModal: React.FC<{
@@ -270,24 +294,54 @@ const OrderTicketModal: React.FC<{
             setFileError('Solo se permiten archivos JPG, PNG o PDF.');
             return;
         }
-        if (file.size > 1_000_000) {
-            setFileError('El archivo no puede superar 1 MB.');
+        // PDFs: validar tamaño directo (no se pueden comprimir)
+        if (file.type === 'application/pdf') {
+            if (file.size > 1_000_000) {
+                setFileError('El PDF no puede superar 1 MB.');
+                return;
+            }
+            setFileError('');
+            const reader = new FileReader();
+            reader.onload = ev => handleUpload(file, ev.target?.result as string);
+            reader.readAsDataURL(file);
             return;
         }
+        // Imágenes: comprimir antes de subir
         setFileError('');
+        setUploading(true);
         const reader = new FileReader();
-        reader.onload = ev => handleUpload(file, ev.target?.result as string);
+        reader.onload = async ev => {
+            try {
+                const compressed = await compressImage(ev.target?.result as string);
+                // Calcular tamaño aproximado del base64 comprimido
+                const approxBytes = Math.round((compressed.length * 3) / 4);
+                if (approxBytes > 1_000_000) {
+                    setFileError('La imagen es demasiado grande incluso comprimida. Intenta con una foto de menor resolución.');
+                    setUploading(false);
+                    return;
+                }
+                await handleUpload(file, compressed, 'image/jpeg');
+            } catch {
+                setFileError('No se pudo procesar la imagen.');
+                setUploading(false);
+            }
+        };
         reader.readAsDataURL(file);
     };
 
-    const handleUpload = async (file: File, content: string) => {
-        setUploading(true);
+    const handleUpload = async (file: File, content: string, mimeType?: string) => {
+        // setUploading ya puede estar en true si viene de la ruta de compresión
+        if (!mimeType) setUploading(true);
+        const resolvedMime = mimeType ?? file.type;
+        const approxSize = Math.round((content.length * 3) / 4);
         try {
             const ticket = await createOrderTicket(authToken, orderId, {
                 supplierName,
-                filename: file.name,
-                mimeType: file.type,
-                size: file.size,
+                filename: resolvedMime === 'image/jpeg' && file.type !== 'image/jpeg'
+                    ? file.name.replace(/\.[^.]+$/, '.jpg')
+                    : file.name,
+                mimeType: resolvedMime,
+                size: approxSize,
                 content,
             });
             setTickets(prev => [ticket, ...prev]);
