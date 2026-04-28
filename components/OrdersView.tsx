@@ -229,13 +229,15 @@ function openPdfBlob(dataUrl: string, filename: string) {
 const TICKET_ALLOWED_TYPES = ['image/jpeg', 'image/png', 'application/pdf'];
 const JPEG_QUALITY = 0.82;
 
-// Recorta y comprime una imagen según el área seleccionada en el cropper
+const MAX_OUTPUT_BYTES = 950_000; // margen bajo el límite de 1 MB del backend
+
+// Recorta y comprime una imagen según el área seleccionada en el cropper.
+// Si el resultado supera MAX_OUTPUT_BYTES baja la calidad iterativamente.
 function cropAndCompress(dataUrl: string, pixelCrop: Area): Promise<string> {
     return new Promise((resolve, reject) => {
         const img = new Image();
         img.onload = () => {
             const canvas = document.createElement('canvas');
-            // Limitar la salida a 1920px en el lado mayor
             const scale = Math.min(1, 1920 / Math.max(pixelCrop.width, pixelCrop.height));
             canvas.width = Math.round(pixelCrop.width * scale);
             canvas.height = Math.round(pixelCrop.height * scale);
@@ -248,7 +250,14 @@ function cropAndCompress(dataUrl: string, pixelCrop: Area): Promise<string> {
                 0, 0,
                 canvas.width, canvas.height,
             );
-            resolve(canvas.toDataURL('image/jpeg', JPEG_QUALITY));
+            // Intentar con calidad decreciente hasta caber en MAX_OUTPUT_BYTES
+            let quality = JPEG_QUALITY;
+            let result = canvas.toDataURL('image/jpeg', quality);
+            while (Math.round((result.length * 3) / 4) > MAX_OUTPUT_BYTES && quality > 0.2) {
+                quality = Math.round((quality - 0.1) * 10) / 10;
+                result = canvas.toDataURL('image/jpeg', quality);
+            }
+            resolve(result);
         };
         img.onerror = () => reject(new Error('No se pudo leer la imagen'));
         img.src = dataUrl;
@@ -333,8 +342,9 @@ const OrderTicketModal: React.FC<{
         try {
             const compressed = await cropAndCompress(cropSource.dataUrl, croppedAreaPixels);
             const approxSize = Math.round((compressed.length * 3) / 4);
-            if (approxSize > 1_000_000) {
-                setFileError('La imagen es demasiado grande incluso comprimida. Intenta con una foto de menor resolución.');
+            if (approxSize > MAX_OUTPUT_BYTES) {
+                // Caso extremo: recorte enorme a calidad mínima y aún pesa mucho
+                setFileError('La imagen es demasiado grande. Intenta recortar un área más pequeña.');
                 setUploading(false);
                 return;
             }
