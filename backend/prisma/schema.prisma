@@ -19,6 +19,17 @@ model PurchaseStatus {
   @@index([orderId])
 }
 
+// ---------- Usuarios ----------
+model User {
+  id           String   @id @default(cuid())
+  username     String   @unique
+  nombre       String   @default("")
+  passwordHash String
+  activo       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
 // ---------- Proveedores ----------
 model Supplier {
   id        String            @id @default(cuid())

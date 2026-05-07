@@ -3,10 +3,19 @@ import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import jwt from 'jsonwebtoken';
+import * as bcrypt from 'bcrypt';
 import { z } from 'zod';
 import { PrismaClient } from '@prisma/client';
 import axios from 'axios';
 import type { WooCommerceOrder, WooCommerceProduct, WooCommerceLineItem } from './types';
+
+declare global {
+    namespace Express {
+        interface Request {
+            user?: { userId: string; username: string };
+        }
+    }
+}
 
 // Inicializar Prisma Client
 const prisma = new PrismaClient();
@@ -110,7 +119,8 @@ function authenticateToken(req: Request, res: Response, next: NextFunction): voi
     }
 
     try {
-        jwt.verify(token, jwtSecret);
+        const payload = jwt.verify(token, jwtSecret) as { userId: string; username: string };
+        req.user = { userId: payload.userId, username: payload.username };
         next();
     } catch {
         res.status(403).json({ error: 'Token invalido o expirado' });
@@ -125,7 +135,7 @@ app.get('/', (_req, res) => {
 });
 
 // Login
-app.post('/api/login', loginLimiter, (req: Request, res: Response) => {
+app.post('/api/login', loginLimiter, async (req: Request, res: Response) => {
     const parsed = loginSchema.safeParse(req.body);
     if (!parsed.success) {
         res.status(400).json({ error: parsed.error.issues[0].message });
@@ -134,20 +144,6 @@ app.post('/api/login', loginLimiter, (req: Request, res: Response) => {
 
     const { username, password } = parsed.data;
 
-    const adminUser = process.env.ADMIN_USER;
-    const adminPassword = process.env.ADMIN_PASSWORD;
-
-    if (!adminUser || !adminPassword) {
-        console.error('ADMIN_USER o ADMIN_PASSWORD no configurados');
-        res.status(500).json({ error: 'Error de configuracion del servidor' });
-        return;
-    }
-
-    if (username !== adminUser || password !== adminPassword) {
-        res.status(401).json({ error: 'Credenciales invalidas' });
-        return;
-    }
-
     const jwtSecret = process.env.JWT_SECRET;
     if (!jwtSecret) {
         console.error('JWT_SECRET no configurado');
@@ -155,8 +151,20 @@ app.post('/api/login', loginLimiter, (req: Request, res: Response) => {
         return;
     }
 
-    const token = jwt.sign({ user: username }, jwtSecret, { expiresIn: '24h' });
-    res.json({ token, user: username });
+    const user = await prisma.user.findUnique({ where: { username } });
+    if (!user || !user.activo) {
+        res.status(401).json({ error: 'Credenciales invalidas' });
+        return;
+    }
+
+    const passwordOk = await bcrypt.compare(password, user.passwordHash);
+    if (!passwordOk) {
+        res.status(401).json({ error: 'Credenciales invalidas' });
+        return;
+    }
+
+    const token = jwt.sign({ userId: user.id, username: user.username }, jwtSecret, { expiresIn: '24h' });
+    res.json({ token, user: user.username });
 });
 
 // --- Rutas Protegidas ---
@@ -1097,6 +1105,89 @@ app.patch('/api/store-orders/:id/complete', async (req: Request, res: Response) 
     } catch (err) {
         console.error('Error al completar pedido de tienda:', err);
         res.status(500).json({ error: 'Error al completar pedido de tienda' });
+    }
+});
+
+// ---------- USUARIOS ----------
+
+const createUserSchema = z.object({
+    username: z.string().min(2, 'Username debe tener al menos 2 caracteres'),
+    nombre: z.string().min(1, 'Nombre es requerido'),
+    password: z.string().min(6, 'Password debe tener al menos 6 caracteres'),
+});
+
+const updateUserSchema = z.object({
+    nombre: z.string().min(1).optional(),
+    password: z.string().min(6).optional(),
+    activo: z.boolean().optional(),
+});
+
+// GET /api/users — listar todos
+app.get('/api/users', async (_req: Request, res: Response) => {
+    const users = await prisma.user.findMany({
+        select: { id: true, username: true, nombre: true, activo: true, createdAt: true },
+        orderBy: { createdAt: 'asc' },
+    });
+    res.json(users);
+});
+
+// POST /api/users — crear usuario
+app.post('/api/users', async (req: Request, res: Response) => {
+    const parsed = createUserSchema.safeParse(req.body);
+    if (!parsed.success) {
+        res.status(400).json({ error: parsed.error.issues[0].message });
+        return;
+    }
+    const { username, nombre, password } = parsed.data;
+    const existing = await prisma.user.findUnique({ where: { username } });
+    if (existing) {
+        res.status(409).json({ error: 'El username ya existe' });
+        return;
+    }
+    const passwordHash = await bcrypt.hash(password, 10);
+    const user = await prisma.user.create({
+        data: { username, nombre, passwordHash },
+        select: { id: true, username: true, nombre: true, activo: true, createdAt: true },
+    });
+    res.status(201).json(user);
+});
+
+// PUT /api/users/:id — editar nombre, password, activo
+app.put('/api/users/:id', async (req: Request, res: Response) => {
+    const parsed = updateUserSchema.safeParse(req.body);
+    if (!parsed.success) {
+        res.status(400).json({ error: parsed.error.issues[0].message });
+        return;
+    }
+    const { nombre, password, activo } = parsed.data;
+    const data: Record<string, unknown> = {};
+    if (nombre !== undefined) data.nombre = nombre;
+    if (activo !== undefined) data.activo = activo;
+    if (password !== undefined) data.passwordHash = await bcrypt.hash(password, 10);
+    try {
+        const user = await prisma.user.update({
+            where: { id: req.params.id },
+            data,
+            select: { id: true, username: true, nombre: true, activo: true, createdAt: true },
+        });
+        res.json(user);
+    } catch {
+        res.status(404).json({ error: 'Usuario no encontrado' });
+    }
+});
+
+// DELETE /api/users/:id — eliminar usuario
+app.delete('/api/users/:id', async (req: Request, res: Response) => {
+    // No permitir auto-eliminación
+    if (req.user?.userId === req.params.id) {
+        res.status(400).json({ error: 'No puedes eliminar tu propio usuario' });
+        return;
+    }
+    try {
+        await prisma.user.delete({ where: { id: req.params.id } });
+        res.status(204).send();
+    } catch {
+        res.status(404).json({ error: 'Usuario no encontrado' });
     }
 });
 

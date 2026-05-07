@@ -7,9 +7,10 @@ import ArticlesView from './components/ArticlesView';
 import RecipesView from './components/RecipesView';
 import StoreView from './components/StoreView';
 import SuppliersView from './components/SuppliersView';
+import UsersView from './components/UsersView';
 import { ToastContainer } from './components/Toast';
 
-type AppView = 'login' | 'dashboard' | 'orders' | 'articles' | 'recipes' | 'store' | 'suppliers';
+type AppView = 'login' | 'dashboard' | 'orders' | 'articles' | 'recipes' | 'store' | 'suppliers' | 'users';
 
 const navItems: { view: AppView; label: string; shortLabel: string; icon: string }[] = [
   { view: 'dashboard',  label: 'Panel',       shortLabel: 'Panel',    icon: 'dashboard'       },
@@ -18,6 +19,7 @@ const navItems: { view: AppView; label: string; shortLabel: string; icon: string
   { view: 'articles',   label: 'Artículos',   shortLabel: 'Arts.',    icon: 'package_2'       },
   { view: 'store',      label: 'Tienda',      shortLabel: 'Tienda',   icon: 'storefront'      },
   { view: 'suppliers',  label: 'Proveedores', shortLabel: 'Provs.',   icon: 'local_shipping'  },
+  { view: 'users',      label: 'Usuarios',    shortLabel: 'Users',    icon: 'manage_accounts' },
 ];
 
 const Header: React.FC<{ onLogout: () => void; setView: (view: AppView) => void; currentView: AppView }> = ({ onLogout, setView, currentView }) => {
@@ -135,6 +137,7 @@ const App: React.FC = () => {
             onNavigateToArticles={() => setView('articles')}
             onNavigateToStore={() => setView('store')}
             onNavigateToSuppliers={() => setView('suppliers')}
+            onNavigateToUsers={() => setView('users')}
           />
         );
       case 'orders':
@@ -154,6 +157,8 @@ const App: React.FC = () => {
         return <StoreView authToken={authToken!} onAuthError={handleAuthError} />;
       case 'suppliers':
         return <SuppliersView authToken={authToken!} onAuthError={handleAuthError} />;
+      case 'users':
+        return <UsersView authToken={authToken!} onAuthError={handleAuthError} />;
       default:
         return <Login onLoginSuccess={handleLoginSuccess} />;
     }

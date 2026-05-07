@@ -1,4 +1,4 @@
-import type { Supplier, Article, Recipe, StoreOrder, StoreOrderItem, SupplierTicket, SupplierTicketUpload, OrderTicket, OrderTicketUpload } from '../types';
+import type { User, Supplier, Article, Recipe, StoreOrder, StoreOrderItem, SupplierTicket, SupplierTicketUpload, OrderTicket, OrderTicketUpload } from '../types';
 import { AuthError } from './woocommerceService';
 
 export { AuthError };
@@ -19,6 +19,33 @@ async function handleResponse<T>(res: Response): Promise<T> {
         throw new Error(data.error || `Error ${res.status}`);
     }
     return res.json();
+}
+
+// ---- Usuarios ----
+
+export async function getUsers(token: string): Promise<User[]> {
+    return handleResponse(await fetch(`${BASE}/api/users`, { headers: authHeaders(token) }));
+}
+
+export async function createUser(token: string, data: { username: string; nombre: string; password: string }): Promise<User> {
+    return handleResponse(await fetch(`${BASE}/api/users`, {
+        method: 'POST', headers: authHeaders(token), body: JSON.stringify(data),
+    }));
+}
+
+export async function updateUser(token: string, id: string, data: { nombre?: string; password?: string; activo?: boolean }): Promise<User> {
+    return handleResponse(await fetch(`${BASE}/api/users/${id}`, {
+        method: 'PUT', headers: authHeaders(token), body: JSON.stringify(data),
+    }));
+}
+
+export async function deleteUser(token: string, id: string): Promise<void> {
+    const res = await fetch(`${BASE}/api/users/${id}`, { method: 'DELETE', headers: authHeaders(token) });
+    if (res.status === 401 || res.status === 403) throw new AuthError('Sesion expirada. Inicia sesion de nuevo.');
+    if (!res.ok) {
+        const data = await res.json().catch(() => ({ error: `Error ${res.status}` }));
+        throw new Error(data.error || `Error ${res.status}`);
+    }
 }
 
 // ---- Proveedores ----

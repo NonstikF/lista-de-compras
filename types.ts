@@ -34,6 +34,15 @@ export interface AuthError {
   error: string;
 }
 
+// ---------- Usuarios ----------
+export interface User {
+  id: string;
+  username: string;
+  nombre: string;
+  activo: boolean;
+  createdAt: string;
+}
+
 // ---------- Proveedores ----------
 export interface Supplier {
   id: string;
