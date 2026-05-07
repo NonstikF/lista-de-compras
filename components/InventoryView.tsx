@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import type { InventoryItem, InventoryMovement, Article } from '../types';
 import {
     AuthError,
@@ -10,12 +10,136 @@ import {
     getInventoryMovements,
     getArticles,
 } from '../services/catalogService';
-import { Modal, Button, Field, Input, MIcon, useToast } from './ui';
+import { Modal, Button, Field, Input, MIcon, Chip, useToast } from './ui';
 
 interface InventoryViewProps {
     authToken: string;
     onAuthError: () => void;
 }
+
+type SortKey = 'name' | 'stock-asc' | 'stock-desc' | 'category';
+type StockFilter = 'all' | 'low' | 'out';
+const PREFS_KEY = 'inventory:prefs:v1';
+
+interface Prefs {
+    sort: SortKey;
+    stockFilter: StockFilter;
+    category: string | null;
+}
+
+const loadPrefs = (): Prefs => {
+    try {
+        const raw = localStorage.getItem(PREFS_KEY);
+        if (raw) return { sort: 'name', stockFilter: 'all', category: null, ...JSON.parse(raw) };
+    } catch { /* ignore */ }
+    return { sort: 'name', stockFilter: 'all', category: null };
+};
+
+const savePrefs = (p: Prefs) => {
+    try { localStorage.setItem(PREFS_KEY, JSON.stringify(p)); } catch { /* ignore */ }
+};
+
+// ---------- Combobox de artículos con búsqueda ----------
+const ArticleCombobox: React.FC<{
+    articles: Article[];
+    value: string;
+    onChange: (id: string) => void;
+    error?: string;
+}> = ({ articles, value, onChange, error }) => {
+    const [query, setQuery] = useState('');
+    const [open, setOpen] = useState(false);
+    const wrapRef = useRef<HTMLDivElement>(null);
+
+    const selected = articles.find(a => a.id === value);
+
+    useEffect(() => {
+        const onClick = (e: MouseEvent) => {
+            if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
+        };
+        document.addEventListener('mousedown', onClick);
+        return () => document.removeEventListener('mousedown', onClick);
+    }, []);
+
+    const filtered = useMemo(() => {
+        const q = query.trim().toLowerCase();
+        if (!q) return articles.slice(0, 200);
+        return articles.filter(a =>
+            a.name.toLowerCase().includes(q) ||
+            (a.category || '').toLowerCase().includes(q) ||
+            (a.sku || '').toLowerCase().includes(q)
+        ).slice(0, 200);
+    }, [articles, query]);
+
+    return (
+        <div ref={wrapRef} className="relative">
+            <button
+                type="button"
+                onClick={() => setOpen(o => !o)}
+                className={`w-full flex items-center gap-2 px-3 py-2.5 rounded-xl bg-surface-container-low border text-left text-sm transition ${
+                    error ? 'border-error' : 'border-outline-variant hover:border-outline'
+                } ${open ? 'border-primary ring-2 ring-primary/20 bg-white' : ''}`}
+            >
+                {selected?.image ? (
+                    <img src={selected.image} alt="" className="w-6 h-6 rounded object-cover shrink-0" />
+                ) : (
+                    <MIcon name="inventory_2" className="text-on-surface-variant text-base" />
+                )}
+                <span className={`flex-1 truncate ${selected ? 'text-on-surface' : 'text-on-surface-variant/60'}`}>
+                    {selected ? selected.name : 'Buscar y seleccionar artículo…'}
+                </span>
+                <MIcon name="expand_more" className={`text-on-surface-variant transition ${open ? 'rotate-180' : ''}`} />
+            </button>
+
+            {open && (
+                <div className="absolute z-10 mt-1 w-full bg-white border border-outline-variant rounded-xl shadow-xl overflow-hidden">
+                    <div className="p-2 border-b border-surface-variant">
+                        <div className="relative">
+                            <MIcon name="search" className="absolute left-2.5 top-1/2 -translate-y-1/2 text-on-surface-variant text-base" />
+                            <input
+                                value={query}
+                                onChange={e => setQuery(e.target.value)}
+                                placeholder="Buscar por nombre, categoría o SKU…"
+                                className="w-full pl-8 pr-3 py-2 rounded-lg bg-surface-container-low border border-outline-variant focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none text-sm"
+                                autoFocus
+                            />
+                        </div>
+                    </div>
+                    <div className="max-h-64 overflow-y-auto">
+                        {filtered.length === 0 ? (
+                            <div className="px-3 py-6 text-center text-sm text-on-surface-variant">
+                                {articles.length === 0 ? 'No hay artículos disponibles' : 'Sin resultados'}
+                            </div>
+                        ) : filtered.map(a => (
+                            <button
+                                key={a.id}
+                                type="button"
+                                onClick={() => { onChange(a.id); setOpen(false); setQuery(''); }}
+                                className={`w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-surface-container-low transition ${
+                                    a.id === value ? 'bg-primary/8' : ''
+                                }`}
+                            >
+                                {a.image ? (
+                                    <img src={a.image} alt="" className="w-7 h-7 rounded object-cover shrink-0" />
+                                ) : (
+                                    <div className="w-7 h-7 rounded bg-surface-container flex items-center justify-center shrink-0">
+                                        <MIcon name="inventory_2" className="text-on-surface-variant text-sm" />
+                                    </div>
+                                )}
+                                <div className="flex-1 min-w-0">
+                                    <div className="text-sm text-on-surface truncate">{a.name}</div>
+                                    {a.category && (
+                                        <div className="text-[11px] text-on-surface-variant truncate">{a.category}</div>
+                                    )}
+                                </div>
+                                {a.id === value && <MIcon name="check" className="text-primary text-base" />}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};
 
 // ---------- Modal agregar insumo ----------
 const AddItemModal: React.FC<{
@@ -51,6 +175,8 @@ const AddItemModal: React.FC<{
         }
     };
 
+    const unitSuggestions = ['unidad', 'kg', 'g', 'litros', 'ml', 'pieza', 'caja', 'paquete'];
+
     return (
         <Modal
             open
@@ -68,28 +194,31 @@ const AddItemModal: React.FC<{
         >
             <form onSubmit={handleSubmit} className="px-6 py-4 space-y-3">
                 <Field label="Artículo" error={errors.articleId}>
-                    <select
+                    <ArticleCombobox
+                        articles={articles}
                         value={articleId}
-                        onChange={e => { setArticleId(e.target.value); setErrors(x => ({ ...x, articleId: '' })); }}
-                        className="w-full rounded-lg border border-outline px-3 py-2 text-sm bg-white text-on-surface focus:outline-none focus:ring-2 focus:ring-primary"
-                        autoFocus
-                    >
-                        <option value="">Seleccionar artículo…</option>
-                        {articles.map(a => (
-                            <option key={a.id} value={a.id}>{a.name}</option>
-                        ))}
-                    </select>
+                        onChange={id => { setArticleId(id); setErrors(x => ({ ...x, articleId: '' })); }}
+                        error={errors.articleId}
+                    />
                 </Field>
                 <div className="grid grid-cols-2 gap-3">
                     <Field label="Stock inicial" error={errors.stock}>
                         <Input value={stock} onChange={e => { setStock(e.target.value); setErrors(x => ({ ...x, stock: '' })); }} type="number" min="0" step="any" />
                     </Field>
-                    <Field label="Stock mínimo" error={errors.stockMin}>
+                    <Field label="Stock mínimo" error={errors.stockMin} hint="Alerta si baja de aquí">
                         <Input value={stockMin} onChange={e => { setStockMin(e.target.value); setErrors(x => ({ ...x, stockMin: '' })); }} type="number" min="0" step="any" />
                     </Field>
                 </div>
                 <Field label="Unidad" error={errors.unit}>
-                    <Input value={unit} onChange={e => { setUnit(e.target.value); setErrors(x => ({ ...x, unit: '' })); }} placeholder="ej: kg, litros, unidad" />
+                    <Input
+                        value={unit}
+                        onChange={e => { setUnit(e.target.value); setErrors(x => ({ ...x, unit: '' })); }}
+                        placeholder="ej: kg, litros, unidad"
+                        list="unit-suggestions"
+                    />
+                    <datalist id="unit-suggestions">
+                        {unitSuggestions.map(u => <option key={u} value={u} />)}
+                    </datalist>
                 </Field>
             </form>
         </Modal>
@@ -167,10 +296,13 @@ const MovementModal: React.FC<{
 
     const typeLabel = type === 'entrada' ? 'Entrada' : type === 'salida' ? 'Salida' : 'Ajuste';
     const typeIcon = type === 'entrada' ? 'add_circle' : type === 'salida' ? 'remove_circle' : 'tune';
+    const typeColor = type === 'entrada' ? 'text-green-600' : type === 'salida' ? 'text-red-500' : 'text-blue-500';
+    const typeBg = type === 'entrada' ? 'bg-green-50' : type === 'salida' ? 'bg-red-50' : 'bg-blue-50';
 
     const validate = (): boolean => {
         const e: Record<string, string> = {};
         if (!quantity || isNaN(Number(quantity)) || Number(quantity) <= 0) e.quantity = 'Ingresa una cantidad positiva';
+        if (type === 'salida' && Number(quantity) > item.stock) e.quantity = `Solo hay ${item.stock} ${item.unit} disponibles`;
         setErrors(e);
         return Object.keys(e).length === 0;
     };
@@ -185,6 +317,20 @@ const MovementModal: React.FC<{
             setSaving(false);
         }
     };
+
+    const previewStock = (() => {
+        const n = Number(quantity);
+        if (isNaN(n) || n <= 0) return null;
+        if (type === 'entrada') return item.stock + n;
+        if (type === 'salida') return Math.max(0, item.stock - n);
+        return n;
+    })();
+
+    const reasonSuggestions = type === 'entrada'
+        ? ['Compra semanal', 'Reposición', 'Devolución']
+        : type === 'salida'
+            ? ['Uso diario', 'Merma', 'Caducado', 'Roto']
+            : ['Conteo físico', 'Corrección'];
 
     return (
         <Modal
@@ -201,15 +347,58 @@ const MovementModal: React.FC<{
                 </>
             }
         >
-            <form onSubmit={handleSubmit} className="px-6 py-4 space-y-3">
-                <p className="text-sm text-on-surface-variant">
-                    Stock actual: <strong className="text-on-background">{item.stock} {item.unit}</strong>
-                </p>
-                <Field label={type === 'ajuste' ? 'Nuevo stock' : 'Cantidad'} error={errors.quantity}>
-                    <Input value={quantity} onChange={e => { setQuantity(e.target.value); setErrors(x => ({ ...x, quantity: '' })); }} type="number" min="0" step="any" autoFocus placeholder={`ej: 5`} />
+            <form onSubmit={handleSubmit} className="px-6 py-4 space-y-4">
+                <div className={`flex items-center gap-3 p-3 rounded-xl ${typeBg}`}>
+                    <span className={`material-symbols-outlined text-2xl ${typeColor}`} style={{ fontVariationSettings: "'FILL' 1" }}>
+                        {typeIcon}
+                    </span>
+                    <div className="text-sm flex-1">
+                        <div className="text-on-surface-variant">Stock actual</div>
+                        <div className="font-bold text-on-background text-base">{item.stock} {item.unit}</div>
+                    </div>
+                    {previewStock !== null && (
+                        <div className="text-sm text-right">
+                            <div className="text-on-surface-variant">Quedará</div>
+                            <div className={`font-bold text-base ${typeColor}`}>{previewStock} {item.unit}</div>
+                        </div>
+                    )}
+                </div>
+
+                <Field label={type === 'ajuste' ? 'Nuevo stock total' : 'Cantidad'} error={errors.quantity}>
+                    <Input
+                        value={quantity}
+                        onChange={e => { setQuantity(e.target.value); setErrors(x => ({ ...x, quantity: '' })); }}
+                        type="number"
+                        min="0"
+                        step="any"
+                        autoFocus
+                        placeholder="0"
+                        inputMode="decimal"
+                    />
                 </Field>
+
                 <Field label="Motivo (opcional)">
-                    <Input value={reason} onChange={e => setReason(e.target.value)} placeholder="ej: Compra semanal" />
+                    <Input
+                        value={reason}
+                        onChange={e => setReason(e.target.value)}
+                        placeholder={`ej: ${reasonSuggestions[0]}`}
+                        list={`reasons-${type}`}
+                    />
+                    <datalist id={`reasons-${type}`}>
+                        {reasonSuggestions.map(r => <option key={r} value={r} />)}
+                    </datalist>
+                    <div className="flex flex-wrap gap-1.5 mt-1">
+                        {reasonSuggestions.map(r => (
+                            <button
+                                key={r}
+                                type="button"
+                                onClick={() => setReason(r)}
+                                className="text-xs px-2 py-1 rounded-full bg-surface-container-low border border-outline-variant text-on-surface-variant hover:bg-surface-container hover:text-on-surface transition"
+                            >
+                                {r}
+                            </button>
+                        ))}
+                    </div>
                 </Field>
             </form>
         </Modal>
@@ -271,6 +460,54 @@ const HistoryModal: React.FC<{
     );
 };
 
+// ---------- Skeleton ----------
+const SkeletonRow: React.FC = () => (
+    <div className="bg-white border border-surface-variant rounded-xl px-4 py-3 flex items-center gap-3 animate-pulse">
+        <div className="w-10 h-10 rounded-lg bg-surface-container shrink-0" />
+        <div className="flex-1 space-y-2">
+            <div className="h-3 bg-surface-container rounded w-1/2" />
+            <div className="h-3 bg-surface-container rounded w-1/4" />
+        </div>
+        <div className="hidden md:flex gap-1">
+            {Array.from({ length: 4 }).map((_, i) => <div key={i} className="w-8 h-8 rounded-full bg-surface-container" />)}
+        </div>
+    </div>
+);
+
+// ---------- Stat card ----------
+const StatCard: React.FC<{
+    icon: string;
+    label: string;
+    value: number;
+    tone: 'neutral' | 'warning' | 'danger';
+    active?: boolean;
+    onClick?: () => void;
+}> = ({ icon, label, value, tone, active, onClick }) => {
+    const tones = {
+        neutral: { bg: 'bg-white', icon: 'text-primary', border: 'border-surface-variant', activeBorder: 'border-primary ring-2 ring-primary/20' },
+        warning: { bg: 'bg-amber-50', icon: 'text-amber-600', border: 'border-amber-200', activeBorder: 'border-amber-500 ring-2 ring-amber-500/20' },
+        danger:  { bg: 'bg-red-50',   icon: 'text-red-600',   border: 'border-red-200',   activeBorder: 'border-red-500 ring-2 ring-red-500/20' },
+    }[tone];
+    return (
+        <button
+            type="button"
+            onClick={onClick}
+            disabled={!onClick}
+            className={`flex items-center gap-3 px-4 py-3 rounded-2xl border text-left transition ${tones.bg} ${
+                active ? tones.activeBorder : tones.border
+            } ${onClick ? 'hover:shadow-sm cursor-pointer' : 'cursor-default'}`}
+        >
+            <div className={`w-10 h-10 rounded-xl bg-white/60 flex items-center justify-center ${tones.icon}`}>
+                <MIcon name={icon} fill />
+            </div>
+            <div className="min-w-0">
+                <div className="text-2xl font-bold text-on-background leading-none">{value}</div>
+                <div className="text-xs text-on-surface-variant mt-1 truncate">{label}</div>
+            </div>
+        </button>
+    );
+};
+
 // ---------- Vista principal ----------
 const InventoryView: React.FC<InventoryViewProps> = ({ authToken, onAuthError }) => {
     const toast = useToast();
@@ -285,6 +522,35 @@ const InventoryView: React.FC<InventoryViewProps> = ({ authToken, onAuthError })
     const [movementsLoading, setMovementsLoading] = useState(false);
     const [deletingId, setDeletingId] = useState<string | null>(null);
 
+    const [search, setSearch] = useState('');
+    const [debouncedSearch, setDebouncedSearch] = useState('');
+    const initialPrefs = useMemo(loadPrefs, []);
+    const [sort, setSort] = useState<SortKey>(initialPrefs.sort);
+    const [stockFilter, setStockFilter] = useState<StockFilter>(initialPrefs.stockFilter);
+    const [categoryFilter, setCategoryFilter] = useState<string | null>(initialPrefs.category);
+    const searchRef = useRef<HTMLInputElement>(null);
+
+    useEffect(() => {
+        const t = setTimeout(() => setDebouncedSearch(search), 180);
+        return () => clearTimeout(t);
+    }, [search]);
+
+    useEffect(() => {
+        savePrefs({ sort, stockFilter, category: categoryFilter });
+    }, [sort, stockFilter, categoryFilter]);
+
+    useEffect(() => {
+        const onKey = (e: KeyboardEvent) => {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+                e.preventDefault();
+                searchRef.current?.focus();
+                searchRef.current?.select();
+            }
+        };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, []);
+
     const load = async () => {
         try {
             setLoading(true);
@@ -298,6 +564,42 @@ const InventoryView: React.FC<InventoryViewProps> = ({ authToken, onAuthError })
     };
 
     useEffect(() => { load(); }, []);
+
+    const categories = useMemo(() => {
+        const set = new Set<string>();
+        items.forEach(i => { if (i.article.category) set.add(i.article.category); });
+        return Array.from(set).sort((a, b) => a.localeCompare(b));
+    }, [items]);
+
+    const stats = useMemo(() => {
+        const total = items.length;
+        const out = items.filter(i => i.stock <= 0).length;
+        const low = items.filter(i => i.stock > 0 && i.stock <= i.stockMin).length;
+        return { total, low, out };
+    }, [items]);
+
+    const filtered = useMemo(() => {
+        const q = debouncedSearch.trim().toLowerCase();
+        let list = items.filter(i => {
+            if (categoryFilter && i.article.category !== categoryFilter) return false;
+            if (stockFilter === 'low' && !(i.stock > 0 && i.stock <= i.stockMin)) return false;
+            if (stockFilter === 'out' && i.stock > 0) return false;
+            if (q) {
+                const hay = `${i.article.name} ${i.article.category || ''} ${i.unit}`.toLowerCase();
+                if (!hay.includes(q)) return false;
+            }
+            return true;
+        });
+        list = list.slice().sort((a, b) => {
+            switch (sort) {
+                case 'stock-asc':  return a.stock - b.stock || a.article.name.localeCompare(b.article.name);
+                case 'stock-desc': return b.stock - a.stock || a.article.name.localeCompare(b.article.name);
+                case 'category':   return (a.article.category || '').localeCompare(b.article.category || '') || a.article.name.localeCompare(b.article.name);
+                default:           return a.article.name.localeCompare(b.article.name);
+            }
+        });
+        return list;
+    }, [items, debouncedSearch, sort, stockFilter, categoryFilter]);
 
     const openAdd = async () => {
         try {
@@ -314,7 +616,7 @@ const InventoryView: React.FC<InventoryViewProps> = ({ authToken, onAuthError })
     const handleAdd = async (data: { articleId: string; stock: number; stockMin: number; unit: string }) => {
         try {
             const item = await createInventoryItem(authToken, data);
-            setItems(prev => [...prev, item].sort((a, b) => a.article.name.localeCompare(b.article.name)));
+            setItems(prev => [...prev, item]);
             setShowAdd(false);
             toast('success', `${item.article.name} agregado al inventario`);
         } catch (err) {
@@ -380,118 +682,269 @@ const InventoryView: React.FC<InventoryViewProps> = ({ authToken, onAuthError })
     };
 
     const itemToDelete = items.find(i => i.id === deletingId);
+    const hasFilters = !!debouncedSearch || stockFilter !== 'all' || categoryFilter !== null;
+
+    const clearFilters = () => {
+        setSearch('');
+        setStockFilter('all');
+        setCategoryFilter(null);
+    };
 
     return (
-        <div className="max-w-4xl mx-auto px-4 md:px-6 py-8 pb-28 md:pb-10">
-            <div className="flex items-center justify-between mb-6">
+        <div className="max-w-5xl mx-auto px-4 md:px-6 py-6 md:py-8 pb-28 md:pb-10">
+            {/* Header */}
+            <div className="flex items-start justify-between mb-5 gap-3">
                 <div>
                     <h1 className="font-epilogue text-2xl md:text-3xl font-bold text-on-background">Inventario</h1>
                     <p className="text-on-surface-variant text-sm mt-0.5">Control de insumos de cafetería</p>
                 </div>
-                <Button variant="filled" icon="add_circle" onClick={openAdd}>
+                <Button variant="filled" icon="add_circle" onClick={openAdd} className="hidden md:inline-flex">
                     Agregar insumo
                 </Button>
             </div>
 
+            {/* Stats */}
+            <div className="grid grid-cols-3 gap-2 md:gap-3 mb-4">
+                <StatCard
+                    icon="inventory_2"
+                    label="Total insumos"
+                    value={stats.total}
+                    tone="neutral"
+                    active={stockFilter === 'all' && !categoryFilter}
+                    onClick={() => { setStockFilter('all'); setCategoryFilter(null); }}
+                />
+                <StatCard
+                    icon="warning"
+                    label="Stock bajo"
+                    value={stats.low}
+                    tone="warning"
+                    active={stockFilter === 'low'}
+                    onClick={() => setStockFilter(stockFilter === 'low' ? 'all' : 'low')}
+                />
+                <StatCard
+                    icon="error"
+                    label="Agotado"
+                    value={stats.out}
+                    tone="danger"
+                    active={stockFilter === 'out'}
+                    onClick={() => setStockFilter(stockFilter === 'out' ? 'all' : 'out')}
+                />
+            </div>
+
+            {/* Search + sort */}
+            <div className="flex flex-col md:flex-row gap-2 mb-3 sticky top-0 z-10 bg-background py-2 -mx-4 md:-mx-6 px-4 md:px-6">
+                <div className="relative flex-1">
+                    <MIcon name="search" className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant" />
+                    <input
+                        ref={searchRef}
+                        value={search}
+                        onChange={e => setSearch(e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Escape') setSearch(''); }}
+                        placeholder="Buscar insumo… (Ctrl+K)"
+                        className="w-full pl-10 pr-10 py-2.5 rounded-xl bg-surface-container-low border border-outline-variant focus:border-primary focus:ring-2 focus:ring-primary/20 focus:bg-white outline-none text-sm transition"
+                    />
+                    {search && (
+                        <button
+                            onClick={() => setSearch('')}
+                            className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-full text-on-surface-variant hover:bg-surface-container"
+                            title="Limpiar"
+                        >
+                            <MIcon name="close" className="text-base" />
+                        </button>
+                    )}
+                </div>
+                <select
+                    value={sort}
+                    onChange={e => setSort(e.target.value as SortKey)}
+                    className="px-3 py-2.5 rounded-xl bg-surface-container-low border border-outline-variant focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none text-sm text-on-surface transition md:w-48"
+                    title="Ordenar"
+                >
+                    <option value="name">Nombre A-Z</option>
+                    <option value="stock-asc">Stock: menor primero</option>
+                    <option value="stock-desc">Stock: mayor primero</option>
+                    <option value="category">Por categoría</option>
+                </select>
+            </div>
+
+            {/* Category chips */}
+            {categories.length > 0 && (
+                <div className="flex gap-1.5 overflow-x-auto pb-2 mb-2 -mx-4 px-4 md:mx-0 md:px-0 scrollbar-thin">
+                    <Chip
+                        active={categoryFilter === null}
+                        onClick={() => setCategoryFilter(null)}
+                    >
+                        Todas
+                    </Chip>
+                    {categories.map(c => (
+                        <Chip
+                            key={c}
+                            active={categoryFilter === c}
+                            onClick={() => setCategoryFilter(categoryFilter === c ? null : c)}
+                        >
+                            {c}
+                        </Chip>
+                    ))}
+                </div>
+            )}
+
+            {/* Active filters bar */}
+            {hasFilters && !loading && (
+                <div className="flex items-center justify-between mb-3 text-sm text-on-surface-variant">
+                    <span>{filtered.length} de {items.length} resultados</span>
+                    <button
+                        onClick={clearFilters}
+                        className="inline-flex items-center gap-1 text-primary hover:underline font-medium"
+                    >
+                        <MIcon name="close" className="text-base" /> Limpiar filtros
+                    </button>
+                </div>
+            )}
+
+            {/* List */}
             {loading ? (
-                <div className="flex items-center justify-center py-16 text-on-surface-variant">
-                    <MIcon name="progress_activity" className="animate-spin mr-2" />
-                    Cargando…
+                <div className="space-y-2">
+                    {Array.from({ length: 5 }).map((_, i) => <SkeletonRow key={i} />)}
                 </div>
             ) : items.length === 0 ? (
-                <div className="text-center py-16 text-on-surface-variant">
+                <div className="text-center py-16 text-on-surface-variant bg-white border border-dashed border-outline-variant rounded-2xl">
                     <MIcon name="inventory" size={48} className="mb-3 opacity-40" />
-                    <p>No hay insumos en el inventario</p>
-                    <p className="text-sm mt-1">Agrega el primer insumo con el botón de arriba</p>
+                    <p className="font-semibold text-on-surface">No hay insumos en el inventario</p>
+                    <p className="text-sm mt-1 mb-4">Agrega el primer insumo para empezar</p>
+                    <Button variant="filled" icon="add_circle" onClick={openAdd}>Agregar insumo</Button>
+                </div>
+            ) : filtered.length === 0 ? (
+                <div className="text-center py-12 text-on-surface-variant bg-white border border-dashed border-outline-variant rounded-2xl">
+                    <MIcon name="search_off" size={40} className="mb-2 opacity-40" />
+                    <p className="font-semibold text-on-surface">Sin resultados</p>
+                    {debouncedSearch && <p className="text-sm mt-1">No se encontraron insumos para "{debouncedSearch}"</p>}
+                    <button onClick={clearFilters} className="mt-3 text-sm text-primary hover:underline font-medium">
+                        Limpiar filtros
+                    </button>
                 </div>
             ) : (
                 <div className="space-y-2">
-                    {items.map(item => {
-                        const isLow = item.stock <= item.stockMin;
+                    {filtered.map(item => {
+                        const isOut = item.stock <= 0;
+                        const isLow = !isOut && item.stock <= item.stockMin;
+                        const stockPct = item.stockMin > 0 ? Math.min(100, (item.stock / (item.stockMin * 2)) * 100) : 100;
+                        const stockBar = isOut ? 'bg-red-500' : isLow ? 'bg-amber-500' : 'bg-green-500';
+
                         return (
                             <div
                                 key={item.id}
-                                className="bg-white border border-surface-variant rounded-xl px-4 py-3 flex items-center gap-3"
+                                className={`bg-white border rounded-xl px-3 md:px-4 py-3 transition hover:shadow-sm ${
+                                    isOut ? 'border-red-200' : isLow ? 'border-amber-200' : 'border-surface-variant'
+                                }`}
                             >
-                                {item.article.image ? (
-                                    <img src={item.article.image} alt={item.article.name} className="w-10 h-10 rounded-lg object-cover shrink-0" />
-                                ) : (
-                                    <div className="w-10 h-10 rounded-lg bg-surface-container flex items-center justify-center shrink-0">
-                                        <MIcon name="inventory_2" className="text-on-surface-variant" />
-                                    </div>
-                                )}
+                                <div className="flex items-center gap-3">
+                                    {item.article.image ? (
+                                        <img src={item.article.image} alt={item.article.name} className="w-11 h-11 rounded-lg object-cover shrink-0" />
+                                    ) : (
+                                        <div className="w-11 h-11 rounded-lg bg-surface-container flex items-center justify-center shrink-0">
+                                            <MIcon name="inventory_2" className="text-on-surface-variant" />
+                                        </div>
+                                    )}
 
-                                <div className="flex-1 min-w-0">
-                                    <div className="flex items-center gap-2 flex-wrap">
-                                        <span className="font-semibold text-on-background truncate">{item.article.name}</span>
-                                        {item.article.category && (
-                                            <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-surface-container text-on-surface-variant font-bold">
-                                                {item.article.category}
+                                    <div className="flex-1 min-w-0">
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                            <span className="font-semibold text-on-background truncate">{item.article.name}</span>
+                                            {item.article.category && (
+                                                <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-surface-container text-on-surface-variant font-bold">
+                                                    {item.article.category}
+                                                </span>
+                                            )}
+                                            {isOut && (
+                                                <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-red-100 text-red-700 font-bold flex items-center gap-0.5">
+                                                    <MIcon name="error" size={12} className="inline" /> Agotado
+                                                </span>
+                                            )}
+                                            {isLow && (
+                                                <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 font-bold flex items-center gap-0.5">
+                                                    <MIcon name="warning" size={12} className="inline" /> Bajo
+                                                </span>
+                                            )}
+                                        </div>
+                                        <div className="flex items-center gap-3 mt-1 text-sm">
+                                            <span className={`font-bold ${isOut ? 'text-red-600' : isLow ? 'text-amber-700' : 'text-on-background'}`}>
+                                                {item.stock} {item.unit}
                                             </span>
-                                        )}
-                                        {isLow && (
-                                            <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-error/10 text-error font-bold flex items-center gap-0.5">
-                                                <MIcon name="warning" size={12} className="inline" /> Bajo
-                                            </span>
+                                            <span className="text-on-surface-variant text-xs">mín: {item.stockMin} {item.unit}</span>
+                                        </div>
+                                        {item.stockMin > 0 && (
+                                            <div className="mt-1.5 h-1 rounded-full bg-surface-container overflow-hidden">
+                                                <div className={`h-full rounded-full transition-all ${stockBar}`} style={{ width: `${stockPct}%` }} />
+                                            </div>
                                         )}
                                     </div>
-                                    <div className="flex items-center gap-3 mt-0.5 text-sm">
-                                        <span className={`font-bold ${isLow ? 'text-error' : 'text-on-background'}`}>
-                                            {item.stock} {item.unit}
-                                        </span>
-                                        <span className="text-on-surface-variant text-xs">mín: {item.stockMin} {item.unit}</span>
-                                    </div>
-                                </div>
 
-                                <div className="flex items-center gap-1 shrink-0">
-                                    <button
-                                        onClick={() => setMovementItem({ item, type: 'entrada' })}
-                                        title="Registrar entrada"
-                                        className="p-2 rounded-full text-green-600 hover:bg-green-50 transition-colors"
-                                    >
-                                        <MIcon name="add_circle" fill />
-                                    </button>
-                                    <button
-                                        onClick={() => setMovementItem({ item, type: 'salida' })}
-                                        title="Registrar salida"
-                                        className="p-2 rounded-full text-red-500 hover:bg-red-50 transition-colors"
-                                    >
-                                        <MIcon name="remove_circle" fill />
-                                    </button>
-                                    <button
-                                        onClick={() => setMovementItem({ item, type: 'ajuste' })}
-                                        title="Ajustar stock"
-                                        className="p-2 rounded-full text-blue-500 hover:bg-blue-50 transition-colors"
-                                    >
-                                        <MIcon name="tune" />
-                                    </button>
-                                    <button
-                                        onClick={() => openHistory(item)}
-                                        title="Ver historial"
-                                        className="p-2 rounded-full text-on-surface-variant hover:bg-surface-container-low transition-colors"
-                                    >
-                                        <MIcon name="history" />
-                                    </button>
-                                    <button
-                                        onClick={() => setEditingItem(item)}
-                                        title="Editar"
-                                        className="p-2 rounded-full text-on-surface-variant hover:bg-surface-container-low transition-colors"
-                                    >
-                                        <MIcon name="edit" />
-                                    </button>
-                                    <button
-                                        onClick={() => setDeletingId(item.id)}
-                                        title="Eliminar"
-                                        className="p-2 rounded-full text-on-surface-variant hover:bg-error-container/30 hover:text-error transition-colors"
-                                    >
-                                        <MIcon name="delete" />
-                                    </button>
+                                    <div className="flex items-center gap-0.5 shrink-0">
+                                        <button
+                                            onClick={() => setMovementItem({ item, type: 'entrada' })}
+                                            title="Registrar entrada"
+                                            className="p-2 md:p-2.5 rounded-full text-green-600 hover:bg-green-50 active:scale-95 transition"
+                                        >
+                                            <MIcon name="add_circle" fill />
+                                        </button>
+                                        <button
+                                            onClick={() => setMovementItem({ item, type: 'salida' })}
+                                            title="Registrar salida"
+                                            className="p-2 md:p-2.5 rounded-full text-red-500 hover:bg-red-50 active:scale-95 transition"
+                                        >
+                                            <MIcon name="remove_circle" fill />
+                                        </button>
+                                        <div className="hidden md:flex items-center gap-0.5">
+                                            <button
+                                                onClick={() => setMovementItem({ item, type: 'ajuste' })}
+                                                title="Ajustar stock"
+                                                className="p-2.5 rounded-full text-blue-500 hover:bg-blue-50 active:scale-95 transition"
+                                            >
+                                                <MIcon name="tune" />
+                                            </button>
+                                            <button
+                                                onClick={() => openHistory(item)}
+                                                title="Ver historial"
+                                                className="p-2.5 rounded-full text-on-surface-variant hover:bg-surface-container-low active:scale-95 transition"
+                                            >
+                                                <MIcon name="history" />
+                                            </button>
+                                            <button
+                                                onClick={() => setEditingItem(item)}
+                                                title="Editar"
+                                                className="p-2.5 rounded-full text-on-surface-variant hover:bg-surface-container-low active:scale-95 transition"
+                                            >
+                                                <MIcon name="edit" />
+                                            </button>
+                                            <button
+                                                onClick={() => setDeletingId(item.id)}
+                                                title="Eliminar"
+                                                className="p-2.5 rounded-full text-on-surface-variant hover:bg-error-container/30 hover:text-error active:scale-95 transition"
+                                            >
+                                                <MIcon name="delete" />
+                                            </button>
+                                        </div>
+                                        <MobileMoreMenu
+                                            item={item}
+                                            onAjuste={() => setMovementItem({ item, type: 'ajuste' })}
+                                            onHistory={() => openHistory(item)}
+                                            onEdit={() => setEditingItem(item)}
+                                            onDelete={() => setDeletingId(item.id)}
+                                        />
+                                    </div>
                                 </div>
                             </div>
                         );
                     })}
                 </div>
             )}
+
+            {/* Mobile FAB */}
+            <button
+                onClick={openAdd}
+                className="md:hidden fixed bottom-20 right-4 z-30 w-14 h-14 rounded-2xl bg-primary text-on-primary shadow-lg hover:shadow-xl active:scale-95 transition flex items-center justify-center"
+                title="Agregar insumo"
+            >
+                <MIcon name="add" className="text-2xl" fill />
+            </button>
 
             {showAdd && (
                 <AddItemModal
@@ -544,6 +997,55 @@ const InventoryView: React.FC<InventoryViewProps> = ({ authToken, onAuthError })
                         ¿Eliminar <strong className="text-on-background">{itemToDelete.article.name}</strong> del inventario? Se perderá todo el historial de movimientos.
                     </p>
                 </Modal>
+            )}
+        </div>
+    );
+};
+
+// ---------- Mobile more menu ----------
+const MobileMoreMenu: React.FC<{
+    item: InventoryItem;
+    onAjuste: () => void;
+    onHistory: () => void;
+    onEdit: () => void;
+    onDelete: () => void;
+}> = ({ onAjuste, onHistory, onEdit, onDelete }) => {
+    const [open, setOpen] = useState(false);
+    const ref = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        if (!open) return;
+        const onClick = (e: MouseEvent) => {
+            if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+        };
+        document.addEventListener('mousedown', onClick);
+        return () => document.removeEventListener('mousedown', onClick);
+    }, [open]);
+
+    return (
+        <div ref={ref} className="md:hidden relative">
+            <button
+                onClick={() => setOpen(o => !o)}
+                title="Más"
+                className="p-2 rounded-full text-on-surface-variant hover:bg-surface-container-low active:scale-95 transition"
+            >
+                <MIcon name="more_vert" />
+            </button>
+            {open && (
+                <div className="absolute right-0 top-full mt-1 z-20 w-44 bg-white border border-outline-variant rounded-xl shadow-xl overflow-hidden">
+                    <button onClick={() => { onAjuste(); setOpen(false); }} className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-on-surface hover:bg-surface-container-low text-left">
+                        <MIcon name="tune" className="text-blue-500" /> Ajustar stock
+                    </button>
+                    <button onClick={() => { onHistory(); setOpen(false); }} className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-on-surface hover:bg-surface-container-low text-left">
+                        <MIcon name="history" /> Historial
+                    </button>
+                    <button onClick={() => { onEdit(); setOpen(false); }} className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-on-surface hover:bg-surface-container-low text-left">
+                        <MIcon name="edit" /> Editar
+                    </button>
+                    <button onClick={() => { onDelete(); setOpen(false); }} className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-error hover:bg-error-container/20 text-left border-t border-surface-variant">
+                        <MIcon name="delete" /> Eliminar
+                    </button>
+                </div>
             )}
         </div>
     );
