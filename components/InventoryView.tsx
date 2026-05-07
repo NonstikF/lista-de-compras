@@ -1,14 +1,11 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import type { InventoryItem, InventoryMovement, Article } from '../types';
+import type { InventoryItem, InventoryMovement } from '../types';
 import {
     AuthError,
     getInventory,
-    createInventoryItem,
     updateInventoryItem,
-    deleteInventoryItem,
     addInventoryMovement,
     getInventoryMovements,
-    getArticles,
 } from '../services/catalogService';
 import { Modal, Button, Field, Input, MIcon, Chip, useToast } from './ui';
 
@@ -37,192 +34,6 @@ const loadPrefs = (): Prefs => {
 
 const savePrefs = (p: Prefs) => {
     try { localStorage.setItem(PREFS_KEY, JSON.stringify(p)); } catch { /* ignore */ }
-};
-
-// ---------- Combobox de artículos con búsqueda ----------
-const ArticleCombobox: React.FC<{
-    articles: Article[];
-    value: string;
-    onChange: (id: string) => void;
-    error?: string;
-}> = ({ articles, value, onChange, error }) => {
-    const [query, setQuery] = useState('');
-    const [open, setOpen] = useState(false);
-    const wrapRef = useRef<HTMLDivElement>(null);
-
-    const selected = articles.find(a => a.id === value);
-
-    useEffect(() => {
-        const onClick = (e: MouseEvent) => {
-            if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
-        };
-        document.addEventListener('mousedown', onClick);
-        return () => document.removeEventListener('mousedown', onClick);
-    }, []);
-
-    const filtered = useMemo(() => {
-        const q = query.trim().toLowerCase();
-        if (!q) return articles.slice(0, 200);
-        return articles.filter(a =>
-            a.name.toLowerCase().includes(q) ||
-            (a.category || '').toLowerCase().includes(q) ||
-            (a.sku || '').toLowerCase().includes(q)
-        ).slice(0, 200);
-    }, [articles, query]);
-
-    return (
-        <div ref={wrapRef} className="relative">
-            <button
-                type="button"
-                onClick={() => setOpen(o => !o)}
-                className={`w-full flex items-center gap-2 px-3 py-2.5 rounded-xl bg-surface-container-low border text-left text-sm transition ${
-                    error ? 'border-error' : 'border-outline-variant hover:border-outline'
-                } ${open ? 'border-primary ring-2 ring-primary/20 bg-white' : ''}`}
-            >
-                {selected?.image ? (
-                    <img src={selected.image} alt="" className="w-6 h-6 rounded object-cover shrink-0" />
-                ) : (
-                    <MIcon name="inventory_2" className="text-on-surface-variant text-base" />
-                )}
-                <span className={`flex-1 truncate ${selected ? 'text-on-surface' : 'text-on-surface-variant/60'}`}>
-                    {selected ? selected.name : 'Buscar y seleccionar artículo…'}
-                </span>
-                <MIcon name="expand_more" className={`text-on-surface-variant transition ${open ? 'rotate-180' : ''}`} />
-            </button>
-
-            {open && (
-                <div className="absolute z-10 mt-1 w-full bg-white border border-outline-variant rounded-xl shadow-xl overflow-hidden">
-                    <div className="p-2 border-b border-surface-variant">
-                        <div className="relative">
-                            <MIcon name="search" className="absolute left-2.5 top-1/2 -translate-y-1/2 text-on-surface-variant text-base" />
-                            <input
-                                value={query}
-                                onChange={e => setQuery(e.target.value)}
-                                placeholder="Buscar por nombre, categoría o SKU…"
-                                className="w-full pl-8 pr-3 py-2 rounded-lg bg-surface-container-low border border-outline-variant focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none text-sm"
-                                autoFocus
-                            />
-                        </div>
-                    </div>
-                    <div className="max-h-64 overflow-y-auto">
-                        {filtered.length === 0 ? (
-                            <div className="px-3 py-6 text-center text-sm text-on-surface-variant">
-                                {articles.length === 0 ? 'No hay artículos disponibles' : 'Sin resultados'}
-                            </div>
-                        ) : filtered.map(a => (
-                            <button
-                                key={a.id}
-                                type="button"
-                                onClick={() => { onChange(a.id); setOpen(false); setQuery(''); }}
-                                className={`w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-surface-container-low transition ${
-                                    a.id === value ? 'bg-primary/8' : ''
-                                }`}
-                            >
-                                {a.image ? (
-                                    <img src={a.image} alt="" className="w-7 h-7 rounded object-cover shrink-0" />
-                                ) : (
-                                    <div className="w-7 h-7 rounded bg-surface-container flex items-center justify-center shrink-0">
-                                        <MIcon name="inventory_2" className="text-on-surface-variant text-sm" />
-                                    </div>
-                                )}
-                                <div className="flex-1 min-w-0">
-                                    <div className="text-sm text-on-surface truncate">{a.name}</div>
-                                    {a.category && (
-                                        <div className="text-[11px] text-on-surface-variant truncate">{a.category}</div>
-                                    )}
-                                </div>
-                                {a.id === value && <MIcon name="check" className="text-primary text-base" />}
-                            </button>
-                        ))}
-                    </div>
-                </div>
-            )}
-        </div>
-    );
-};
-
-// ---------- Modal agregar insumo ----------
-const AddItemModal: React.FC<{
-    articles: Article[];
-    onClose: () => void;
-    onSave: (data: { articleId: string; stock: number; stockMin: number; unit: string }) => Promise<void>;
-}> = ({ articles, onClose, onSave }) => {
-    const [articleId, setArticleId] = useState('');
-    const [stock, setStock] = useState('0');
-    const [stockMin, setStockMin] = useState('0');
-    const [unit, setUnit] = useState('unidad');
-    const [errors, setErrors] = useState<Record<string, string>>({});
-    const [saving, setSaving] = useState(false);
-
-    const validate = (): boolean => {
-        const e: Record<string, string> = {};
-        if (!articleId) e.articleId = 'Selecciona un artículo';
-        if (isNaN(Number(stock)) || Number(stock) < 0) e.stock = 'Stock inválido';
-        if (isNaN(Number(stockMin)) || Number(stockMin) < 0) e.stockMin = 'Stock mínimo inválido';
-        if (!unit.trim()) e.unit = 'Requerido';
-        setErrors(e);
-        return Object.keys(e).length === 0;
-    };
-
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!validate()) return;
-        setSaving(true);
-        try {
-            await onSave({ articleId, stock: Number(stock), stockMin: Number(stockMin), unit: unit.trim() });
-        } finally {
-            setSaving(false);
-        }
-    };
-
-    const unitSuggestions = ['unidad', 'kg', 'g', 'litros', 'ml', 'pieza', 'caja', 'paquete'];
-
-    return (
-        <Modal
-            open
-            onClose={onClose}
-            title="Agregar insumo al inventario"
-            maxWidth="max-w-md"
-            footer={
-                <>
-                    <Button variant="neutral" onClick={onClose} disabled={saving}>Cancelar</Button>
-                    <Button variant="filled" icon="add_circle" onClick={handleSubmit} disabled={saving}>
-                        {saving ? 'Guardando…' : 'Agregar'}
-                    </Button>
-                </>
-            }
-        >
-            <form onSubmit={handleSubmit} className="px-6 py-4 space-y-3">
-                <Field label="Artículo" error={errors.articleId}>
-                    <ArticleCombobox
-                        articles={articles}
-                        value={articleId}
-                        onChange={id => { setArticleId(id); setErrors(x => ({ ...x, articleId: '' })); }}
-                        error={errors.articleId}
-                    />
-                </Field>
-                <div className="grid grid-cols-2 gap-3">
-                    <Field label="Stock inicial" error={errors.stock}>
-                        <Input value={stock} onChange={e => { setStock(e.target.value); setErrors(x => ({ ...x, stock: '' })); }} type="number" min="0" step="any" />
-                    </Field>
-                    <Field label="Stock mínimo" error={errors.stockMin} hint="Alerta si baja de aquí">
-                        <Input value={stockMin} onChange={e => { setStockMin(e.target.value); setErrors(x => ({ ...x, stockMin: '' })); }} type="number" min="0" step="any" />
-                    </Field>
-                </div>
-                <Field label="Unidad" error={errors.unit}>
-                    <Input
-                        value={unit}
-                        onChange={e => { setUnit(e.target.value); setErrors(x => ({ ...x, unit: '' })); }}
-                        placeholder="ej: kg, litros, unidad"
-                        list="unit-suggestions"
-                    />
-                    <datalist id="unit-suggestions">
-                        {unitSuggestions.map(u => <option key={u} value={u} />)}
-                    </datalist>
-                </Field>
-            </form>
-        </Modal>
-    );
 };
 
 // ---------- Modal editar item ----------
@@ -513,14 +324,11 @@ const InventoryView: React.FC<InventoryViewProps> = ({ authToken, onAuthError })
     const toast = useToast();
     const [items, setItems] = useState<InventoryItem[]>([]);
     const [loading, setLoading] = useState(true);
-    const [showAdd, setShowAdd] = useState(false);
-    const [availableArticles, setAvailableArticles] = useState<Article[]>([]);
     const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
     const [movementItem, setMovementItem] = useState<{ item: InventoryItem; type: 'entrada' | 'salida' | 'ajuste' } | null>(null);
     const [historyItem, setHistoryItem] = useState<InventoryItem | null>(null);
     const [movements, setMovements] = useState<InventoryMovement[]>([]);
     const [movementsLoading, setMovementsLoading] = useState(false);
-    const [deletingId, setDeletingId] = useState<string | null>(null);
 
     const [search, setSearch] = useState('');
     const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -601,31 +409,6 @@ const InventoryView: React.FC<InventoryViewProps> = ({ authToken, onAuthError })
         return list;
     }, [items, debouncedSearch, sort, stockFilter, categoryFilter]);
 
-    const openAdd = async () => {
-        try {
-            const allArticles = await getArticles(authToken);
-            const usedIds = new Set(items.map(i => i.articleId));
-            setAvailableArticles(allArticles.filter(a => !usedIds.has(a.id)));
-            setShowAdd(true);
-        } catch (err) {
-            if (err instanceof AuthError) { onAuthError(); return; }
-            toast('error', 'Error al cargar artículos');
-        }
-    };
-
-    const handleAdd = async (data: { articleId: string; stock: number; stockMin: number; unit: string }) => {
-        try {
-            const item = await createInventoryItem(authToken, data);
-            setItems(prev => [...prev, item]);
-            setShowAdd(false);
-            toast('success', `${item.article.name} agregado al inventario`);
-        } catch (err) {
-            if (err instanceof AuthError) { onAuthError(); return; }
-            toast('error', err instanceof Error ? err.message : 'Error al agregar insumo');
-            throw err;
-        }
-    };
-
     const handleEdit = async (data: { stockMin: number; unit: string }) => {
         if (!editingItem) return;
         try {
@@ -669,19 +452,6 @@ const InventoryView: React.FC<InventoryViewProps> = ({ authToken, onAuthError })
         }
     };
 
-    const handleDelete = async (id: string) => {
-        try {
-            await deleteInventoryItem(authToken, id);
-            setItems(prev => prev.filter(x => x.id !== id));
-            setDeletingId(null);
-            toast('success', 'Insumo eliminado');
-        } catch (err) {
-            if (err instanceof AuthError) { onAuthError(); return; }
-            toast('error', err instanceof Error ? err.message : 'Error al eliminar');
-        }
-    };
-
-    const itemToDelete = items.find(i => i.id === deletingId);
     const hasFilters = !!debouncedSearch || stockFilter !== 'all' || categoryFilter !== null;
 
     const clearFilters = () => {
@@ -698,9 +468,6 @@ const InventoryView: React.FC<InventoryViewProps> = ({ authToken, onAuthError })
                     <h1 className="font-epilogue text-2xl md:text-3xl font-bold text-on-background">Inventario</h1>
                     <p className="text-on-surface-variant text-sm mt-0.5">Control de insumos de cafetería</p>
                 </div>
-                <Button variant="filled" icon="add_circle" onClick={openAdd} className="hidden md:inline-flex">
-                    Agregar insumo
-                </Button>
             </div>
 
             {/* Stats */}
@@ -808,9 +575,8 @@ const InventoryView: React.FC<InventoryViewProps> = ({ authToken, onAuthError })
             ) : items.length === 0 ? (
                 <div className="text-center py-16 text-on-surface-variant bg-white border border-dashed border-outline-variant rounded-2xl">
                     <MIcon name="inventory" size={48} className="mb-3 opacity-40" />
-                    <p className="font-semibold text-on-surface">No hay insumos en el inventario</p>
-                    <p className="text-sm mt-1 mb-4">Agrega el primer insumo para empezar</p>
-                    <Button variant="filled" icon="add_circle" onClick={openAdd}>Agregar insumo</Button>
+                    <p className="font-semibold text-on-surface">Aún no hay artículos</p>
+                    <p className="text-sm mt-1">Crea artículos en el módulo de Artículos para que aparezcan aquí.</p>
                 </div>
             ) : filtered.length === 0 ? (
                 <div className="text-center py-12 text-on-surface-variant bg-white border border-dashed border-outline-variant rounded-2xl">
@@ -914,20 +680,12 @@ const InventoryView: React.FC<InventoryViewProps> = ({ authToken, onAuthError })
                                             >
                                                 <MIcon name="edit" />
                                             </button>
-                                            <button
-                                                onClick={() => setDeletingId(item.id)}
-                                                title="Eliminar"
-                                                className="p-2.5 rounded-full text-on-surface-variant hover:bg-error-container/30 hover:text-error active:scale-95 transition"
-                                            >
-                                                <MIcon name="delete" />
-                                            </button>
                                         </div>
                                         <MobileMoreMenu
                                             item={item}
                                             onAjuste={() => setMovementItem({ item, type: 'ajuste' })}
                                             onHistory={() => openHistory(item)}
                                             onEdit={() => setEditingItem(item)}
-                                            onDelete={() => setDeletingId(item.id)}
                                         />
                                     </div>
                                 </div>
@@ -935,23 +693,6 @@ const InventoryView: React.FC<InventoryViewProps> = ({ authToken, onAuthError })
                         );
                     })}
                 </div>
-            )}
-
-            {/* Mobile FAB */}
-            <button
-                onClick={openAdd}
-                className="md:hidden fixed bottom-20 right-4 z-30 w-14 h-14 rounded-2xl bg-primary text-on-primary shadow-lg hover:shadow-xl active:scale-95 transition flex items-center justify-center"
-                title="Agregar insumo"
-            >
-                <MIcon name="add" className="text-2xl" fill />
-            </button>
-
-            {showAdd && (
-                <AddItemModal
-                    articles={availableArticles}
-                    onClose={() => setShowAdd(false)}
-                    onSave={handleAdd}
-                />
             )}
 
             {editingItem && (
@@ -980,24 +721,6 @@ const InventoryView: React.FC<InventoryViewProps> = ({ authToken, onAuthError })
                 />
             )}
 
-            {deletingId && itemToDelete && (
-                <Modal
-                    open
-                    onClose={() => setDeletingId(null)}
-                    title="Eliminar insumo"
-                    maxWidth="max-w-sm"
-                    footer={
-                        <>
-                            <Button variant="neutral" onClick={() => setDeletingId(null)}>Cancelar</Button>
-                            <Button variant="danger" icon="delete" onClick={() => handleDelete(deletingId)}>Eliminar</Button>
-                        </>
-                    }
-                >
-                    <p className="px-6 py-4 text-on-surface-variant">
-                        ¿Eliminar <strong className="text-on-background">{itemToDelete.article.name}</strong> del inventario? Se perderá todo el historial de movimientos.
-                    </p>
-                </Modal>
-            )}
         </div>
     );
 };
@@ -1008,8 +731,7 @@ const MobileMoreMenu: React.FC<{
     onAjuste: () => void;
     onHistory: () => void;
     onEdit: () => void;
-    onDelete: () => void;
-}> = ({ onAjuste, onHistory, onEdit, onDelete }) => {
+}> = ({ onAjuste, onHistory, onEdit }) => {
     const [open, setOpen] = useState(false);
     const ref = useRef<HTMLDivElement>(null);
 
@@ -1041,9 +763,6 @@ const MobileMoreMenu: React.FC<{
                     </button>
                     <button onClick={() => { onEdit(); setOpen(false); }} className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-on-surface hover:bg-surface-container-low text-left">
                         <MIcon name="edit" /> Editar
-                    </button>
-                    <button onClick={() => { onDelete(); setOpen(false); }} className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-error hover:bg-error-container/20 text-left border-t border-surface-variant">
-                        <MIcon name="delete" /> Eliminar
                     </button>
                 </div>
             )}

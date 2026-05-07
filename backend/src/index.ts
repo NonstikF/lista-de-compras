@@ -835,6 +835,7 @@ app.post('/api/articles', async (req: Request, res: Response) => {
             data: {
                 wooProductId, name, image, price, sku, category, description, stockStatus,
                 suppliers: { create: supplierIds.map((sid: string) => ({ supplierId: sid })) },
+                inventory: { create: {} },
             },
             include: { suppliers: { select: { supplierId: true } } },
         });
@@ -899,10 +900,12 @@ app.post('/api/articles/import-woocommerce', async (_req: Request, res: Response
                 });
                 updated += 1;
             } else {
-                await prisma.article.create({ data });
+                await prisma.article.create({ data: { ...data, inventory: { create: {} } } });
                 created += 1;
             }
         }
+
+        await ensureInventoryForAllArticles();
 
         const articles = await prisma.article.findMany({
             include: { suppliers: { select: { supplierId: true } } },
@@ -1193,13 +1196,6 @@ app.delete('/api/users/:id', async (req: Request, res: Response) => {
 
 // ---------- INVENTARIO ----------
 
-const createInventoryItemSchema = z.object({
-    articleId: z.string().min(1, 'articleId es requerido'),
-    stock: z.number().default(0),
-    stockMin: z.number().default(0),
-    unit: z.string().default('unidad'),
-});
-
 const updateInventoryItemSchema = z.object({
     stockMin: z.number().optional(),
     unit: z.string().optional(),
@@ -1211,9 +1207,23 @@ const createMovementSchema = z.object({
     reason: z.string().default(''),
 });
 
+// Crea InventoryItem para cada Article que no tenga uno. Invariante: 1 item por artículo.
+async function ensureInventoryForAllArticles(): Promise<void> {
+    const orphans = await prisma.article.findMany({
+        where: { inventory: null },
+        select: { id: true },
+    });
+    if (orphans.length === 0) return;
+    await prisma.inventoryItem.createMany({
+        data: orphans.map(a => ({ articleId: a.id })),
+        skipDuplicates: true,
+    });
+}
+
 // GET /api/inventory
 app.get('/api/inventory', async (_req: Request, res: Response) => {
     try {
+        await ensureInventoryForAllArticles();
         const items = await prisma.inventoryItem.findMany({
             include: {
                 article: { select: { id: true, name: true, image: true, category: true } },
@@ -1225,34 +1235,6 @@ app.get('/api/inventory', async (_req: Request, res: Response) => {
     } catch (err) {
         console.error('Error al obtener inventario:', err);
         res.status(500).json({ error: 'Error al obtener inventario' });
-    }
-});
-
-// POST /api/inventory
-app.post('/api/inventory', async (req: Request, res: Response) => {
-    const parsed = createInventoryItemSchema.safeParse(req.body);
-    if (!parsed.success) {
-        res.status(400).json({ error: parsed.error.issues[0].message });
-        return;
-    }
-    const { articleId, stock, stockMin, unit } = parsed.data;
-    const existing = await prisma.inventoryItem.findUnique({ where: { articleId } });
-    if (existing) {
-        res.status(409).json({ error: 'Ya existe un item de inventario para este artículo' });
-        return;
-    }
-    try {
-        const item = await prisma.inventoryItem.create({
-            data: { articleId, stock, stockMin, unit },
-            include: {
-                article: { select: { id: true, name: true, image: true, category: true } },
-                _count: { select: { movements: true } },
-            },
-        });
-        res.status(201).json(item);
-    } catch (err) {
-        console.error('Error al crear item de inventario:', err);
-        res.status(500).json({ error: 'Error al crear item de inventario' });
     }
 });
 
@@ -1276,16 +1258,6 @@ app.put('/api/inventory/:id', async (req: Request, res: Response) => {
             },
         });
         res.json(item);
-    } catch {
-        res.status(404).json({ error: 'Item de inventario no encontrado' });
-    }
-});
-
-// DELETE /api/inventory/:id
-app.delete('/api/inventory/:id', async (req: Request, res: Response) => {
-    try {
-        await prisma.inventoryItem.delete({ where: { id: req.params.id } });
-        res.status(204).send();
     } catch {
         res.status(404).json({ error: 'Item de inventario no encontrado' });
     }
