@@ -1,4 +1,4 @@
-import type { User, Supplier, Article, Recipe, StoreOrder, StoreOrderItem, SupplierTicket, SupplierTicketUpload, OrderTicket, OrderTicketUpload } from '../types';
+import type { User, Supplier, Article, Recipe, StoreOrder, StoreOrderItem, SupplierTicket, SupplierTicketUpload, OrderTicket, OrderTicketUpload, InventoryItem, InventoryMovement } from '../types';
 import { AuthError } from './woocommerceService';
 
 export { AuthError };
@@ -211,5 +211,52 @@ export async function createStoreOrder(
 export async function completeStoreOrder(token: string, id: string): Promise<StoreOrder> {
     return handleResponse(await fetch(`${BASE}/api/store-orders/${id}/complete`, {
         method: 'PATCH', headers: authHeaders(token),
+    }));
+}
+
+// ---- Inventario ----
+
+export async function getInventory(token: string): Promise<InventoryItem[]> {
+    return handleResponse(await fetch(`${BASE}/api/inventory`, { headers: authHeaders(token) }));
+}
+
+export async function createInventoryItem(
+    token: string,
+    data: { articleId: string; stock: number; stockMin: number; unit: string },
+): Promise<InventoryItem> {
+    return handleResponse(await fetch(`${BASE}/api/inventory`, {
+        method: 'POST', headers: authHeaders(token), body: JSON.stringify(data),
+    }));
+}
+
+export async function updateInventoryItem(
+    token: string,
+    id: string,
+    data: { stockMin?: number; unit?: string },
+): Promise<InventoryItem> {
+    return handleResponse(await fetch(`${BASE}/api/inventory/${id}`, {
+        method: 'PUT', headers: authHeaders(token), body: JSON.stringify(data),
+    }));
+}
+
+export async function deleteInventoryItem(token: string, id: string): Promise<void> {
+    await handleResponse(await fetch(`${BASE}/api/inventory/${id}`, {
+        method: 'DELETE', headers: authHeaders(token),
+    }));
+}
+
+export async function addInventoryMovement(
+    token: string,
+    itemId: string,
+    data: { type: 'entrada' | 'salida' | 'ajuste'; quantity: number; reason: string },
+): Promise<InventoryMovement> {
+    return handleResponse(await fetch(`${BASE}/api/inventory/${itemId}/movements`, {
+        method: 'POST', headers: authHeaders(token), body: JSON.stringify(data),
+    }));
+}
+
+export async function getInventoryMovements(token: string, itemId: string): Promise<InventoryMovement[]> {
+    return handleResponse(await fetch(`${BASE}/api/inventory/${itemId}/movements`, {
+        headers: authHeaders(token),
     }));
 }

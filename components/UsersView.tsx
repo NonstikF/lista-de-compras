@@ -71,7 +71,7 @@ const NewUserModal: React.FC<{
                 </>
             }
         >
-            <form onSubmit={handleSubmit} className="space-y-3">
+            <form onSubmit={handleSubmit} className="px-6 py-4 space-y-3">
                 <Field label="Username" error={errors.username}>
                     <Input value={form.username} onChange={e => update('username', e.target.value)} placeholder="ej: maria" autoFocus />
                 </Field>
@@ -141,7 +141,7 @@ const EditUserModal: React.FC<{
                 </>
             }
         >
-            <form onSubmit={handleSubmit} className="space-y-3">
+            <form onSubmit={handleSubmit} className="px-6 py-4 space-y-3">
                 <Field label="Nombre completo" error={errors.nombre}>
                     <Input value={form.nombre} onChange={e => update('nombre', e.target.value)} autoFocus />
                 </Field>
@@ -329,7 +329,7 @@ const UsersView: React.FC<UsersViewProps> = ({ authToken, onAuthError }) => {
                         </>
                     }
                 >
-                    <p className="text-on-surface-variant">
+                    <p className="px-6 py-4 text-on-surface-variant">
                         ¿Eliminar al usuario <strong className="text-on-background">@{userToDelete.username}</strong>? Esta acción no se puede deshacer.
                     </p>
                 </Modal>

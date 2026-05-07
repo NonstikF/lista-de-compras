@@ -1191,6 +1191,157 @@ app.delete('/api/users/:id', async (req: Request, res: Response) => {
     }
 });
 
+// ---------- INVENTARIO ----------
+
+const createInventoryItemSchema = z.object({
+    articleId: z.string().min(1, 'articleId es requerido'),
+    stock: z.number().default(0),
+    stockMin: z.number().default(0),
+    unit: z.string().default('unidad'),
+});
+
+const updateInventoryItemSchema = z.object({
+    stockMin: z.number().optional(),
+    unit: z.string().optional(),
+});
+
+const createMovementSchema = z.object({
+    type: z.enum(['entrada', 'salida', 'ajuste']),
+    quantity: z.number().positive('La cantidad debe ser positiva'),
+    reason: z.string().default(''),
+});
+
+// GET /api/inventory
+app.get('/api/inventory', async (_req: Request, res: Response) => {
+    try {
+        const items = await prisma.inventoryItem.findMany({
+            include: {
+                article: { select: { id: true, name: true, image: true, category: true } },
+                _count: { select: { movements: true } },
+            },
+            orderBy: { article: { name: 'asc' } },
+        });
+        res.json(items);
+    } catch (err) {
+        console.error('Error al obtener inventario:', err);
+        res.status(500).json({ error: 'Error al obtener inventario' });
+    }
+});
+
+// POST /api/inventory
+app.post('/api/inventory', async (req: Request, res: Response) => {
+    const parsed = createInventoryItemSchema.safeParse(req.body);
+    if (!parsed.success) {
+        res.status(400).json({ error: parsed.error.issues[0].message });
+        return;
+    }
+    const { articleId, stock, stockMin, unit } = parsed.data;
+    const existing = await prisma.inventoryItem.findUnique({ where: { articleId } });
+    if (existing) {
+        res.status(409).json({ error: 'Ya existe un item de inventario para este artículo' });
+        return;
+    }
+    try {
+        const item = await prisma.inventoryItem.create({
+            data: { articleId, stock, stockMin, unit },
+            include: {
+                article: { select: { id: true, name: true, image: true, category: true } },
+                _count: { select: { movements: true } },
+            },
+        });
+        res.status(201).json(item);
+    } catch (err) {
+        console.error('Error al crear item de inventario:', err);
+        res.status(500).json({ error: 'Error al crear item de inventario' });
+    }
+});
+
+// PUT /api/inventory/:id
+app.put('/api/inventory/:id', async (req: Request, res: Response) => {
+    const parsed = updateInventoryItemSchema.safeParse(req.body);
+    if (!parsed.success) {
+        res.status(400).json({ error: parsed.error.issues[0].message });
+        return;
+    }
+    const data: { stockMin?: number; unit?: string } = {};
+    if (parsed.data.stockMin !== undefined) data.stockMin = parsed.data.stockMin;
+    if (parsed.data.unit !== undefined) data.unit = parsed.data.unit;
+    try {
+        const item = await prisma.inventoryItem.update({
+            where: { id: req.params.id },
+            data,
+            include: {
+                article: { select: { id: true, name: true, image: true, category: true } },
+                _count: { select: { movements: true } },
+            },
+        });
+        res.json(item);
+    } catch {
+        res.status(404).json({ error: 'Item de inventario no encontrado' });
+    }
+});
+
+// DELETE /api/inventory/:id
+app.delete('/api/inventory/:id', async (req: Request, res: Response) => {
+    try {
+        await prisma.inventoryItem.delete({ where: { id: req.params.id } });
+        res.status(204).send();
+    } catch {
+        res.status(404).json({ error: 'Item de inventario no encontrado' });
+    }
+});
+
+// POST /api/inventory/:id/movements
+app.post('/api/inventory/:id/movements', async (req: Request, res: Response) => {
+    const parsed = createMovementSchema.safeParse(req.body);
+    if (!parsed.success) {
+        res.status(400).json({ error: parsed.error.issues[0].message });
+        return;
+    }
+    const { type, quantity, reason } = parsed.data;
+    const userId = req.user!.userId;
+    const userName = req.user!.username;
+    try {
+        const item = await prisma.inventoryItem.findUnique({ where: { id: req.params.id } });
+        if (!item) {
+            res.status(404).json({ error: 'Item de inventario no encontrado' });
+            return;
+        }
+        let newStock: number;
+        if (type === 'entrada') newStock = item.stock + quantity;
+        else if (type === 'salida') newStock = item.stock - quantity;
+        else newStock = quantity; // ajuste
+
+        const [movement] = await prisma.$transaction([
+            prisma.inventoryMovement.create({
+                data: { inventoryItemId: item.id, type, quantity, reason, userId, userName },
+            }),
+            prisma.inventoryItem.update({
+                where: { id: item.id },
+                data: { stock: newStock },
+            }),
+        ]);
+        res.status(201).json(movement);
+    } catch (err) {
+        console.error('Error al registrar movimiento:', err);
+        res.status(500).json({ error: 'Error al registrar movimiento' });
+    }
+});
+
+// GET /api/inventory/:id/movements
+app.get('/api/inventory/:id/movements', async (req: Request, res: Response) => {
+    try {
+        const movements = await prisma.inventoryMovement.findMany({
+            where: { inventoryItemId: req.params.id },
+            orderBy: { createdAt: 'desc' },
+        });
+        res.json(movements);
+    } catch (err) {
+        console.error('Error al obtener movimientos:', err);
+        res.status(500).json({ error: 'Error al obtener movimientos' });
+    }
+});
+
 // --- Iniciar el Servidor ---
 const port = process.env.PORT || 4000;
 app.listen(port, () => {

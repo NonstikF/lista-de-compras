@@ -7,9 +7,10 @@ interface DashboardProps {
     onNavigateToStore: () => void;
     onNavigateToSuppliers: () => void;
     onNavigateToUsers: () => void;
+    onNavigateToInventory: () => void;
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ onNavigateToOrders, onNavigateToRecipes, onNavigateToArticles, onNavigateToStore, onNavigateToSuppliers, onNavigateToUsers }) => {
+const Dashboard: React.FC<DashboardProps> = ({ onNavigateToOrders, onNavigateToRecipes, onNavigateToArticles, onNavigateToStore, onNavigateToSuppliers, onNavigateToUsers, onNavigateToInventory }) => {
     const cards = [
         {
             onClick: onNavigateToOrders,
@@ -57,6 +58,14 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigateToOrders, onNavigateToR
             desc: 'Gestionar acceso',
             icon: 'manage_accounts',
             tone: 'bg-tertiary-container/40 text-tertiary',
+            badge: null,
+        },
+        {
+            onClick: onNavigateToInventory,
+            label: 'Inventario',
+            desc: 'Control de insumos',
+            icon: 'inventory',
+            tone: 'bg-primary/10 text-primary',
             badge: null,
         },
     ];

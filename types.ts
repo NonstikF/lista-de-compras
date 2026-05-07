@@ -123,6 +123,27 @@ export interface StoreOrder {
   total: number;
 }
 
+// ---------- Inventario ----------
+export interface InventoryItem {
+  id: string;
+  articleId: string;
+  stock: number;
+  stockMin: number;
+  unit: string;
+  createdAt: string;
+  article: { id: string; name: string; image: string | null; category: string };
+}
+
+export interface InventoryMovement {
+  id: string;
+  type: 'entrada' | 'salida' | 'ajuste';
+  quantity: number;
+  reason: string;
+  userId: string;
+  userName: string;
+  createdAt: string;
+}
+
 // ---------- Recetas ----------
 export interface RecipeIngredient {
   name: string;
