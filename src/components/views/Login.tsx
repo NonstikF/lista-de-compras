@@ -133,7 +133,7 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
 
         <div className="mt-6 text-center text-outline opacity-50 flex flex-col items-center gap-1">
           <span className="material-symbols-outlined text-sm">local_florist</span>
-          <p className="text-[10px]">PlantArte © 2025</p>
+          <p className="text-[10px]">PlantArte © {new Date().getFullYear()}</p>
         </div>
       </main>
     </div>

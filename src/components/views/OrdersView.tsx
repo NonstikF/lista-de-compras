@@ -786,7 +786,7 @@ const OrderCard = React.memo<{
                         ${parseFloat(order.total).toFixed(2)}
                     </span>
                     <span className={`capitalize px-3 py-1 text-sm font-semibold rounded-full ${ order.status === 'processing' ? 'bg-blue-100 text-blue-800' : order.status === 'on-hold' ? 'bg-yellow-100 text-yellow-800' : 'bg-green-100 text-green-800' }`}>
-                        {order.status}
+                        {{ processing: 'En proceso', completed: 'Completado', 'on-hold': 'En espera' }[order.status] ?? order.status}
                     </span>
                     {viewMode === 'processing' && (
                         <button

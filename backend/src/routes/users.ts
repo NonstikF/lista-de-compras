@@ -74,6 +74,11 @@ router.delete('/:id', async (req: Request, res: Response) => {
         return;
     }
     try {
+        const total = await prisma.user.count();
+        if (total <= 1) {
+            res.status(400).json({ error: 'No puedes eliminar el único usuario del sistema' });
+            return;
+        }
         await prisma.user.delete({ where: { id: req.params.id } });
         res.status(204).send();
     } catch {

@@ -82,7 +82,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigateToOrders, onNavigateToR
                     <button
                         key={card.label}
                         onClick={card.onClick}
-                        className="group relative overflow-hidden rounded-2xl bg-white hover:shadow-lg transition-all border border-surface-variant p-5 flex flex-col justify-between text-left aspect-square"
+                        className="group relative overflow-hidden rounded-2xl bg-white hover:shadow-lg transition-all border border-surface-variant p-5 flex flex-col text-left aspect-square"
                     >
                         {card.badge && (
                             <span className="absolute top-3 right-3 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-secondary text-on-secondary">
@@ -96,7 +96,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigateToOrders, onNavigateToR
                             <h2 className="font-epilogue text-xl font-bold text-on-background">{card.label}</h2>
                             <p className="text-sm text-on-surface-variant mt-0.5">{card.desc}</p>
                         </div>
-                        <div className="flex items-center gap-1 text-primary font-semibold group-hover:translate-x-1 transition-transform text-sm mt-3">
+                        <div className="flex items-center gap-1 text-primary font-semibold group-hover:translate-x-1 transition-transform text-sm mt-auto pt-3">
                             Abrir <span className="material-symbols-outlined text-sm">arrow_forward</span>
                         </div>
                     </button>

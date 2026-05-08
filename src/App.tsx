@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 
-import Header, { type AppView } from './components/layout/Header';
+import Sidebar, { type AppView } from './components/layout/Sidebar';
 import { ToastContainer } from './components/ui/Toast';
 
 import Login from './components/views/Login';
@@ -61,14 +61,7 @@ const App: React.FC = () => {
           />
         );
       case 'orders':
-        return (
-          <div className="p-4 md:p-8 max-w-7xl mx-auto">
-            <button onClick={() => setView('dashboard')} className="text-primary hover:text-primary-container font-medium mb-4 flex items-center gap-1">
-              <span className="material-symbols-outlined text-base">arrow_back</span> Regresar al Panel
-            </button>
-            <OrdersView authToken={authToken!} onAuthError={handleAuthError} />
-          </div>
-        );
+        return <OrdersView authToken={authToken!} onAuthError={handleAuthError} />;
       case 'articles':
         return <ArticlesView authToken={authToken!} onAuthError={handleAuthError} />;
       case 'recipes':
@@ -87,9 +80,9 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      {isAuthenticated && <Header onLogout={handleLogout} setView={setView} currentView={view} />}
-      <main>{renderView()}</main>
+    <div className="min-h-screen bg-background flex">
+      {isAuthenticated && <Sidebar onLogout={handleLogout} setView={setView} currentView={view} />}
+      <main className="flex-1 min-w-0 pb-20 md:pb-0">{renderView()}</main>
       <ToastContainer />
     </div>
   );

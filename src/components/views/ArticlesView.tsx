@@ -94,6 +94,7 @@ const ArticleCard: React.FC<{
 // ---------- Modal de edición ----------
 interface ArticleForm {
     name: string;
+    sku: string;
     price: string;
     image: string | null;
     supplierIds: string[];
@@ -103,12 +104,12 @@ const ArticleEditModal: React.FC<{
     article: Article | 'new' | null;
     suppliers: Supplier[];
     onClose: () => void;
-    onSave: (data: { name: string; price: number; image: string | null; supplierIds: string[] }) => Promise<void>;
+    onSave: (data: { name: string; sku: string; price: number; image: string | null; supplierIds: string[] }) => Promise<void>;
 }> = ({ article, suppliers, onClose, onSave }) => {
     const isNew = article === 'new';
     const initial: ArticleForm = isNew
-        ? { name: '', price: '', image: null, supplierIds: [] }
-        : { name: (article as Article).name, price: String((article as Article).price), image: (article as Article).image, supplierIds: (article as Article).supplierIds };
+        ? { name: '', sku: '', price: '', image: null, supplierIds: [] }
+        : { name: (article as Article).name, sku: (article as Article).sku ?? '', price: String((article as Article).price), image: (article as Article).image, supplierIds: (article as Article).supplierIds };
 
     const [form, setForm] = useState<ArticleForm>(initial);
     const [errors, setErrors] = useState<Partial<Record<keyof ArticleForm, string>>>({});
@@ -155,6 +156,7 @@ const ArticleEditModal: React.FC<{
         try {
             await onSave({
                 name: form.name.trim(),
+                sku: form.sku.trim(),
                 price: parseFloat(form.price),
                 image: form.image,
                 supplierIds: form.supplierIds,
@@ -216,6 +218,14 @@ const ArticleEditModal: React.FC<{
                             value={form.name}
                             onChange={e => update('name', e.target.value)}
                             placeholder="Ej. Café de olla"
+                        />
+                    </Field>
+
+                    <Field label="SKU">
+                        <Input
+                            value={form.sku}
+                            onChange={e => update('sku', e.target.value)}
+                            placeholder="Ej. CAF-001"
                         />
                     </Field>
 
@@ -291,7 +301,7 @@ const ArticlesView: React.FC<ArticlesViewProps> = ({ authToken, onAuthError }) =
         return () => { cancelled = true; };
     }, [authToken]);
 
-    const handleSave = async (data: { name: string; price: number; image: string | null; supplierIds: string[] }) => {
+    const handleSave = async (data: { name: string; sku: string; price: number; image: string | null; supplierIds: string[] }) => {
         const isNew = editing === 'new';
         try {
             if (isNew) {
@@ -302,7 +312,6 @@ const ArticlesView: React.FC<ArticlesViewProps> = ({ authToken, onAuthError }) =
                 const current = editing as Article;
                 const updated = await updateArticle(authToken, current.id, {
                     wooProductId: current.wooProductId,
-                    sku: current.sku,
                     category: current.category,
                     description: current.description,
                     stockStatus: current.stockStatus,
