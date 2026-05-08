@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import type { User } from '../types';
-import { AuthError, getUsers, createUser, updateUser, deleteUser } from '../services/catalogService';
-import { Modal, Button, Field, Input, MIcon, useToast } from './ui';
+import type { User } from '../../types';
+import { AuthError, getUsers, createUser, updateUser, deleteUser } from '../../services/api';
+import { Modal, Button, Field, Input, MIcon, useToast } from '../ui';
 
 interface UsersViewProps {
     authToken: string;

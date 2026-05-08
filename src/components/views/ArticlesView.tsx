@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import type { Article, Supplier } from '../types';
-import { AuthError, getArticles, createArticle, updateArticle, deleteArticle, getSuppliers, importWooCommerceArticles } from '../services/catalogService';
-import { Modal, Button, Field, Input, MIcon, fmt, useToast } from './ui';
+import type { Article, Supplier } from '../../types';
+import { AuthError, getArticles, createArticle, updateArticle, deleteArticle, getSuppliers, importWooCommerceArticles } from '../../services/api';
+import { Modal, Button, Field, Input, MIcon, fmt, useToast } from '../ui';
 
 interface ArticlesViewProps {
     authToken: string;

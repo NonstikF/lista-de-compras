@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import type { Article, Supplier, StoreOrderItem } from '../types';
-import { AuthError, getArticles, getSuppliers, createStoreOrder } from '../services/catalogService';
-import { Modal, Button, Field, Input, Textarea, Chip, MIcon, fmt, useToast } from './ui';
+import type { Article, Supplier, StoreOrderItem } from '../../types';
+import { AuthError, getArticles, getSuppliers, createStoreOrder } from '../../services/api';
+import { Modal, Button, Field, Input, Textarea, Chip, MIcon, fmt, useToast } from '../ui';
 
 interface StoreViewProps {
     authToken: string;

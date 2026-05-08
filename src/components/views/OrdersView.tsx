@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Cropper from 'react-easy-crop';
 import type { Area } from 'react-easy-crop';
-import type { Order, LineItem, StoreOrder, OrderTicket } from '../types';
-import { getOrders, saveItemStatus, completeOrder, AuthError, type OrderStatusType } from '../services/woocommerceService';
-import { getStoreOrders, completeStoreOrder, getOrderTickets, getOrderTicketContent, createOrderTicket, deleteOrderTicket, getOrderTicketCounts } from '../services/catalogService';
-import { CheckCircleIcon, ChevronDownIcon, XMarkIcon, EyeIcon } from './icons';
-import { showToast } from './Toast';
-import { fmt } from './ui';
+import type { Order, LineItem, StoreOrder, OrderTicket } from '../../types';
+import { getOrders, saveItemStatus, completeOrder, AuthError, type OrderStatusType } from '../../services/api';
+import { getStoreOrders, completeStoreOrder, getOrderTickets, getOrderTicketContent, createOrderTicket, deleteOrderTicket, getOrderTicketCounts } from '../../services/api';
+import { CheckCircleIcon, ChevronDownIcon, XMarkIcon, EyeIcon } from '../ui/icons';
+import { showToast } from '../ui/Toast';
+import { fmt } from '../ui';
 
 type TabMode = OrderStatusType | 'store';
 

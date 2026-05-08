@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import type { Supplier, SupplierTicket } from '../types';
+import type { Supplier, SupplierTicket } from '../../types';
 import {
     AuthError, getSuppliers, createSupplier, updateSupplier, deleteSupplier,
     getSupplierTickets, getSupplierTicketContent, createSupplierTicket, deleteSupplierTicket,
-} from '../services/catalogService';
-import { Modal, Button, Field, Input, MIcon, useToast } from './ui';
+} from '../../services/api';
+import { Modal, Button, Field, Input, MIcon, useToast } from '../ui';
 
 interface SuppliersViewProps {
     authToken: string;

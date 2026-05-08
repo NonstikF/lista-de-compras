@@ -24,9 +24,9 @@ const TOAST_COLORS: Record<ToastType, string> = {
 };
 
 const TOAST_ICONS: Record<ToastType, string> = {
-    success: '\u2713',
-    error: '\u2717',
-    info: '\u2139',
+    success: '✓',
+    error: '✗',
+    info: 'ℹ',
 };
 
 const ToastItem: React.FC<{ toast: Toast; onDismiss: (id: number) => void }> = ({ toast, onDismiss }) => {

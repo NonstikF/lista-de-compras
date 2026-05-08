@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import type { Recipe, RecipeIngredient } from '../types';
-import { AuthError, getRecipes, createRecipe, updateRecipe, deleteRecipe } from '../services/catalogService';
-import { Modal, Button, Field, Input, Select, Textarea, Chip, MIcon, useToast } from './ui';
+import type { Recipe, RecipeIngredient } from '../../types';
+import { AuthError, getRecipes, createRecipe, updateRecipe, deleteRecipe } from '../../services/api';
+import { Modal, Button, Field, Input, Select, Textarea, Chip, MIcon, useToast } from '../ui';
 
 interface RecipesViewProps {
     authToken: string;

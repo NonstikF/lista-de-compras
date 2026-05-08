@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import type { InventoryItem, InventoryMovement } from '../types';
+import type { InventoryItem, InventoryMovement } from '../../types';
 import {
     AuthError,
     getInventory,
     updateInventoryItem,
     addInventoryMovement,
     getInventoryMovements,
-} from '../services/catalogService';
-import { Modal, Button, Field, Input, MIcon, Chip, useToast } from './ui';
+} from '../../services/api';
+import { Modal, Button, Field, Input, MIcon, Chip, useToast } from '../ui';
 
 interface InventoryViewProps {
     authToken: string;
