@@ -118,7 +118,7 @@ const OrderItem = React.memo<{
     const handleDecrement = () => { if (item.quantityPurchased > 0) onQuantityChange(item.id, item.quantityPurchased - 1); };
     const handleDelete = () => { if (window.confirm(`¿Eliminar "${item.name}" de este pedido?`)) onDelete(item.id); };
 
-    const bgClass = isPurchased ? 'bg-primary/5 text-on-surface-variant' : isInProgress ? 'bg-secondary-container/20' : 'bg-white hover:bg-surface-container-low';
+    const bgClass = isPurchased ? 'bg-primary/5 text-on-surface-variant' : isInProgress ? 'bg-secondary-container/60' : 'bg-white hover:bg-surface-container-low';
 
     return (
         <div className={`flex items-center justify-between p-3 transition-all duration-300 ${bgClass}`}>
