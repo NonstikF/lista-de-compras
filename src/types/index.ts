@@ -153,13 +153,32 @@ export interface RecipeIngredient {
   unit: string;
 }
 
+export interface RecipeSizeIngredient {
+  name: string;
+  quantity: string;
+  unit: string;
+}
+
+export interface RecipeSizeVariant {
+  id?: number;
+  size: '10oz' | '12oz' | '16oz';
+  ingredients: RecipeSizeIngredient[];
+}
+
+export type RecipeType = 'alimento' | 'bebida';
+export type DrinkTemp = 'fria' | 'caliente';
+export type DrinkSize = '10oz' | '12oz' | '16oz';
+
 export interface Recipe {
   id: string;
   name: string;
   description: string;
+  recipeType: RecipeType;
   category: 'caliente' | 'fria' | 'especial';
+  drinkTemp: DrinkTemp | null;
   image: string | null;
   ingredients: RecipeIngredient[];
+  sizeVariants: RecipeSizeVariant[];
   instructions: string;
   servings: number;
 }

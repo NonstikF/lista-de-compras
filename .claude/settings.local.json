@@ -19,7 +19,9 @@
       "Bash(git merge *)",
       "Bash(git stash *)",
       "Read(//c/Users/admin/Desktop/Programacion/**)",
-      "PowerShell(New-Item -ItemType Directory -Path \"c:\\\\Users\\\\admin\\\\Desktop\\\\Programacion\\\\Compras-PlantArte-main\\\\backend\\\\prisma\\\\migrations\\\\20260509000000_add_purchase_status_by_supplier\" -Force)"
+      "PowerShell(New-Item -ItemType Directory -Path \"c:\\\\Users\\\\admin\\\\Desktop\\\\Programacion\\\\Compras-PlantArte-main\\\\backend\\\\prisma\\\\migrations\\\\20260509000000_add_purchase_status_by_supplier\" -Force)",
+      "Bash(dir \"c:\\\\Users\\\\admin\\\\Desktop\\\\Programacion\\\\Compras-PlantArte-main\" -Recurse -Include \"*recipe*\")",
+      "Bash(Select-Object FullName)"
     ]
   }
 }

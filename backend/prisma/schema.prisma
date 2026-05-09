@@ -83,16 +83,19 @@ model ArticleSupplier {
 
 // ---------- Recetas ----------
 model Recipe {
-  id           String             @id @default(cuid())
+  id           String               @id @default(cuid())
   name         String
-  description  String             @default("")
-  category     String             // 'caliente' | 'fria' | 'especial'
+  description  String               @default("")
+  recipeType   String               @default("alimento") // 'alimento' | 'bebida'
+  category     String               // 'caliente' | 'fria' | 'especial'
+  drinkTemp    String?              // 'fria' | 'caliente' — only for bebida
   image        String?
-  instructions String             @default("")
-  servings     Int                @default(1)
-  createdAt    DateTime           @default(now())
-  updatedAt    DateTime           @updatedAt
+  instructions String               @default("")
+  servings     Int                  @default(1)
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
   ingredients  RecipeIngredient[]
+  sizeVariants RecipeSizeVariant[]
 }
 
 model RecipeIngredient {
@@ -102,6 +105,23 @@ model RecipeIngredient {
   quantity String
   unit     String
   recipe   Recipe @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+}
+
+model RecipeSizeVariant {
+  id          Int                        @id @default(autoincrement())
+  recipeId    String
+  size        String                     // '10oz' | '12oz' | '16oz'
+  recipe      Recipe                     @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  ingredients RecipeSizeIngredient[]
+}
+
+model RecipeSizeIngredient {
+  id       Int               @id @default(autoincrement())
+  variantId Int
+  name     String
+  quantity String
+  unit     String
+  variant  RecipeSizeVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
 }
 
 // ---------- Pedidos de Tienda ----------
