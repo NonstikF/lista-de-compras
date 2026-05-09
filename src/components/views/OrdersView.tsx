@@ -10,9 +10,6 @@ import { fmt } from '../ui';
 
 type TabMode = OrderStatusType | 'store';
 
-interface GroupedItems {
-  [category: string]: LineItem[];
-}
 
 interface OrdersViewProps {
   authToken: string;
@@ -104,18 +101,34 @@ const StoreOrderCard: React.FC<{ order: StoreOrder; onComplete: (id: string) => 
 // --- OrderItem ---
 const OrderItem = React.memo<{
     item: LineItem;
-    onQuantityChange: (itemId: number, newQuantity: number) => void;
+    supplierId: string | null;
+    onQuantityChange: (itemId: number, newQuantity: number, supplierId: string | null) => void;
     onViewImage: (imageUrl: string, productName: string) => void;
     onDelete: (itemId: number) => void;
-}>(({ item, onQuantityChange, onViewImage, onDelete }) => {
+}>(({ item, supplierId, onQuantityChange, onViewImage, onDelete }) => {
     const isPurchased = item.isPurchased;
-    const isInProgress = item.quantityPurchased > 0 && !isPurchased;
+
+    // For multi-supplier items: available = total - purchased by OTHER suppliers
+    const thisSupplierQty = supplierId ? (item.quantityBySupplier[supplierId] ?? 0) : item.quantityPurchased;
+    const otherSuppliersQty = supplierId
+        ? Object.entries(item.quantityBySupplier).filter(([id]) => id !== supplierId).reduce((s, [, v]) => s + v, 0)
+        : 0;
+    const availableForThis = item.quantity - otherSuppliersQty;
+    const displayQty = supplierId ? thisSupplierQty : item.quantityPurchased;
+    const isInProgress = displayQty > 0 && !isPurchased;
 
     const unitPrice = item.quantity > 0 ? parseFloat(item.total) / item.quantity : 0;
 
-    const handleToggle = () => onQuantityChange(item.id, isPurchased ? 0 : item.quantity);
-    const handleIncrement = () => { if (item.quantityPurchased < item.quantity) onQuantityChange(item.id, item.quantityPurchased + 1); };
-    const handleDecrement = () => { if (item.quantityPurchased > 0) onQuantityChange(item.id, item.quantityPurchased - 1); };
+    const handleToggle = () => {
+        const newQty = isPurchased ? 0 : availableForThis;
+        onQuantityChange(item.id, newQty, supplierId);
+    };
+    const handleIncrement = () => {
+        if (displayQty < availableForThis) onQuantityChange(item.id, displayQty + 1, supplierId);
+    };
+    const handleDecrement = () => {
+        if (displayQty > 0) onQuantityChange(item.id, displayQty - 1, supplierId);
+    };
     const handleDelete = () => { if (window.confirm(`¿Eliminar "${item.name}" de este pedido?`)) onDelete(item.id); };
 
     const bgClass = isPurchased ? 'bg-primary/5 text-on-surface-variant' : isInProgress ? 'bg-secondary-container/60' : 'bg-white hover:bg-surface-container-low';
@@ -132,6 +145,9 @@ const OrderItem = React.memo<{
                         {item.sku && <span>SKU: {item.sku}</span>}
                         {item.sku && <span>&bull;</span>}
                         <span className="font-semibold text-on-surface">{fmt(unitPrice)} c/u</span>
+                        {supplierId && availableForThis < item.quantity && (
+                            <span className="text-primary font-semibold">&bull; Disponibles aquí: {availableForThis}</span>
+                        )}
                     </div>
                 </div>
             </div>
@@ -139,9 +155,9 @@ const OrderItem = React.memo<{
             <div className="flex items-center gap-3">
                 {item.quantity > 1 && (
                     <div className="flex items-center gap-2">
-                        <button onClick={handleDecrement} disabled={item.quantityPurchased === 0} className="w-7 h-7 flex items-center justify-center rounded-full bg-surface-container text-on-surface hover:bg-surface-container-high disabled:opacity-40 transition">-</button>
-                        <span className="font-mono text-base font-semibold text-on-background w-8 text-center">{item.quantityPurchased}</span>
-                        <button onClick={handleIncrement} disabled={isPurchased} className="w-7 h-7 flex items-center justify-center rounded-full bg-surface-container text-on-surface hover:bg-surface-container-high disabled:opacity-40 transition">+</button>
+                        <button onClick={handleDecrement} disabled={displayQty === 0} className="w-7 h-7 flex items-center justify-center rounded-full bg-surface-container text-on-surface hover:bg-surface-container-high disabled:opacity-40 transition">-</button>
+                        <span className="font-mono text-base font-semibold text-on-background w-8 text-center">{displayQty}</span>
+                        <button onClick={handleIncrement} disabled={displayQty >= availableForThis} className="w-7 h-7 flex items-center justify-center rounded-full bg-surface-container text-on-surface hover:bg-surface-container-high disabled:opacity-40 transition">+</button>
                     </div>
                 )}
                 {item.imageUrl && (
@@ -525,16 +541,17 @@ const OrderTicketModal: React.FC<{
 // --- CategorySection ---
 const CategorySection = React.memo<{
     category: string;
+    supplierId: string | null;
     items: LineItem[];
     orderId: number;
     ticketCount: number;
     authToken: string;
     onAuthError: () => void;
     onTicketUploaded: (supplierName: string) => void;
-    onQuantityChange: (itemId: number, newQuantity: number) => void;
+    onQuantityChange: (itemId: number, newQuantity: number, supplierId: string | null) => void;
     onViewImage: (imageUrl: string, productName: string) => void;
     onDelete: (itemId: number) => void;
-}>(({ category, items, orderId, ticketCount, authToken, onAuthError, onTicketUploaded, onQuantityChange, onViewImage, onDelete }) => {
+}>(({ category, supplierId, items, orderId, ticketCount, authToken, onAuthError, onTicketUploaded, onQuantityChange, onViewImage, onDelete }) => {
     const [isExpanded, setIsExpanded] = useState(false);
     const [showTickets, setShowTickets] = useState(false);
 
@@ -579,7 +596,7 @@ const CategorySection = React.memo<{
                     {isExpanded && (
                         <div className="divide-y divide-surface-variant">
                             {items.map(item => (
-                                <OrderItem key={item.id} item={item} onQuantityChange={onQuantityChange} onViewImage={onViewImage} onDelete={onDelete} />
+                                <OrderItem key={item.id} item={item} supplierId={supplierId} onQuantityChange={onQuantityChange} onViewImage={onViewImage} onDelete={onDelete} />
                             ))}
                         </div>
                     )}
@@ -601,6 +618,12 @@ const CategorySection = React.memo<{
     );
 });
 
+interface SupplierGroup {
+    name: string;
+    supplierId: string | null;
+    items: LineItem[];
+}
+
 // --- OrderCard ---
 const OrderCard = React.memo<{
     order: Order;
@@ -608,7 +631,7 @@ const OrderCard = React.memo<{
     completingOrderId: number | null;
     authToken: string;
     onAuthError: () => void;
-    onQuantityChange: (itemId: number, newQuantity: number) => void;
+    onQuantityChange: (itemId: number, newQuantity: number, supplierId: string | null) => void;
     onCompleteOrder: (orderId: number) => void;
     onViewImage: (imageUrl: string, productName: string) => void;
     onDelete: (itemId: number) => void;
@@ -631,14 +654,27 @@ const OrderCard = React.memo<{
             .catch(() => {});
     }, [authToken, order.id]);
 
-    const itemsByCategory = order.lineItems.reduce((acc, item) => {
-        const category = item.category || 'Productos';
-        if (!acc[category]) acc[category] = [];
-        acc[category].push(item);
-        return acc;
-    }, {} as GroupedItems);
+    // Build supplier groups: items with PlantArte suppliers appear once per supplier.
+    // Items without PlantArte suppliers fall back to WooCommerce category grouping.
+    const supplierGroups = React.useMemo<SupplierGroup[]>(() => {
+        const map = new Map<string, SupplierGroup>();
+        for (const item of order.lineItems) {
+            if (item.suppliers && item.suppliers.length > 0) {
+                for (const sup of item.suppliers) {
+                    const key = `sup:${sup.id}`;
+                    if (!map.has(key)) map.set(key, { name: sup.name, supplierId: sup.id, items: [] });
+                    map.get(key)!.items.push(item);
+                }
+            } else {
+                const cat = item.category || 'Productos';
+                const key = `cat:${cat}`;
+                if (!map.has(key)) map.set(key, { name: cat, supplierId: null, items: [] });
+                map.get(key)!.items.push(item);
+            }
+        }
+        return [...map.values()].sort((a, b) => a.name.localeCompare(b.name));
+    }, [order.lineItems]);
 
-    const categories = Object.keys(itemsByCategory).sort();
     const allItemsPurchased = order.lineItems.every(item => item.isPurchased);
 
     const statusMap: Record<string, string> = { processing: 'En proceso', completed: 'Completado', 'on-hold': 'En espera' };
@@ -686,17 +722,18 @@ const OrderCard = React.memo<{
 
             {isExpanded && (
                 <div className="p-4 space-y-3">
-                    {categories.map(category => {
-                        const sortedItems = [...itemsByCategory[category]].sort((a, b) =>
+                    {supplierGroups.map(group => {
+                        const sortedItems = [...group.items].sort((a, b) =>
                             (a.sku || '').localeCompare(b.sku || '', undefined, { numeric: true, sensitivity: 'base' })
                         );
                         return (
                             <CategorySection
-                                key={category}
-                                category={category}
+                                key={`${group.supplierId ?? 'cat'}:${group.name}`}
+                                category={group.name}
+                                supplierId={group.supplierId}
                                 items={sortedItems}
                                 orderId={order.id}
-                                ticketCount={ticketCounts[category] ?? 0}
+                                ticketCount={ticketCounts[group.name] ?? 0}
                                 authToken={authToken}
                                 onAuthError={onAuthError}
                                 onTicketUploaded={handleTicketChange}
@@ -781,20 +818,47 @@ const OrdersView: React.FC<OrdersViewProps> = ({ authToken, onAuthError }) => {
         fetchOrders();
     }, [tabMode, viewMode, authToken, onAuthError]);
 
-    const handleQuantityChange = useCallback((itemId: number, newQuantity: number) => {
+    const handleQuantityChange = useCallback((itemId: number, newQuantity: number, supplierId: string | null) => {
         setOrders(prevOrders => {
             const foundOrder = prevOrders.find(o => o.lineItems.some(i => i.id === itemId));
             if (!foundOrder) return prevOrders;
             const foundItem = foundOrder.lineItems.find(i => i.id === itemId);
             if (!foundItem) return prevOrders;
-            const itemToSave: LineItem = { ...foundItem, quantityPurchased: newQuantity, isPurchased: newQuantity === foundItem.quantity };
+
+            let updatedQtyBySupplier = { ...foundItem.quantityBySupplier };
+            let totalPurchased: number;
+
+            if (supplierId) {
+                updatedQtyBySupplier[supplierId] = newQuantity;
+                totalPurchased = Object.values(updatedQtyBySupplier).reduce((s, v) => s + v, 0);
+            } else {
+                totalPurchased = newQuantity;
+            }
+
+            const isPurchased = totalPurchased >= foundItem.quantity;
+            const itemToSave: LineItem = {
+                ...foundItem,
+                quantityPurchased: totalPurchased,
+                isPurchased,
+                quantityBySupplier: updatedQtyBySupplier,
+            };
+
             const updatedOrders = prevOrders.map(order => {
                 if (order.id !== foundOrder.id) return order;
                 return { ...order, lineItems: order.lineItems.map(item => item.id === itemId ? itemToSave : item) };
             });
-            saveItemStatus(authToken, { lineItemId: itemToSave.id, orderId: foundOrder.id, isPurchased: itemToSave.isPurchased, quantityPurchased: itemToSave.quantityPurchased })
+
+            saveItemStatus(authToken, {
+                lineItemId: itemToSave.id,
+                orderId: foundOrder.id,
+                isPurchased: itemToSave.isPurchased,
+                quantityPurchased: itemToSave.quantityPurchased,
+                supplierId: supplierId ?? undefined,
+                totalQuantity: foundItem.quantity,
+            })
                 .then(data => { if (data.success) showToast('success', 'Progreso guardado'); })
                 .catch(err => { if (err instanceof AuthError) onAuthError(); else showToast('error', 'Error al guardar el progreso'); });
+
             return updatedOrders;
         });
     }, [authToken, onAuthError]);
@@ -885,7 +949,7 @@ const OrdersView: React.FC<OrdersViewProps> = ({ authToken, onAuthError }) => {
                                     onCompleteOrder={handleCompleteOrder}
                                     onViewImage={handleViewImage}
                                     onDelete={handleDeleteItem}
-                                />
+                                  />
                             ))}
                         </div>
                     )}

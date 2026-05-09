@@ -100,6 +100,24 @@ router.get('/', async (req: Request, res: Response) => {
         const statusMap = new Map<number, { isPurchased: boolean; quantityPurchased: number }>();
         savedStatus.forEach(s => statusMap.set(s.lineItemId, { isPurchased: s.isPurchased, quantityPurchased: s.quantityPurchased }));
 
+        // Per-supplier quantities
+        const supplierStatus = await prisma.purchaseStatusBySupplier.findMany({ where: { lineItemId: { in: allLineItemIds } } });
+        const supplierStatusMap = new Map<string, number>(); // key: `${lineItemId}:${supplierId}`
+        supplierStatus.forEach(s => supplierStatusMap.set(`${s.lineItemId}:${s.supplierId}`, s.quantity));
+
+        // Match wooProductId → Article suppliers
+        const allProductIds = [...productIds];
+        const articles = await prisma.article.findMany({
+            where: { wooProductId: { in: allProductIds } },
+            select: { wooProductId: true, suppliers: { select: { supplierId: true, supplier: { select: { id: true, name: true } } } } },
+        });
+        const articleSupplierMap = new Map<number, { id: string; name: string }[]>();
+        articles.forEach(a => {
+            if (a.wooProductId != null) {
+                articleSupplierMap.set(a.wooProductId, a.suppliers.map(s => ({ id: s.supplier.id, name: s.supplier.name })));
+            }
+        });
+
         const finalOrders = rawOrders.map(order => ({
             id: order.id,
             dateCreated: order.date_created,
@@ -109,6 +127,11 @@ router.get('/', async (req: Request, res: Response) => {
             lineItems: order.line_items.map((item: WooCommerceLineItem) => {
                 const savedItemStatus = statusMap.get(item.id);
                 const productDetails = productDetailsMap.get(item.product_id);
+                const suppliers = articleSupplierMap.get(item.product_id) ?? [];
+                const quantityBySupplier: Record<string, number> = {};
+                suppliers.forEach(s => {
+                    quantityBySupplier[s.id] = supplierStatusMap.get(`${item.id}:${s.id}`) ?? 0;
+                });
                 return {
                     id: item.id,
                     name: item.name,
@@ -120,6 +143,8 @@ router.get('/', async (req: Request, res: Response) => {
                     quantityPurchased: savedItemStatus?.quantityPurchased ?? 0,
                     category: productDetails?.category ?? 'Sin Categoria',
                     imageUrl: productDetails?.imageUrl ?? null,
+                    suppliers,
+                    quantityBySupplier,
                 };
             }),
         }));

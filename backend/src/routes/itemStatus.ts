@@ -9,6 +9,8 @@ const itemStatusSchema = z.object({
     orderId: z.number({ error: 'orderId es requerido' }),
     isPurchased: z.boolean(),
     quantityPurchased: z.number().int().min(0),
+    supplierId: z.string().optional(),
+    totalQuantity: z.number().int().min(0).optional(),
 });
 
 router.post('/', async (req: Request, res: Response) => {
@@ -17,8 +19,26 @@ router.post('/', async (req: Request, res: Response) => {
         res.status(400).json({ error: parsed.error.issues[0].message });
         return;
     }
-    const { lineItemId, orderId, isPurchased, quantityPurchased } = parsed.data;
+    const { lineItemId, orderId, supplierId, totalQuantity } = parsed.data;
+    let { isPurchased, quantityPurchased } = parsed.data;
+
     try {
+        if (supplierId !== undefined) {
+            // Update per-supplier quantity
+            await prisma.purchaseStatusBySupplier.upsert({
+                where: { lineItemId_supplierId: { lineItemId, supplierId } },
+                update: { quantity: quantityPurchased },
+                create: { lineItemId, supplierId, orderId, quantity: quantityPurchased },
+            });
+
+            // Recalculate total from all suppliers
+            const allSupplierRows = await prisma.purchaseStatusBySupplier.findMany({ where: { lineItemId } });
+            const totalPurchased = allSupplierRows.reduce((sum, r) => sum + r.quantity, 0);
+            const total = totalQuantity ?? totalPurchased;
+            quantityPurchased = totalPurchased;
+            isPurchased = totalPurchased >= total && total > 0;
+        }
+
         const status = await prisma.purchaseStatus.upsert({
             where: { lineItemId },
             update: { isPurchased, quantityPurchased },

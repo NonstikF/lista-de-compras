@@ -9,6 +9,8 @@ export interface LineItem {
   quantityPurchased: number;
   category: string;
   imageUrl: string | null;
+  suppliers: { id: string; name: string }[];
+  quantityBySupplier: Record<string, number>;
 }
 
 export interface Customer {

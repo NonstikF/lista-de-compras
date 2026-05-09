@@ -51,7 +51,7 @@ export const getOrders = async (status: OrderStatusType, token: string): Promise
 
 export const saveItemStatus = async (
   token: string,
-  data: { lineItemId: number; orderId: number; isPurchased: boolean; quantityPurchased: number }
+  data: { lineItemId: number; orderId: number; isPurchased: boolean; quantityPurchased: number; supplierId?: string; totalQuantity?: number }
 ): Promise<{ success: boolean }> => {
   return handleResponse(await fetch(`${BASE}/api/item-status`, {
     method: 'POST',
