@@ -295,13 +295,15 @@ const UsersView: React.FC<UsersViewProps> = ({ authToken, onAuthError }) => {
                                 >
                                     <MIcon name="edit" />
                                 </button>
-                                <button
-                                    onClick={() => setDeletingId(user.id)}
-                                    title="Eliminar"
-                                    className="p-2 rounded-full text-on-surface-variant hover:bg-error-container/30 hover:text-error transition-colors"
-                                >
-                                    <MIcon name="delete" />
-                                </button>
+                                {users.length > 1 && (
+                                    <button
+                                        onClick={() => setDeletingId(user.id)}
+                                        title="Eliminar"
+                                        className="p-2 rounded-full text-on-surface-variant hover:bg-error-container/30 hover:text-error transition-colors"
+                                    >
+                                        <MIcon name="delete" />
+                                    </button>
+                                )}
                             </div>
                         </div>
                     ))}

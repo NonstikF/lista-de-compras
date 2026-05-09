@@ -399,16 +399,20 @@ const SupplierRow: React.FC<{
             <Button variant="tonal" size="sm" icon="receipt_long" onClick={() => onTickets(supplier)}>
                 Tickets
             </Button>
-            <Button variant="tonal" size="sm" icon="edit" onClick={() => onEdit(supplier)}>
-                Editar
-            </Button>
-            <Button
-                variant="text"
-                size="sm"
-                icon="delete"
-                className="text-error hover:bg-error/8"
-                onClick={() => onDelete(supplier)}
-            />
+            {supplier.name !== 'Sin Proveedor' && (
+                <>
+                    <Button variant="tonal" size="sm" icon="edit" onClick={() => onEdit(supplier)}>
+                        Editar
+                    </Button>
+                    <Button
+                        variant="text"
+                        size="sm"
+                        icon="delete"
+                        className="text-error hover:bg-error/8"
+                        onClick={() => onDelete(supplier)}
+                    />
+                </>
+            )}
         </div>
     </div>
 );

@@ -1,0 +1,127 @@
+import React, { useState } from 'react';
+
+export type AppView = 'login' | 'dashboard' | 'orders' | 'articles' | 'recipes' | 'store' | 'suppliers' | 'users' | 'inventory';
+
+export const navItems: { view: AppView; label: string; icon: string }[] = [
+  { view: 'dashboard',  label: 'Panel',       icon: 'dashboard'        },
+  { view: 'orders',     label: 'Pedidos',     icon: 'inventory_2'      },
+  { view: 'recipes',    label: 'Recetas',     icon: 'menu_book'        },
+  { view: 'articles',   label: 'Artículos',   icon: 'package_2'        },
+  { view: 'store',      label: 'Tienda',      icon: 'storefront'       },
+  { view: 'suppliers',  label: 'Proveedores', icon: 'local_shipping'   },
+  { view: 'users',      label: 'Usuarios',    icon: 'manage_accounts'  },
+  { view: 'inventory',  label: 'Inventario',  icon: 'inventory'        },
+];
+
+interface SidebarProps {
+  onLogout: () => void;
+  setView: (view: AppView) => void;
+  currentView: AppView;
+}
+
+const Sidebar: React.FC<SidebarProps> = ({ onLogout, setView, currentView }) => {
+  const [collapsed, setCollapsed] = useState(false);
+
+  return (
+    <>
+      {/* Desktop sidebar */}
+      <aside
+        className={`hidden md:flex flex-col h-screen sticky top-0 bg-white border-r border-surface-variant transition-all duration-200 z-40 ${
+          collapsed ? 'w-16' : 'w-56'
+        }`}
+      >
+        {/* Logo */}
+        <div className={`flex items-center h-16 px-3 border-b border-surface-variant gap-2 ${collapsed ? 'justify-center' : ''}`}>
+          <button
+            onClick={() => setView('dashboard')}
+            className="w-9 h-9 rounded-lg bg-primary text-on-primary flex items-center justify-center shrink-0"
+            aria-label="Ir al panel"
+          >
+            <span className="material-symbols-outlined text-lg" style={{ fontVariationSettings: "'FILL' 1" }}>eco</span>
+          </button>
+          {!collapsed && (
+            <span
+              onClick={() => setView('dashboard')}
+              className="font-epilogue text-lg font-extrabold text-primary tracking-tight cursor-pointer select-none"
+            >
+              PlantArte
+            </span>
+          )}
+        </div>
+
+        {/* Nav items */}
+        <nav className="flex-1 overflow-y-auto py-3 flex flex-col gap-0.5 px-2">
+          {navItems.map(({ view, label, icon }) => {
+            const active = currentView === view;
+            return (
+              <button
+                key={view}
+                onClick={() => setView(view)}
+                aria-label={label}
+                className={`flex items-center gap-3 px-2.5 py-2.5 rounded-xl text-sm font-medium transition-colors w-full text-left ${
+                  active
+                    ? 'bg-primary/10 text-primary font-semibold'
+                    : 'text-on-surface-variant hover:text-primary hover:bg-surface-container-low'
+                } ${collapsed ? 'justify-center' : ''}`}
+              >
+                <span
+                  className="material-symbols-outlined text-xl shrink-0"
+                  style={active ? { fontVariationSettings: "'FILL' 1" } : {}}
+                >
+                  {icon}
+                </span>
+                {!collapsed && <span>{label}</span>}
+              </button>
+            );
+          })}
+        </nav>
+
+        {/* Footer */}
+        <div className={`border-t border-surface-variant px-2 py-3 flex flex-col gap-0.5 ${collapsed ? 'items-center' : ''}`}>
+          <button
+            onClick={() => setCollapsed(c => !c)}
+            aria-label={collapsed ? 'Expandir menú' : 'Colapsar menú'}
+            className="flex items-center gap-3 px-2.5 py-2.5 rounded-xl text-sm font-medium text-on-surface-variant hover:text-primary hover:bg-surface-container-low transition-colors w-full"
+          >
+            <span className="material-symbols-outlined text-xl shrink-0">
+              {collapsed ? 'chevron_right' : 'chevron_left'}
+            </span>
+            {!collapsed && <span>Colapsar</span>}
+          </button>
+          <button
+            onClick={onLogout}
+            aria-label="Cerrar sesión"
+            className={`flex items-center gap-3 px-2.5 py-2.5 rounded-xl text-sm font-medium text-on-surface-variant hover:text-error hover:bg-error-container/30 transition-colors w-full ${collapsed ? 'justify-center' : ''}`}
+          >
+            <span className="material-symbols-outlined text-xl shrink-0">logout</span>
+            {!collapsed && <span>Cerrar sesión</span>}
+          </button>
+        </div>
+      </aside>
+
+      {/* Mobile bottom nav */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-surface-variant shadow-lg flex justify-around items-center px-1 py-1.5">
+        {navItems.map(({ view, label, icon }) => (
+          <button
+            key={view}
+            onClick={() => setView(view)}
+            aria-label={label}
+            className={`flex flex-col items-center gap-0 px-1 py-1 rounded-xl transition text-[7px] font-bold uppercase tracking-wider ${
+              currentView === view ? 'text-primary' : 'text-on-surface-variant'
+            }`}
+          >
+            <span
+              className="material-symbols-outlined text-2xl"
+              style={currentView === view ? { fontVariationSettings: "'FILL' 1" } : {}}
+            >
+              {icon}
+            </span>
+            {label}
+          </button>
+        ))}
+      </nav>
+    </>
+  );
+};
+
+export default Sidebar;
