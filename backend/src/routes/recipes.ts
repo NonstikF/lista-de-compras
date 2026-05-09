@@ -7,11 +7,11 @@ const router = Router();
 const recipeCategories = ['caliente', 'fria', 'especial'] as const;
 type RecipeCategory = typeof recipeCategories[number];
 
-const recipeTypes = ['alimento', 'bebida'] as const;
+const recipeTypes = ['alimento', 'bebida', 'otros'] as const;
 type RecipeType = typeof recipeTypes[number];
 
-const drinkTemps = ['fria', 'caliente'] as const;
-type DrinkTemp = typeof drinkTemps[number];
+const drinkTempValues = ['fria', 'caliente'] as const;
+type DrinkTemp = typeof drinkTempValues[number];
 
 const drinkSizes = ['10oz', '12oz', '16oz'] as const;
 
@@ -23,8 +23,17 @@ function normalizeRecipeType(t: unknown): RecipeType {
     return recipeTypes.includes(t as RecipeType) ? t as RecipeType : 'alimento';
 }
 
-function normalizeDrinkTemp(t: unknown): DrinkTemp | null {
-    return drinkTemps.includes(t as DrinkTemp) ? t as DrinkTemp : null;
+function parseDrinkTemps(raw: unknown): DrinkTemp[] {
+    if (Array.isArray(raw)) {
+        return raw.filter((t): t is DrinkTemp => drinkTempValues.includes(t));
+    }
+    if (typeof raw === 'string') {
+        try {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed)) return parsed.filter((t): t is DrinkTemp => drinkTempValues.includes(t));
+        } catch { /* ignore */ }
+    }
+    return [];
 }
 
 type PrismaRecipe = {
@@ -33,7 +42,7 @@ type PrismaRecipe = {
     description: string;
     recipeType: string;
     category: string;
-    drinkTemp: string | null;
+    drinkTemps: string;
     image: string | null;
     instructions: string;
     servings: number;
@@ -52,7 +61,7 @@ function formatRecipe(recipe: PrismaRecipe) {
         ...recipe,
         recipeType: normalizeRecipeType(recipe.recipeType),
         category: normalizeRecipeCategory(recipe.category),
-        drinkTemp: normalizeDrinkTemp(recipe.drinkTemp),
+        drinkTemps: parseDrinkTemps(recipe.drinkTemps),
         image: recipe.image ?? null,
         description: recipe.description ?? '',
         instructions: recipe.instructions ?? '',
@@ -82,7 +91,9 @@ const recipeSchema = z.object({
     description: z.string().default(''),
     recipeType: z.string().default('alimento').transform(normalizeRecipeType),
     category: z.string().default('especial').transform(normalizeRecipeCategory),
-    drinkTemp: z.string().nullable().default(null).transform(normalizeDrinkTemp),
+    drinkTemps: z.array(z.string()).default([]).transform(arr =>
+        JSON.stringify(arr.filter((t): t is DrinkTemp => drinkTempValues.includes(t as DrinkTemp)))
+    ),
     image: z.string().nullable().default(null),
     instructions: z.string().default(''),
     servings: z.number().int().min(1).default(1),
@@ -142,9 +153,7 @@ router.put('/:id', async (req: Request, res: Response) => {
     if (!parsed.success) { res.status(400).json({ error: parsed.error.issues[0].message }); return; }
     const { ingredients, sizeVariants, ...rest } = parsed.data;
     try {
-        // Delete existing size variants (cascade deletes their ingredients)
         await prisma.recipeSizeVariant.deleteMany({ where: { recipeId: req.params.id } });
-
         const recipe = await prisma.recipe.update({
             where: { id: req.params.id },
             data: {

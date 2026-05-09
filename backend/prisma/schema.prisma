@@ -86,9 +86,9 @@ model Recipe {
   id           String               @id @default(cuid())
   name         String
   description  String               @default("")
-  recipeType   String               @default("alimento") // 'alimento' | 'bebida'
+  recipeType   String               @default("alimento") // 'alimento' | 'bebida' | 'otros'
   category     String               // 'caliente' | 'fria' | 'especial'
-  drinkTemp    String?              // 'fria' | 'caliente' — only for bebida
+  drinkTemps   String               @default("[]")      // JSON: ('fria'|'caliente')[] — only for bebida
   image        String?
   instructions String               @default("")
   servings     Int                  @default(1)

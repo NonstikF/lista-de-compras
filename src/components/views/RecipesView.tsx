@@ -17,19 +17,32 @@ const CATEGORY_META = {
 type RecipeCategory = keyof typeof CATEGORY_META;
 
 const DRINK_SIZES: DrinkSize[] = ['10oz', '12oz', '16oz'];
+const DRINK_TEMPS: DrinkTemp[] = ['fria', 'caliente'];
+
+const UNITS = ['g', 'kg', 'ml', 'L', 'pza', 'cdta', 'cda', 'taza', 'al gusto'];
 
 const normalizeCategory = (category: unknown): RecipeCategory => {
     if (category === 'caliente' || category === 'fria' || category === 'especial') return category;
     return 'especial';
 };
 
+const normalizeRecipeType = (t: unknown): RecipeType => {
+    if (t === 'alimento' || t === 'bebida' || t === 'otros') return t;
+    return 'alimento';
+};
+
+const normalizeDrinkTemps = (raw: unknown): DrinkTemp[] => {
+    if (!Array.isArray(raw)) return [];
+    return raw.filter((t): t is DrinkTemp => t === 'fria' || t === 'caliente');
+};
+
 const getCategoryMeta = (category: unknown) => CATEGORY_META[normalizeCategory(category)];
 
 const normalizeRecipe = (recipe: Recipe): Recipe => ({
     ...recipe,
-    recipeType: (recipe.recipeType === 'alimento' || recipe.recipeType === 'bebida') ? recipe.recipeType : 'alimento',
+    recipeType: normalizeRecipeType(recipe.recipeType),
     category: normalizeCategory(recipe.category),
-    drinkTemp: (recipe.drinkTemp === 'fria' || recipe.drinkTemp === 'caliente') ? recipe.drinkTemp : null,
+    drinkTemps: normalizeDrinkTemps(recipe.drinkTemps),
     image: recipe.image ?? null,
     ingredients: Array.isArray(recipe.ingredients) ? recipe.ingredients : [],
     sizeVariants: Array.isArray(recipe.sizeVariants) ? recipe.sizeVariants : [],
@@ -37,8 +50,6 @@ const normalizeRecipe = (recipe: Recipe): Recipe => ({
     description: recipe.description ?? '',
     servings: Math.max(1, Number(recipe.servings) || 1),
 });
-
-const UNITS = ['g', 'kg', 'ml', 'L', 'pza', 'cdta', 'cda', 'taza', 'al gusto'];
 
 // ---------- Imagen o placeholder ----------
 const RecipeImage: React.FC<{ recipe: Recipe; className?: string }> = ({ recipe, className = '' }) => {
@@ -60,8 +71,21 @@ const RecipeCard: React.FC<{
     onEdit: (r: Recipe) => void;
     onDelete: (r: Recipe) => void;
 }> = ({ recipe, onView, onEdit, onDelete }) => {
-    const meta = getCategoryMeta(recipe.category);
     const isBebida = recipe.recipeType === 'bebida';
+    const isOtros = recipe.recipeType === 'otros';
+
+    const typeLabel = isBebida
+        ? `Bebida${recipe.drinkTemps.length > 0 ? ' · ' + recipe.drinkTemps.map(t => t === 'fria' ? 'Fría' : 'Caliente').join(' & ') : ''}`
+        : isOtros ? 'Otros'
+        : 'Alimento';
+
+    const typeIcon = isBebida ? 'local_cafe' : isOtros ? 'category' : 'restaurant';
+    const typeColor = isBebida
+        ? getCategoryMeta(recipe.category).color
+        : isOtros
+        ? 'bg-surface-variant text-on-surface-variant'
+        : 'bg-tertiary-container/50 text-tertiary';
+
     const sizesLabel = isBebida && recipe.sizeVariants.length > 0
         ? recipe.sizeVariants.map(sv => sv.size).join(', ')
         : null;
@@ -73,17 +97,10 @@ const RecipeCard: React.FC<{
             </div>
             <div className="p-4 flex-1 flex flex-col gap-2">
                 <div className="flex items-center gap-2 flex-wrap">
-                    {isBebida ? (
-                        <span className={`inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full ${meta.color}`}>
-                            <MIcon name={meta.icon} className="text-sm" fill />
-                            Bebida {meta.label}
-                        </span>
-                    ) : (
-                        <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-tertiary-container/50 text-tertiary">
-                            <MIcon name="restaurant" className="text-sm" fill />
-                            Alimento
-                        </span>
-                    )}
+                    <span className={`inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full ${typeColor}`}>
+                        <MIcon name={typeIcon} className="text-sm" fill />
+                        {typeLabel}
+                    </span>
                     {sizesLabel && (
                         <span className="text-[11px] text-on-surface-variant bg-surface-container px-2 py-0.5 rounded-full">
                             {sizesLabel}
@@ -115,12 +132,23 @@ const RecipeCard: React.FC<{
 
 // ---------- Modal detalle ----------
 const RecipeDetailModal: React.FC<{ recipe: Recipe; onClose: () => void; onEdit: (r: Recipe) => void }> = ({ recipe, onClose, onEdit }) => {
-    const meta = getCategoryMeta(recipe.category);
     const isBebida = recipe.recipeType === 'bebida';
+    const isOtros = recipe.recipeType === 'otros';
+
+    const typeLabel = isBebida
+        ? `Bebida${recipe.drinkTemps.length > 0 ? ' · ' + recipe.drinkTemps.map(t => t === 'fria' ? 'Fría' : 'Caliente').join(' & ') : ''}`
+        : isOtros ? 'Otros'
+        : 'Alimento';
+    const typeIcon = isBebida ? 'local_cafe' : isOtros ? 'category' : 'restaurant';
+    const typeColor = isBebida
+        ? getCategoryMeta(recipe.category).color
+        : isOtros
+        ? 'bg-surface-variant text-on-surface-variant'
+        : 'bg-tertiary-container/50 text-tertiary';
+
     const [activeSize, setActiveSize] = useState<DrinkSize | null>(
         recipe.sizeVariants.length > 0 ? recipe.sizeVariants[0].size as DrinkSize : null
     );
-
     const activeVariant = recipe.sizeVariants.find(sv => sv.size === activeSize);
 
     return (
@@ -141,28 +169,19 @@ const RecipeDetailModal: React.FC<{ recipe: Recipe; onClose: () => void; onEdit:
                     <img src={recipe.image} alt={recipe.name} className="w-full h-52 object-cover rounded-xl" />
                 )}
                 <div className="flex items-center gap-2 flex-wrap">
-                    {isBebida ? (
-                        <span className={`inline-flex items-center gap-1 text-sm font-bold px-3 py-1 rounded-full ${meta.color}`}>
-                            <MIcon name="local_cafe" className="text-base" fill />
-                            Bebida {meta.label}
-                        </span>
-                    ) : (
-                        <span className="inline-flex items-center gap-1 text-sm font-bold px-3 py-1 rounded-full bg-tertiary-container/50 text-tertiary">
-                            <MIcon name="restaurant" className="text-base" fill />
-                            Alimento
-                        </span>
-                    )}
+                    <span className={`inline-flex items-center gap-1 text-sm font-bold px-3 py-1 rounded-full ${typeColor}`}>
+                        <MIcon name={typeIcon} className="text-base" fill />
+                        {typeLabel}
+                    </span>
                     {!isBebida && recipe.servings > 0 && (
                         <span className="text-sm text-on-surface-variant bg-surface-container px-3 py-1 rounded-full">
                             {recipe.servings} porción{recipe.servings !== 1 ? 'es' : ''}
                         </span>
                     )}
                 </div>
-                {recipe.description && (
-                    <p className="text-on-surface-variant">{recipe.description}</p>
-                )}
+                {recipe.description && <p className="text-on-surface-variant">{recipe.description}</p>}
 
-                {/* Bebida: size tabs + ingredients per size */}
+                {/* Bebida: size tabs */}
                 {isBebida && recipe.sizeVariants.length > 0 && (
                     <div>
                         <h4 className="font-epilogue font-semibold text-on-background mb-3">Ingredientes por tamaño</h4>
@@ -208,7 +227,7 @@ const RecipeDetailModal: React.FC<{ recipe: Recipe; onClose: () => void; onEdit:
                     </div>
                 )}
 
-                {/* Alimento: regular ingredients */}
+                {/* Alimento / Otros: regular ingredients */}
                 {!isBebida && recipe.ingredients.length > 0 && (
                     <div>
                         <h4 className="font-epilogue font-semibold text-on-background mb-2">Ingredientes</h4>
@@ -246,47 +265,84 @@ const RecipeDetailModal: React.FC<{ recipe: Recipe; onClose: () => void; onEdit:
     );
 };
 
-// ---------- Fila de ingrediente ----------
+// ---------- Fila de ingrediente con unidad editable ----------
 const IngredientRow: React.FC<{
     ing: RecipeIngredient;
     index: number;
     onChange: (i: number, f: keyof RecipeIngredient, v: string) => void;
     onRemove: (i: number) => void;
-}> = ({ ing, index, onChange, onRemove }) => (
-    <div className="flex gap-2 items-start">
-        <Input
-            placeholder="Ingrediente"
-            value={ing.name}
-            onChange={e => onChange(index, 'name', e.target.value)}
-            className="flex-1"
-        />
-        <Input
-            placeholder="Cant."
-            value={ing.quantity}
-            onChange={e => onChange(index, 'quantity', e.target.value)}
-            className="w-20"
-        />
-        <Select
-            value={ing.unit}
-            onChange={e => onChange(index, 'unit', e.target.value)}
-            className="w-28"
-        >
-            {UNITS.map(u => <option key={u} value={u}>{u}</option>)}
-        </Select>
-        <button
-            type="button"
-            onClick={() => onRemove(index)}
-            className="p-2 text-error hover:bg-error/8 rounded-full transition mt-0.5"
-        >
-            <MIcon name="remove_circle" className="text-xl" />
-        </button>
-    </div>
-);
+}> = ({ ing, index, onChange, onRemove }) => {
+    const isCustom = !UNITS.includes(ing.unit);
+    const [showCustom, setShowCustom] = useState(isCustom);
+
+    const handleSelectChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+        const val = e.target.value;
+        if (val === '__custom__') {
+            setShowCustom(true);
+            onChange(index, 'unit', '');
+        } else {
+            setShowCustom(false);
+            onChange(index, 'unit', val);
+        }
+    };
+
+    return (
+        <div className="flex gap-2 items-start">
+            <Input
+                placeholder="Ingrediente"
+                value={ing.name}
+                onChange={e => onChange(index, 'name', e.target.value)}
+                className="flex-1"
+            />
+            <Input
+                placeholder="Cant."
+                value={ing.quantity}
+                onChange={e => onChange(index, 'quantity', e.target.value)}
+                className="w-20"
+            />
+            {showCustom ? (
+                <div className="flex gap-1 items-start">
+                    <Input
+                        placeholder="Unidad"
+                        value={ing.unit}
+                        onChange={e => onChange(index, 'unit', e.target.value)}
+                        className="w-24"
+                        autoFocus
+                    />
+                    <button
+                        type="button"
+                        title="Volver a lista"
+                        onClick={() => { setShowCustom(false); onChange(index, 'unit', 'g'); }}
+                        className="p-2 text-on-surface-variant hover:bg-surface-container rounded-full mt-0.5"
+                    >
+                        <MIcon name="list" className="text-lg" />
+                    </button>
+                </div>
+            ) : (
+                <Select
+                    value={UNITS.includes(ing.unit) ? ing.unit : '__custom__'}
+                    onChange={handleSelectChange}
+                    className="w-32"
+                >
+                    {UNITS.map(u => <option key={u} value={u}>{u}</option>)}
+                    <option value="__custom__">+ Otra…</option>
+                </Select>
+            )}
+            <button
+                type="button"
+                onClick={() => onRemove(index)}
+                className="p-2 text-error hover:bg-error/8 rounded-full transition mt-0.5"
+            >
+                <MIcon name="remove_circle" className="text-xl" />
+            </button>
+        </div>
+    );
+};
 
 // ---------- Modal selector de tipo de receta ----------
 interface RecipeTypeSelection {
     recipeType: RecipeType;
-    drinkTemp: DrinkTemp | null;
+    drinkTemps: DrinkTemp[];
     sizes: DrinkSize[];
 }
 
@@ -295,8 +351,14 @@ const RecipeTypeModal: React.FC<{
     onClose: () => void;
 }> = ({ onConfirm, onClose }) => {
     const [recipeType, setRecipeType] = useState<RecipeType | null>(null);
-    const [drinkTemp, setDrinkTemp] = useState<DrinkTemp | null>(null);
+    const [drinkTemps, setDrinkTemps] = useState<DrinkTemp[]>([]);
     const [sizes, setSizes] = useState<DrinkSize[]>([]);
+
+    const toggleTemp = (temp: DrinkTemp) => {
+        setDrinkTemps(prev =>
+            prev.includes(temp) ? prev.filter(t => t !== temp) : [...prev, temp]
+        );
+    };
 
     const toggleSize = (size: DrinkSize) => {
         setSizes(prev =>
@@ -306,11 +368,12 @@ const RecipeTypeModal: React.FC<{
 
     const canConfirm =
         recipeType === 'alimento' ||
-        (recipeType === 'bebida' && drinkTemp !== null && sizes.length > 0);
+        recipeType === 'otros' ||
+        (recipeType === 'bebida' && drinkTemps.length > 0 && sizes.length > 0);
 
     const handleConfirm = () => {
         if (!recipeType) return;
-        onConfirm({ recipeType, drinkTemp, sizes });
+        onConfirm({ recipeType, drinkTemps, sizes });
     };
 
     return (
@@ -334,70 +397,79 @@ const RecipeTypeModal: React.FC<{
                     <span className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant block mb-3">
                         ¿Qué tipo de receta?
                     </span>
-                    <div className="grid grid-cols-2 gap-3">
-                        <button
-                            type="button"
-                            onClick={() => { setRecipeType('alimento'); setDrinkTemp(null); setSizes([]); }}
-                            className={`flex flex-col items-center gap-2 py-5 rounded-2xl border-2 transition ${
-                                recipeType === 'alimento'
-                                    ? 'border-primary bg-primary/8'
-                                    : 'border-outline-variant bg-surface-container-low hover:bg-surface-container'
-                            }`}
-                        >
-                            <MIcon name="restaurant" size={32} className={recipeType === 'alimento' ? 'text-primary' : 'text-on-surface-variant'} fill={recipeType === 'alimento'} />
-                            <span className={`text-sm font-semibold ${recipeType === 'alimento' ? 'text-primary' : 'text-on-surface'}`}>Alimento</span>
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => setRecipeType('bebida')}
-                            className={`flex flex-col items-center gap-2 py-5 rounded-2xl border-2 transition ${
-                                recipeType === 'bebida'
-                                    ? 'border-primary bg-primary/8'
-                                    : 'border-outline-variant bg-surface-container-low hover:bg-surface-container'
-                            }`}
-                        >
-                            <MIcon name="local_cafe" size={32} className={recipeType === 'bebida' ? 'text-primary' : 'text-on-surface-variant'} fill={recipeType === 'bebida'} />
-                            <span className={`text-sm font-semibold ${recipeType === 'bebida' ? 'text-primary' : 'text-on-surface'}`}>Bebida</span>
-                        </button>
+                    <div className="grid grid-cols-3 gap-2">
+                        {([
+                            { type: 'alimento' as RecipeType, icon: 'restaurant', label: 'Alimento' },
+                            { type: 'bebida'   as RecipeType, icon: 'local_cafe', label: 'Bebida' },
+                            { type: 'otros'    as RecipeType, icon: 'category',   label: 'Otros' },
+                        ]).map(({ type, icon, label }) => {
+                            const active = recipeType === type;
+                            return (
+                                <button
+                                    key={type}
+                                    type="button"
+                                    onClick={() => {
+                                        setRecipeType(type);
+                                        if (type !== 'bebida') { setDrinkTemps([]); setSizes([]); }
+                                    }}
+                                    className={`flex flex-col items-center gap-2 py-4 rounded-2xl border-2 transition ${
+                                        active
+                                            ? 'border-primary bg-primary/8'
+                                            : 'border-outline-variant bg-surface-container-low hover:bg-surface-container'
+                                    }`}
+                                >
+                                    <MIcon name={icon} size={28} className={active ? 'text-primary' : 'text-on-surface-variant'} fill={active} />
+                                    <span className={`text-xs font-semibold ${active ? 'text-primary' : 'text-on-surface'}`}>{label}</span>
+                                </button>
+                            );
+                        })}
                     </div>
                 </div>
 
-                {/* Temperatura (solo bebida) */}
+                {/* Temperatura — multi-select */}
                 {recipeType === 'bebida' && (
                     <div>
                         <span className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant block mb-3">
-                            Temperatura
+                            Temperatura <span className="text-on-surface-variant/60 normal-case font-normal">(una o ambas)</span>
                         </span>
                         <div className="grid grid-cols-2 gap-3">
-                            {(['fria', 'caliente'] as DrinkTemp[]).map(temp => {
+                            {DRINK_TEMPS.map(temp => {
                                 const icon = temp === 'fria' ? 'ac_unit' : 'local_fire_department';
                                 const label = temp === 'fria' ? 'Fría' : 'Caliente';
-                                const active = drinkTemp === temp;
+                                const active = drinkTemps.includes(temp);
                                 return (
                                     <button
                                         key={temp}
                                         type="button"
-                                        onClick={() => setDrinkTemp(temp)}
-                                        className={`flex flex-col items-center gap-2 py-4 rounded-2xl border-2 transition ${
+                                        onClick={() => toggleTemp(temp)}
+                                        className={`flex flex-col items-center gap-2 py-4 rounded-2xl border-2 transition relative ${
                                             active
                                                 ? 'border-primary bg-primary/8'
                                                 : 'border-outline-variant bg-surface-container-low hover:bg-surface-container'
                                         }`}
                                     >
+                                        {active && (
+                                            <span className="absolute top-1.5 right-1.5">
+                                                <MIcon name="check_circle" className="text-primary text-sm" fill />
+                                            </span>
+                                        )}
                                         <MIcon name={icon} size={28} className={active ? 'text-primary' : 'text-on-surface-variant'} fill={active} />
                                         <span className={`text-sm font-semibold ${active ? 'text-primary' : 'text-on-surface'}`}>{label}</span>
                                     </button>
                                 );
                             })}
                         </div>
+                        {drinkTemps.length === 0 && (
+                            <p className="text-xs text-error mt-2">Selecciona al menos una temperatura</p>
+                        )}
                     </div>
                 )}
 
-                {/* Tamaños (solo bebida + temp seleccionado) */}
-                {recipeType === 'bebida' && drinkTemp !== null && (
+                {/* Tamaños — multi-select */}
+                {recipeType === 'bebida' && drinkTemps.length > 0 && (
                     <div>
                         <span className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant block mb-3">
-                            Tamaños disponibles <span className="text-on-surface-variant/60 normal-case font-normal">(selecciona uno o varios)</span>
+                            Tamaños disponibles <span className="text-on-surface-variant/60 normal-case font-normal">(uno o varios)</span>
                         </span>
                         <div className="flex gap-3">
                             {DRINK_SIZES.map(size => {
@@ -446,11 +518,13 @@ const RecipeEditModal: React.FC<{
 
     const buildBlank = (sel?: RecipeTypeSelection): RecipeForm => {
         const rt = sel?.recipeType ?? 'alimento';
-        const dt = sel?.drinkTemp ?? null;
-        const category: RecipeCategory = dt === 'fria' ? 'fria' : dt === 'caliente' ? 'caliente' : 'especial';
+        const dts = sel?.drinkTemps ?? [];
+        const hasCold = dts.includes('fria');
+        const hasHot = dts.includes('caliente');
+        const category: RecipeCategory = hasHot && !hasCold ? 'caliente' : hasCold && !hasHot ? 'fria' : 'especial';
         const sizeVariants: RecipeSizeVariant[] = (sel?.sizes ?? []).map(size => ({ size, ingredients: [] }));
         return {
-            name: '', description: '', recipeType: rt, category, drinkTemp: dt,
+            name: '', description: '', recipeType: rt, category, drinkTemps: dts,
             image: null, ingredients: [], sizeVariants, instructions: '', servings: 1,
         };
     };
@@ -460,7 +534,7 @@ const RecipeEditModal: React.FC<{
         description: (recipe as Recipe).description,
         recipeType: (recipe as Recipe).recipeType,
         category: normalizeCategory((recipe as Recipe).category),
-        drinkTemp: (recipe as Recipe).drinkTemp,
+        drinkTemps: normalizeDrinkTemps((recipe as Recipe).drinkTemps),
         image: (recipe as Recipe).image,
         ingredients: (recipe as Recipe).ingredients.map(({ name, quantity, unit }) => ({ name, quantity, unit })),
         sizeVariants: (recipe as Recipe).sizeVariants.map(sv => ({
@@ -494,7 +568,6 @@ const RecipeEditModal: React.FC<{
         reader.readAsDataURL(f);
     };
 
-    // Alimento ingredient helpers
     const addIngredient = () =>
         update('ingredients', [...form.ingredients, { name: '', quantity: '', unit: 'g' }]);
     const updateIngredient = (i: number, field: keyof RecipeIngredient, value: string) =>
@@ -502,9 +575,7 @@ const RecipeEditModal: React.FC<{
     const removeIngredient = (i: number) =>
         update('ingredients', form.ingredients.filter((_, idx) => idx !== i));
 
-    // Size variant ingredient helpers
-    const getSizeVariant = (size: DrinkSize) =>
-        form.sizeVariants.find(sv => sv.size === size);
+    const getSizeVariant = (size: DrinkSize) => form.sizeVariants.find(sv => sv.size === size);
 
     const updateSizeIngredients = (size: DrinkSize, ingredients: RecipeSizeVariant['ingredients']) => {
         setForm(f => ({
@@ -548,6 +619,16 @@ const RecipeEditModal: React.FC<{
         }
     };
 
+    const typeLabel = isBebida
+        ? `Bebida${form.drinkTemps.length > 0 ? ' · ' + form.drinkTemps.map(t => t === 'fria' ? 'Fría' : 'Caliente').join(' & ') : ''}`
+        : form.recipeType === 'otros' ? 'Otros' : 'Alimento';
+    const typeIcon = isBebida ? 'local_cafe' : form.recipeType === 'otros' ? 'category' : 'restaurant';
+    const typeColor = isBebida
+        ? getCategoryMeta(form.category).color
+        : form.recipeType === 'otros'
+        ? 'bg-surface-variant text-on-surface-variant'
+        : 'bg-tertiary-container/50 text-tertiary';
+
     return (
         <Modal
             open
@@ -586,15 +667,11 @@ const RecipeEditModal: React.FC<{
                 )}
                 <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleFile} />
 
-                {/* Tipo badge (read-only display) */}
+                {/* Tipo badge read-only */}
                 <div className="flex items-center gap-2">
-                    <span className={`inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1 rounded-full ${
-                        isBebida
-                            ? getCategoryMeta(form.category).color
-                            : 'bg-tertiary-container/50 text-tertiary'
-                    }`}>
-                        <MIcon name={isBebida ? 'local_cafe' : 'restaurant'} className="text-sm" fill />
-                        {isBebida ? `Bebida ${getCategoryMeta(form.category).label}` : 'Alimento'}
+                    <span className={`inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1 rounded-full ${typeColor}`}>
+                        <MIcon name={typeIcon} className="text-sm" fill />
+                        {typeLabel}
                         {isBebida && form.sizeVariants.length > 0 && (
                             <span className="ml-1 opacity-80">· {form.sizeVariants.map(sv => sv.size).join(', ')}</span>
                         )}
@@ -630,13 +707,12 @@ const RecipeEditModal: React.FC<{
                     />
                 </Field>
 
-                {/* Ingredientes: bebida con tabs por tamaño */}
+                {/* Ingredientes bebida: tabs por tamaño */}
                 {isBebida && form.sizeVariants.length > 0 && (
                     <div>
                         <span className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant block mb-3">
                             Ingredientes por tamaño
                         </span>
-                        {/* Size tabs */}
                         <div className="flex gap-2 mb-4">
                             {form.sizeVariants.map(sv => (
                                 <button
@@ -650,27 +726,17 @@ const RecipeEditModal: React.FC<{
                                     }`}
                                 >
                                     {sv.size}
-                                    <span className="ml-1.5 text-[10px] opacity-70">
-                                        ({sv.ingredients.length})
-                                    </span>
+                                    <span className="ml-1.5 text-[10px] opacity-70">({sv.ingredients.length})</span>
                                 </button>
                             ))}
                         </div>
-
-                        {/* Active size ingredients */}
                         {activeSize && getSizeVariant(activeSize) && (
                             <div>
                                 <div className="flex items-center justify-between mb-2">
                                     <span className="text-xs text-on-surface-variant">
                                         Ingredientes para <strong>{activeSize}</strong>
                                     </span>
-                                    <Button
-                                        variant="tonal"
-                                        size="sm"
-                                        icon="add"
-                                        type="button"
-                                        onClick={() => addSizeIngredient(activeSize)}
-                                    >
+                                    <Button variant="tonal" size="sm" icon="add" type="button" onClick={() => addSizeIngredient(activeSize)}>
                                         Agregar
                                     </Button>
                                 </div>
@@ -695,7 +761,7 @@ const RecipeEditModal: React.FC<{
                     </div>
                 )}
 
-                {/* Ingredientes: alimento */}
+                {/* Ingredientes alimento / otros */}
                 {!isBebida && (
                     <div>
                         <div className="flex items-center justify-between mb-3">
@@ -765,9 +831,7 @@ const RecipesView: React.FC<RecipesViewProps> = ({ authToken, onAuthError }) => 
 
     const filtered = catFilter === 'todas' ? recipes : recipes.filter(r => normalizeCategory(r.category) === catFilter);
 
-    const handleNewRecipe = () => {
-        setShowTypeModal(true);
-    };
+    const handleNewRecipe = () => setShowTypeModal(true);
 
     const handleTypeConfirm = (sel: RecipeTypeSelection) => {
         setTypeSelection(sel);
@@ -875,7 +939,6 @@ const RecipesView: React.FC<RecipesViewProps> = ({ authToken, onAuthError }) => 
                 </div>
             )}
 
-            {/* Modals */}
             {showTypeModal && (
                 <RecipeTypeModal
                     onConfirm={handleTypeConfirm}

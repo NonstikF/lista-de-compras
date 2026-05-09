@@ -165,7 +165,7 @@ export interface RecipeSizeVariant {
   ingredients: RecipeSizeIngredient[];
 }
 
-export type RecipeType = 'alimento' | 'bebida';
+export type RecipeType = 'alimento' | 'bebida' | 'otros';
 export type DrinkTemp = 'fria' | 'caliente';
 export type DrinkSize = '10oz' | '12oz' | '16oz';
 
@@ -175,7 +175,7 @@ export interface Recipe {
   description: string;
   recipeType: RecipeType;
   category: 'caliente' | 'fria' | 'especial';
-  drinkTemp: DrinkTemp | null;
+  drinkTemps: DrinkTemp[];
   image: string | null;
   ingredients: RecipeIngredient[];
   sizeVariants: RecipeSizeVariant[];
