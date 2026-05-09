@@ -61,7 +61,11 @@ const App: React.FC = () => {
           />
         );
       case 'orders':
-        return <OrdersView authToken={authToken!} onAuthError={handleAuthError} />;
+        return (
+          <div className="max-w-7xl mx-auto px-4 md:px-6 py-8 pb-28 md:pb-10">
+            <OrdersView authToken={authToken!} onAuthError={handleAuthError} />
+          </div>
+        );
       case 'articles':
         return <ArticlesView authToken={authToken!} onAuthError={handleAuthError} />;
       case 'recipes':
