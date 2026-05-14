@@ -8,6 +8,7 @@ const supplierSchema = z.object({
     name: z.string().min(1, 'Nombre requerido'),
     contact: z.string().default(''),
     phone: z.string().default(''),
+    zones: z.array(z.string().min(1)).max(10, 'Máximo 10 zonas').default([]),
 });
 
 const ticketSchema = z.object({
@@ -23,10 +24,21 @@ const ticketSchema = z.object({
 
 // ---- Suppliers CRUD ----
 
+function formatSupplier(s: { id: string; name: string; contact: string; phone: string; zones: string; createdAt: Date }) {
+    return {
+        id: s.id,
+        name: s.name,
+        contact: s.contact,
+        phone: s.phone,
+        zones: (() => { try { return JSON.parse(s.zones); } catch { return []; } })(),
+        createdAt: s.createdAt,
+    };
+}
+
 router.get('/', async (_req: Request, res: Response) => {
     try {
         const suppliers = await prisma.supplier.findMany({ orderBy: { createdAt: 'asc' } });
-        res.json(suppliers);
+        res.json(suppliers.map(formatSupplier));
     } catch (err) {
         console.error('Error al obtener proveedores:', err);
         res.status(500).json({ error: 'Error al obtener proveedores' });
@@ -37,8 +49,9 @@ router.post('/', async (req: Request, res: Response) => {
     const parsed = supplierSchema.safeParse(req.body);
     if (!parsed.success) { res.status(400).json({ error: parsed.error.issues[0].message }); return; }
     try {
-        const supplier = await prisma.supplier.create({ data: parsed.data });
-        res.status(201).json(supplier);
+        const { zones, ...rest } = parsed.data;
+        const supplier = await prisma.supplier.create({ data: { ...rest, zones: JSON.stringify(zones) } });
+        res.status(201).json(formatSupplier(supplier));
     } catch (err) {
         console.error('Error al crear proveedor:', err);
         res.status(500).json({ error: 'Error al crear proveedor' });
@@ -49,8 +62,9 @@ router.put('/:id', async (req: Request, res: Response) => {
     const parsed = supplierSchema.safeParse(req.body);
     if (!parsed.success) { res.status(400).json({ error: parsed.error.issues[0].message }); return; }
     try {
-        const supplier = await prisma.supplier.update({ where: { id: req.params.id }, data: parsed.data });
-        res.json(supplier);
+        const { zones, ...rest } = parsed.data;
+        const supplier = await prisma.supplier.update({ where: { id: req.params.id }, data: { ...rest, zones: JSON.stringify(zones) } });
+        res.json(formatSupplier(supplier));
     } catch (err) {
         console.error('Error al actualizar proveedor:', err);
         res.status(500).json({ error: 'Error al actualizar proveedor' });

@@ -99,18 +99,19 @@ interface ArticleForm {
     price: string;
     image: string | null;
     supplierIds: string[];
+    supplierZones: Record<string, string>;
 }
 
 const ArticleEditModal: React.FC<{
     article: Article | 'new' | null;
     suppliers: Supplier[];
     onClose: () => void;
-    onSave: (data: { name: string; sku: string; barcode: string; price: number; image: string | null; supplierIds: string[] }) => Promise<void>;
+    onSave: (data: { name: string; sku: string; barcode: string; price: number; image: string | null; supplierIds: string[]; supplierZones: Record<string, string> }) => Promise<void>;
 }> = ({ article, suppliers, onClose, onSave }) => {
     const isNew = article === 'new';
     const initial: ArticleForm = isNew
-        ? { name: '', sku: '', barcode: '', price: '', image: null, supplierIds: [] }
-        : { name: (article as Article).name, sku: (article as Article).sku ?? '', barcode: (article as Article).barcode ?? '', price: String((article as Article).price), image: (article as Article).image, supplierIds: (article as Article).supplierIds };
+        ? { name: '', sku: '', barcode: '', price: '', image: null, supplierIds: [], supplierZones: {} }
+        : { name: (article as Article).name, sku: (article as Article).sku ?? '', barcode: (article as Article).barcode ?? '', price: String((article as Article).price), image: (article as Article).image, supplierIds: (article as Article).supplierIds, supplierZones: (article as Article).supplierZones ?? {} };
 
     const [form, setForm] = useState<ArticleForm>(initial);
     const [errors, setErrors] = useState<Partial<Record<keyof ArticleForm, string>>>({});
@@ -134,12 +135,16 @@ const ArticleEditModal: React.FC<{
     };
 
     const toggleSupplier = (id: string) =>
-        setForm(f => ({
-            ...f,
-            supplierIds: f.supplierIds.includes(id)
-                ? f.supplierIds.filter(s => s !== id)
-                : [...f.supplierIds, id],
-        }));
+        setForm(f => {
+            const active = f.supplierIds.includes(id);
+            const supplierIds = active ? f.supplierIds.filter(s => s !== id) : [...f.supplierIds, id];
+            const supplierZones = { ...f.supplierZones };
+            if (active) delete supplierZones[id];
+            return { ...f, supplierIds, supplierZones };
+        });
+
+    const setZone = (supplierId: string, zone: string) =>
+        setForm(f => ({ ...f, supplierZones: { ...f.supplierZones, [supplierId]: zone } }));
 
     const validate = (): boolean => {
         const e: typeof errors = {};
@@ -162,6 +167,7 @@ const ArticleEditModal: React.FC<{
                 price: parseFloat(form.price),
                 image: form.image,
                 supplierIds: form.supplierIds,
+                supplierZones: form.supplierZones,
             });
         } finally {
             setSaving(false);
@@ -255,22 +261,38 @@ const ArticleEditModal: React.FC<{
                         {suppliers.length === 0 ? (
                             <p className="text-sm text-on-surface-variant">No hay proveedores — agrégalos en el módulo Proveedores.</p>
                         ) : (
-                            <div className="flex flex-wrap gap-2">
+                            <div className="flex flex-col gap-2">
                                 {suppliers.map(s => {
                                     const active = form.supplierIds.includes(s.id);
                                     return (
-                                        <button
-                                            key={s.id}
-                                            type="button"
-                                            onClick={() => toggleSupplier(s.id)}
-                                            className={`px-3 py-1.5 rounded-full text-sm font-medium border transition ${
-                                                active
-                                                    ? 'bg-primary text-on-primary border-primary'
-                                                    : 'bg-surface-container-low text-on-surface border-outline-variant hover:bg-surface-container'
-                                            }`}
-                                        >
-                                            {s.name}
-                                        </button>
+                                        <div key={s.id} className="flex flex-col gap-1.5">
+                                            <button
+                                                type="button"
+                                                onClick={() => toggleSupplier(s.id)}
+                                                className={`px-3 py-1.5 rounded-full text-sm font-medium border transition self-start ${
+                                                    active
+                                                        ? 'bg-primary text-on-primary border-primary'
+                                                        : 'bg-surface-container-low text-on-surface border-outline-variant hover:bg-surface-container'
+                                                }`}
+                                            >
+                                                {s.name}
+                                            </button>
+                                            {active && s.zones.length > 0 && (
+                                                <div className="ml-3 flex items-center gap-2">
+                                                    <MIcon name="location_on" size={16} className="text-on-surface-variant shrink-0" />
+                                                    <select
+                                                        value={form.supplierZones[s.id] ?? ''}
+                                                        onChange={e => setZone(s.id, e.target.value)}
+                                                        className="text-sm rounded-lg border border-outline-variant bg-surface-container-low text-on-surface px-2 py-1 focus:outline-none focus:border-primary"
+                                                    >
+                                                        <option value="">Sin zona</option>
+                                                        {s.zones.map(z => (
+                                                            <option key={z} value={z}>{z}</option>
+                                                        ))}
+                                                    </select>
+                                                </div>
+                                            )}
+                                        </div>
                                     );
                                 })}
                             </div>
@@ -311,7 +333,7 @@ const ArticlesView: React.FC<ArticlesViewProps> = ({ authToken, onAuthError }) =
         return () => { cancelled = true; };
     }, [authToken]);
 
-    const handleSave = async (data: { name: string; sku: string; barcode: string; price: number; image: string | null; supplierIds: string[] }) => {
+    const handleSave = async (data: { name: string; sku: string; barcode: string; price: number; image: string | null; supplierIds: string[]; supplierZones: Record<string, string> }) => {
         const isNew = editing === 'new';
         try {
             if (isNew) {

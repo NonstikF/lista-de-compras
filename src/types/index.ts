@@ -51,6 +51,7 @@ export interface Supplier {
   name: string;
   contact: string;
   phone: string;
+  zones: string[];
   createdAt: string;
 }
 
@@ -109,6 +110,7 @@ export interface Article {
   description?: string;
   stockStatus?: string;
   supplierIds: string[];
+  supplierZones: Record<string, string>;
 }
 
 // ---------- Pedidos de Tienda ----------

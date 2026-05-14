@@ -17,6 +17,7 @@ interface SupplierForm {
     name: string;
     contact: string;
     phone: string;
+    zones: string[];
 }
 
 const SupplierEditModal: React.FC<{
@@ -26,21 +27,35 @@ const SupplierEditModal: React.FC<{
 }> = ({ supplier, onClose, onSave }) => {
     const isNew = supplier === 'new';
     const initial: SupplierForm = isNew
-        ? { name: '', contact: '', phone: '' }
-        : { name: (supplier as Supplier).name, contact: (supplier as Supplier).contact, phone: (supplier as Supplier).phone };
+        ? { name: '', contact: '', phone: '', zones: [] }
+        : { name: (supplier as Supplier).name, contact: (supplier as Supplier).contact, phone: (supplier as Supplier).phone, zones: (supplier as Supplier).zones ?? [] };
 
     const [form, setForm] = useState<SupplierForm>(initial);
     const [nameError, setNameError] = useState('');
     const [saving, setSaving] = useState(false);
+    const [newZone, setNewZone] = useState('');
+    const [zoneError, setZoneError] = useState('');
 
     const update = (k: keyof SupplierForm, v: string) => setForm(f => ({ ...f, [k]: v }));
+
+    const addZone = () => {
+        const z = newZone.trim();
+        if (!z) return;
+        if (form.zones.length >= 10) { setZoneError('Máximo 10 zonas'); return; }
+        if (form.zones.includes(z)) { setZoneError('Zona ya existe'); return; }
+        setForm(f => ({ ...f, zones: [...f.zones, z] }));
+        setNewZone('');
+        setZoneError('');
+    };
+
+    const removeZone = (z: string) => setForm(f => ({ ...f, zones: f.zones.filter(x => x !== z) }));
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!form.name.trim()) { setNameError('El nombre es requerido'); return; }
         setSaving(true);
         try {
-            await onSave({ name: form.name.trim(), contact: form.contact.trim(), phone: form.phone.trim() });
+            await onSave({ name: form.name.trim(), contact: form.contact.trim(), phone: form.phone.trim(), zones: form.zones });
         } finally {
             setSaving(false);
         }
@@ -85,6 +100,43 @@ const SupplierEditModal: React.FC<{
                         placeholder="55 1234 5678"
                     />
                 </Field>
+
+                <div>
+                    <span className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant block mb-2">
+                        Zonas <span className="font-normal normal-case">({form.zones.length}/10)</span>
+                    </span>
+                    {form.zones.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 mb-2">
+                            {form.zones.map(z => (
+                                <span key={z} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-sm bg-secondary-container text-on-secondary-container">
+                                    {z}
+                                    <button
+                                        type="button"
+                                        onClick={() => removeZone(z)}
+                                        className="ml-0.5 hover:text-error transition"
+                                        aria-label={`Quitar zona ${z}`}
+                                    >
+                                        <MIcon name="close" size={14} />
+                                    </button>
+                                </span>
+                            ))}
+                        </div>
+                    )}
+                    {form.zones.length < 10 && (
+                        <div className="flex gap-2">
+                            <Input
+                                value={newZone}
+                                onChange={e => { setNewZone(e.target.value); setZoneError(''); }}
+                                placeholder="Nombre de zona"
+                                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addZone(); } }}
+                            />
+                            <Button type="button" variant="tonal" icon="add" onClick={addZone}>
+                                Agregar
+                            </Button>
+                        </div>
+                    )}
+                    {zoneError && <p className="text-xs text-error mt-1">{zoneError}</p>}
+                </div>
             </form>
         </Modal>
     );
@@ -846,7 +898,7 @@ const SuppliersView: React.FC<SuppliersViewProps> = ({ authToken, onAuthError })
         return () => { cancelled = true; };
     }, [authToken]);
 
-    const handleSave = async (data: { name: string; contact: string; phone: string }) => {
+    const handleSave = async (data: { name: string; contact: string; phone: string; zones: string[] }) => {
         const isNew = editing === 'new';
         try {
             if (isNew) {
