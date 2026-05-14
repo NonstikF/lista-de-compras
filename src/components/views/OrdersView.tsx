@@ -57,41 +57,76 @@ const EmptyStoreOrders: React.FC = () => (
 
 // --- Tarjeta pedido de Tienda ---
 const StoreOrderCard: React.FC<{ order: StoreOrder; onComplete: (id: string) => void }> = ({ order, onComplete }) => {
+    const [isExpanded, setIsExpanded] = useState(false);
     const isPending = order.status === 'pending';
     const date = new Date(order.dateCreated).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' });
+
+    const statusColor = isPending ? 'bg-secondary-container/60 text-on-secondary-container' : 'bg-success-purchased/15 text-success-purchased';
+    const statusLabel = isPending ? 'Pendiente' : 'Completado';
+
     return (
-        <article className="bg-white rounded-2xl border border-surface-variant shadow-sm overflow-hidden">
-            <div className="p-4 bg-surface-container-low border-b border-surface-variant flex flex-wrap items-center justify-between gap-3">
-                <div>
-                    <div className="flex items-center gap-2">
-                        <span className="font-epilogue font-bold text-on-background text-lg">{order.id}</span>
-                        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${isPending ? 'bg-secondary-container/60 text-on-secondary-container' : 'bg-primary/10 text-primary'}`}>
-                            {isPending ? 'Pendiente' : 'Completado'}
-                        </span>
-                    </div>
-                    <p className="text-sm text-on-surface-variant mt-0.5">{order.customerName} · {order.customerPhone} · {date}</p>
-                    {order.notes && <p className="text-xs text-on-surface-variant/70 italic mt-0.5">"{order.notes}"</p>}
-                </div>
+        <article aria-labelledby={`store-order-heading-${order.id}`} className="bg-white rounded-2xl shadow-sm border border-surface-variant overflow-hidden">
+            <button
+                type="button"
+                onClick={() => setIsExpanded(!isExpanded)}
+                className={`w-full p-4 bg-surface-container-low border-b border-surface-variant flex justify-between items-center flex-wrap gap-3 hover:bg-surface-container transition-colors ${isExpanded ? '' : 'border-b-0'}`}
+            >
                 <div className="flex items-center gap-3">
-                    <span className="font-bold text-on-background text-lg">{fmt(order.total)}</span>
+                    <ChevronDownIcon className={`w-5 h-5 text-on-surface-variant transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                    <div>
+                        <h2 id={`store-order-heading-${order.id}`} className="font-epilogue text-lg md:text-xl font-bold text-on-background text-left">
+                            Pedido {order.id}
+                        </h2>
+                        <p className="text-sm text-on-surface-variant mt-0.5 text-left">
+                            {order.customerName} · {order.customerPhone} · {date}
+                        </p>
+                        {order.notes && (
+                            <p className="text-xs text-on-surface-variant/70 italic mt-0.5 text-left">"{order.notes}"</p>
+                        )}
+                    </div>
+                </div>
+
+                <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-lg font-bold text-on-background">{fmt(order.total)}</span>
+                    <span className={`px-3 py-1 text-xs font-semibold rounded-full ${statusColor}`}>
+                        {statusLabel}
+                    </span>
                     {isPending && (
                         <button
-                            onClick={() => onComplete(order.id)}
-                            className="px-3 py-1.5 text-sm font-semibold bg-primary text-on-primary rounded-full hover:bg-primary-container transition"
+                            onClick={e => { e.stopPropagation(); onComplete(order.id); }}
+                            className="px-3 py-1.5 text-sm font-semibold bg-primary text-on-primary rounded-full hover:bg-primary-container shadow-sm transition"
                         >
-                            Completar
+                            Completar Pedido
                         </button>
                     )}
                 </div>
-            </div>
-            <div className="divide-y divide-surface-variant">
-                {order.items.map((item, i) => (
-                    <div key={i} className="flex justify-between px-4 py-2.5 text-sm">
-                        <span className="text-on-surface">{item.name}</span>
-                        <span className="text-on-surface-variant">{item.qty} × {fmt(item.price)} = <strong className="text-on-surface">{fmt(item.price * item.qty)}</strong></span>
+            </button>
+
+            {isExpanded && (
+                <div className="p-4">
+                    <div className="rounded-xl border border-surface-variant overflow-hidden">
+                        <div className="px-4 py-2 bg-surface-container-low border-b border-surface-variant">
+                            <span className="text-sm font-semibold text-on-surface-variant">Artículos</span>
+                        </div>
+                        <div className="divide-y divide-surface-variant">
+                            {order.items.map((item, i) => (
+                                <div key={i} className="flex items-center justify-between p-3 bg-white hover:bg-surface-container-low transition-colors">
+                                    <div className="flex items-center gap-4 flex-grow">
+                                        <span className="text-primary font-bold text-lg shrink-0">{item.qty}x</span>
+                                        <div>
+                                            <p className="font-semibold text-on-background">{item.name}</p>
+                                            <p className="text-xs text-on-surface-variant">{fmt(item.price)} c/u</p>
+                                        </div>
+                                    </div>
+                                    <span className="font-semibold text-on-background text-sm">
+                                        {fmt(item.price * item.qty)}
+                                    </span>
+                                </div>
+                            ))}
+                        </div>
                     </div>
-                ))}
-            </div>
+                </div>
+            )}
         </article>
     );
 };
