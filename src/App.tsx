@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 
 import Sidebar, { type AppView } from './components/layout/Sidebar';
 import { ToastContainer } from './components/ui/Toast';
@@ -14,21 +14,15 @@ import UsersView from './components/views/UsersView';
 import InventoryView from './components/views/InventoryView';
 
 const App: React.FC = () => {
-  const [view, setView] = useState<AppView>('login');
-
   const [authToken, setAuthToken] = useState<string | null>(() => {
     return localStorage.getItem('authToken');
   });
 
   const isAuthenticated = !!authToken;
 
-  useEffect(() => {
-    if (isAuthenticated) {
-      if (view === 'login') setView('dashboard');
-    } else {
-      setView('login');
-    }
-  }, [isAuthenticated, view]);
+  const [view, setView] = useState<AppView>(() =>
+    localStorage.getItem('authToken') ? 'dashboard' : 'login'
+  );
 
   const handleLoginSuccess = (token: string) => {
     localStorage.setItem('authToken', token);
@@ -45,6 +39,8 @@ const App: React.FC = () => {
   const handleAuthError = () => handleLogout();
 
   const renderView = () => {
+    if (!isAuthenticated) return <Login onLoginSuccess={handleLoginSuccess} />;
+
     switch (view) {
       case 'login':
         return <Login onLoginSuccess={handleLoginSuccess} />;
