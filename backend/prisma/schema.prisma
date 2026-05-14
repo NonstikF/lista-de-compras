@@ -110,6 +110,7 @@ model RecipeIngredient {
 model RecipeSizeVariant {
   id          Int                        @id @default(autoincrement())
   recipeId    String
+  temp        String                     // 'fria' | 'caliente'
   size        String                     // '10oz' | '12oz' | '16oz'
   recipe      Recipe                     @relation(fields: [recipeId], references: [id], onDelete: Cascade)
   ingredients RecipeSizeIngredient[]

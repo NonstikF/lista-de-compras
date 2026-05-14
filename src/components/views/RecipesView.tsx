@@ -343,8 +343,51 @@ const IngredientRow: React.FC<{
 interface RecipeTypeSelection {
     recipeType: RecipeType;
     drinkTemps: DrinkTemp[];
-    sizes: DrinkSize[];
+    sizesByTemp: Partial<Record<DrinkTemp, DrinkSize[]>>;
 }
+
+const SizeSelector: React.FC<{
+    temp: DrinkTemp;
+    sizes: DrinkSize[];
+    onChange: (sizes: DrinkSize[]) => void;
+}> = ({ temp, sizes, onChange }) => {
+    const tempLabel = temp === 'fria' ? 'Fría' : 'Caliente';
+    const tempIcon = temp === 'fria' ? 'ac_unit' : 'local_fire_department';
+    const toggle = (size: DrinkSize) =>
+        onChange(sizes.includes(size) ? sizes.filter(s => s !== size) : [...sizes, size]);
+    return (
+        <div>
+            <div className="flex items-center gap-1.5 mb-2">
+                <MIcon name={tempIcon} className="text-sm text-on-surface-variant" />
+                <span className="text-xs font-semibold text-on-surface-variant">{tempLabel}</span>
+            </div>
+            <div className="flex gap-2">
+                {DRINK_SIZES.map(size => {
+                    const active = sizes.includes(size);
+                    return (
+                        <button
+                            key={size}
+                            type="button"
+                            onClick={() => toggle(size)}
+                            className={`flex-1 py-2.5 rounded-xl border-2 text-sm font-bold transition relative ${
+                                active
+                                    ? 'border-primary bg-primary/8 text-primary'
+                                    : 'border-outline-variant bg-surface-container-low text-on-surface hover:bg-surface-container'
+                            }`}
+                        >
+                            {active && (
+                                <span className="absolute top-0.5 right-0.5">
+                                    <MIcon name="check_circle" className="text-primary text-xs" fill />
+                                </span>
+                            )}
+                            {size}
+                        </button>
+                    );
+                })}
+            </div>
+        </div>
+    );
+};
 
 const RecipeTypeModal: React.FC<{
     onConfirm: (sel: RecipeTypeSelection) => void;
@@ -352,28 +395,30 @@ const RecipeTypeModal: React.FC<{
 }> = ({ onConfirm, onClose }) => {
     const [recipeType, setRecipeType] = useState<RecipeType | null>(null);
     const [drinkTemps, setDrinkTemps] = useState<DrinkTemp[]>([]);
-    const [sizes, setSizes] = useState<DrinkSize[]>([]);
+    const [sizesByTemp, setSizesByTemp] = useState<Partial<Record<DrinkTemp, DrinkSize[]>>>({});
 
     const toggleTemp = (temp: DrinkTemp) => {
-        setDrinkTemps(prev =>
-            prev.includes(temp) ? prev.filter(t => t !== temp) : [...prev, temp]
-        );
+        setDrinkTemps(prev => {
+            const removing = prev.includes(temp);
+            if (removing) setSizesByTemp(s => { const n = { ...s }; delete n[temp]; return n; });
+            return removing ? prev.filter(t => t !== temp) : [...prev, temp];
+        });
     };
 
-    const toggleSize = (size: DrinkSize) => {
-        setSizes(prev =>
-            prev.includes(size) ? prev.filter(s => s !== size) : [...prev, size]
-        );
-    };
+    const setSizesForTemp = (temp: DrinkTemp, sizes: DrinkSize[]) =>
+        setSizesByTemp(prev => ({ ...prev, [temp]: sizes }));
+
+    const allTempsHaveSizes = drinkTemps.length > 0 &&
+        drinkTemps.every(t => (sizesByTemp[t] ?? []).length > 0);
 
     const canConfirm =
         recipeType === 'alimento' ||
         recipeType === 'otros' ||
-        (recipeType === 'bebida' && drinkTemps.length > 0 && sizes.length > 0);
+        (recipeType === 'bebida' && allTempsHaveSizes);
 
     const handleConfirm = () => {
         if (!recipeType) return;
-        onConfirm({ recipeType, drinkTemps, sizes });
+        onConfirm({ recipeType, drinkTemps, sizesByTemp });
     };
 
     return (
@@ -410,7 +455,7 @@ const RecipeTypeModal: React.FC<{
                                     type="button"
                                     onClick={() => {
                                         setRecipeType(type);
-                                        if (type !== 'bebida') { setDrinkTemps([]); setSizes([]); }
+                                        if (type !== 'bebida') { setDrinkTemps([]); setSizesByTemp({}); }
                                     }}
                                     className={`flex flex-col items-center gap-2 py-4 rounded-2xl border-2 transition ${
                                         active
@@ -465,38 +510,22 @@ const RecipeTypeModal: React.FC<{
                     </div>
                 )}
 
-                {/* Tamaños — multi-select */}
+                {/* Tamaños por temperatura */}
                 {recipeType === 'bebida' && drinkTemps.length > 0 && (
-                    <div>
-                        <span className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant block mb-3">
-                            Tamaños disponibles <span className="text-on-surface-variant/60 normal-case font-normal">(uno o varios)</span>
+                    <div className="space-y-4">
+                        <span className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant block">
+                            Tamaños por temperatura
                         </span>
-                        <div className="flex gap-3">
-                            {DRINK_SIZES.map(size => {
-                                const active = sizes.includes(size);
-                                return (
-                                    <button
-                                        key={size}
-                                        type="button"
-                                        onClick={() => toggleSize(size)}
-                                        className={`flex-1 py-3 rounded-2xl border-2 text-sm font-bold transition relative ${
-                                            active
-                                                ? 'border-primary bg-primary/8 text-primary'
-                                                : 'border-outline-variant bg-surface-container-low text-on-surface hover:bg-surface-container'
-                                        }`}
-                                    >
-                                        {active && (
-                                            <span className="absolute top-1 right-1">
-                                                <MIcon name="check_circle" className="text-primary text-sm" fill />
-                                            </span>
-                                        )}
-                                        {size}
-                                    </button>
-                                );
-                            })}
-                        </div>
-                        {sizes.length === 0 && (
-                            <p className="text-xs text-error mt-2">Selecciona al menos un tamaño</p>
+                        {drinkTemps.map(temp => (
+                            <SizeSelector
+                                key={temp}
+                                temp={temp}
+                                sizes={sizesByTemp[temp] ?? []}
+                                onChange={sizes => setSizesForTemp(temp, sizes)}
+                            />
+                        ))}
+                        {!allTempsHaveSizes && (
+                            <p className="text-xs text-error">Cada temperatura necesita al menos un tamaño</p>
                         )}
                     </div>
                 )}
@@ -522,7 +551,9 @@ const RecipeEditModal: React.FC<{
         const hasCold = dts.includes('fria');
         const hasHot = dts.includes('caliente');
         const category: RecipeCategory = hasHot && !hasCold ? 'caliente' : hasCold && !hasHot ? 'fria' : 'especial';
-        const sizeVariants: RecipeSizeVariant[] = (sel?.sizes ?? []).map(size => ({ size, ingredients: [] }));
+        const sizeVariants: RecipeSizeVariant[] = dts.flatMap(temp =>
+            (sel?.sizesByTemp?.[temp] ?? []).map(size => ({ temp, size, ingredients: [] }))
+        );
         return {
             name: '', description: '', recipeType: rt, category, drinkTemps: dts,
             image: null, ingredients: [], sizeVariants, instructions: '', servings: 1,
@@ -539,6 +570,7 @@ const RecipeEditModal: React.FC<{
         ingredients: (recipe as Recipe).ingredients.map(({ name, quantity, unit }) => ({ name, quantity, unit })),
         sizeVariants: (recipe as Recipe).sizeVariants.map(sv => ({
             id: sv.id,
+            temp: sv.temp,
             size: sv.size,
             ingredients: sv.ingredients.map(({ name, quantity, unit }) => ({ name, quantity, unit })),
         })),
@@ -549,8 +581,11 @@ const RecipeEditModal: React.FC<{
     const [form, setForm] = useState<RecipeForm>(initial);
     const [nameError, setNameError] = useState('');
     const [saving, setSaving] = useState(false);
-    const [activeSize, setActiveSize] = useState<DrinkSize | null>(
-        initial.sizeVariants.length > 0 ? initial.sizeVariants[0].size as DrinkSize : null
+    type VariantKey = string; // `${temp}:${size}`
+    const variantKey = (temp: DrinkTemp, size: DrinkSize): VariantKey => `${temp}:${size}`;
+    const firstVariant = initial.sizeVariants[0];
+    const [activeVariantKey, setActiveVariantKey] = useState<VariantKey | null>(
+        firstVariant ? variantKey(firstVariant.temp, firstVariant.size) : null
     );
     const fileRef = useRef<HTMLInputElement>(null);
 
@@ -575,33 +610,36 @@ const RecipeEditModal: React.FC<{
     const removeIngredient = (i: number) =>
         update('ingredients', form.ingredients.filter((_, idx) => idx !== i));
 
-    const getSizeVariant = (size: DrinkSize) => form.sizeVariants.find(sv => sv.size === size);
+    const getVariant = (temp: DrinkTemp, size: DrinkSize) =>
+        form.sizeVariants.find(sv => sv.temp === temp && sv.size === size);
 
-    const updateSizeIngredients = (size: DrinkSize, ingredients: RecipeSizeVariant['ingredients']) => {
+    const updateVariantIngredients = (temp: DrinkTemp, size: DrinkSize, ingredients: RecipeSizeVariant['ingredients']) => {
         setForm(f => ({
             ...f,
-            sizeVariants: f.sizeVariants.map(sv => sv.size === size ? { ...sv, ingredients } : sv),
+            sizeVariants: f.sizeVariants.map(sv =>
+                sv.temp === temp && sv.size === size ? { ...sv, ingredients } : sv
+            ),
         }));
     };
 
-    const addSizeIngredient = (size: DrinkSize) => {
-        const variant = getSizeVariant(size);
-        if (!variant) return;
-        updateSizeIngredients(size, [...variant.ingredients, { name: '', quantity: '', unit: 'g' }]);
+    const addVariantIngredient = (temp: DrinkTemp, size: DrinkSize) => {
+        const v = getVariant(temp, size);
+        if (!v) return;
+        updateVariantIngredients(temp, size, [...v.ingredients, { name: '', quantity: '', unit: 'g' }]);
     };
 
-    const updateSizeIngredient = (size: DrinkSize, i: number, field: keyof RecipeIngredient, value: string) => {
-        const variant = getSizeVariant(size);
-        if (!variant) return;
-        updateSizeIngredients(size, variant.ingredients.map((ing, idx) =>
+    const updateVariantIngredient = (temp: DrinkTemp, size: DrinkSize, i: number, field: keyof RecipeIngredient, value: string) => {
+        const v = getVariant(temp, size);
+        if (!v) return;
+        updateVariantIngredients(temp, size, v.ingredients.map((ing, idx) =>
             idx === i ? { ...ing, [field]: value } : ing
         ));
     };
 
-    const removeSizeIngredient = (size: DrinkSize, i: number) => {
-        const variant = getSizeVariant(size);
-        if (!variant) return;
-        updateSizeIngredients(size, variant.ingredients.filter((_, idx) => idx !== i));
+    const removeVariantIngredient = (temp: DrinkTemp, size: DrinkSize, i: number) => {
+        const v = getVariant(temp, size);
+        if (!v) return;
+        updateVariantIngredients(temp, size, v.ingredients.filter((_, idx) => idx !== i));
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -673,7 +711,12 @@ const RecipeEditModal: React.FC<{
                         <MIcon name={typeIcon} className="text-sm" fill />
                         {typeLabel}
                         {isBebida && form.sizeVariants.length > 0 && (
-                            <span className="ml-1 opacity-80">· {form.sizeVariants.map(sv => sv.size).join(', ')}</span>
+                            <span className="ml-1 opacity-80">· {
+                                form.drinkTemps.map(t => {
+                                    const sizes = form.sizeVariants.filter(sv => sv.temp === t).map(sv => sv.size);
+                                    return sizes.length > 0 ? `${t === 'fria' ? 'Fría' : 'Cal'}: ${sizes.join('/')}` : null;
+                                }).filter(Boolean).join(' · ')
+                            }</span>
                         )}
                     </span>
                 </div>
@@ -707,59 +750,90 @@ const RecipeEditModal: React.FC<{
                     />
                 </Field>
 
-                {/* Ingredientes bebida: tabs por tamaño */}
-                {isBebida && form.sizeVariants.length > 0 && (
-                    <div>
-                        <span className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant block mb-3">
-                            Ingredientes por tamaño
-                        </span>
-                        <div className="flex gap-2 mb-4">
-                            {form.sizeVariants.map(sv => (
-                                <button
-                                    key={sv.size}
-                                    type="button"
-                                    onClick={() => setActiveSize(sv.size as DrinkSize)}
-                                    className={`px-4 py-2 rounded-xl border text-sm font-semibold transition ${
-                                        activeSize === sv.size
-                                            ? 'bg-primary text-on-primary border-primary'
-                                            : 'bg-surface-container-low border-outline-variant text-on-surface hover:bg-surface-container'
-                                    }`}
-                                >
-                                    {sv.size}
-                                    <span className="ml-1.5 text-[10px] opacity-70">({sv.ingredients.length})</span>
-                                </button>
-                            ))}
-                        </div>
-                        {activeSize && getSizeVariant(activeSize) && (
-                            <div>
-                                <div className="flex items-center justify-between mb-2">
-                                    <span className="text-xs text-on-surface-variant">
-                                        Ingredientes para <strong>{activeSize}</strong>
-                                    </span>
-                                    <Button variant="tonal" size="sm" icon="add" type="button" onClick={() => addSizeIngredient(activeSize)}>
-                                        Agregar
-                                    </Button>
-                                </div>
-                                {getSizeVariant(activeSize)!.ingredients.length === 0 && (
-                                    <p className="text-sm text-on-surface-variant text-center py-3 bg-surface-container-low rounded-xl">
-                                        Sin ingredientes — haz clic en "Agregar"
-                                    </p>
-                                )}
-                                <div className="space-y-2">
-                                    {getSizeVariant(activeSize)!.ingredients.map((ing, i) => (
-                                        <IngredientRow
-                                            key={i}
-                                            ing={ing}
-                                            index={i}
-                                            onChange={(idx, field, val) => updateSizeIngredient(activeSize, idx, field, val)}
-                                            onRemove={idx => removeSizeIngredient(activeSize, idx)}
+                {/* Ingredientes bebida: tabs agrupados por temp → size */}
+                {isBebida && form.sizeVariants.length > 0 && (() => {
+                    const activeVKey = activeVariantKey;
+                    const activeParts = activeVKey ? activeVKey.split(':') : [];
+                    const activeTemp = activeParts[0] as DrinkTemp | undefined;
+                    const activeSize = activeParts[1] as DrinkSize | undefined;
+                    const activeV = activeTemp && activeSize ? getVariant(activeTemp, activeSize) : undefined;
+
+                    // Group variants by temp preserving insertion order
+                    const tempGroups = form.drinkTemps.map(t => ({
+                        temp: t,
+                        variants: form.sizeVariants.filter(sv => sv.temp === t),
+                    })).filter(g => g.variants.length > 0);
+
+                    return (
+                        <div>
+                            <span className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant block mb-3">
+                                Ingredientes por tamaño
+                            </span>
+                            {/* Tab strip grouped by temp */}
+                            <div className="space-y-2 mb-4">
+                                {tempGroups.map(({ temp, variants }) => (
+                                    <div key={temp} className="flex items-center gap-2">
+                                        <MIcon
+                                            name={temp === 'fria' ? 'ac_unit' : 'local_fire_department'}
+                                            className="text-sm text-on-surface-variant flex-shrink-0"
                                         />
-                                    ))}
-                                </div>
+                                        <div className="flex gap-2">
+                                            {variants.map(sv => {
+                                                const key = variantKey(sv.temp, sv.size);
+                                                const isActive = activeVKey === key;
+                                                return (
+                                                    <button
+                                                        key={key}
+                                                        type="button"
+                                                        onClick={() => setActiveVariantKey(key)}
+                                                        className={`px-3 py-1.5 rounded-xl border text-sm font-semibold transition ${
+                                                            isActive
+                                                                ? 'bg-primary text-on-primary border-primary'
+                                                                : 'bg-surface-container-low border-outline-variant text-on-surface hover:bg-surface-container'
+                                                        }`}
+                                                    >
+                                                        {sv.size}
+                                                        <span className="ml-1 text-[10px] opacity-70">({sv.ingredients.length})</span>
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                ))}
                             </div>
-                        )}
-                    </div>
-                )}
+                            {/* Active variant ingredients */}
+                            {activeV && activeTemp && activeSize && (
+                                <div>
+                                    <div className="flex items-center justify-between mb-2">
+                                        <span className="text-xs text-on-surface-variant">
+                                            <strong>{activeSize}</strong> · {activeTemp === 'fria' ? 'Fría' : 'Caliente'}
+                                        </span>
+                                        <Button variant="tonal" size="sm" icon="add" type="button"
+                                            onClick={() => addVariantIngredient(activeTemp, activeSize)}>
+                                            Agregar
+                                        </Button>
+                                    </div>
+                                    {activeV.ingredients.length === 0 && (
+                                        <p className="text-sm text-on-surface-variant text-center py-3 bg-surface-container-low rounded-xl">
+                                            Sin ingredientes — haz clic en "Agregar"
+                                        </p>
+                                    )}
+                                    <div className="space-y-2">
+                                        {activeV.ingredients.map((ing, i) => (
+                                            <IngredientRow
+                                                key={i}
+                                                ing={ing}
+                                                index={i}
+                                                onChange={(idx, field, val) => updateVariantIngredient(activeTemp, activeSize, idx, field, val)}
+                                                onRemove={idx => removeVariantIngredient(activeTemp, activeSize, idx)}
+                                            />
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    );
+                })()}
 
                 {/* Ingredientes alimento / otros */}
                 {!isBebida && (

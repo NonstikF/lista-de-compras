@@ -51,6 +51,7 @@ type PrismaRecipe = {
     ingredients: { name: string; quantity: string; unit: string }[];
     sizeVariants: {
         id: number;
+        temp: string;
         size: string;
         ingredients: { name: string; quantity: string; unit: string }[];
     }[];
@@ -69,6 +70,7 @@ function formatRecipe(recipe: PrismaRecipe) {
         ingredients: recipe.ingredients ?? [],
         sizeVariants: (recipe.sizeVariants ?? []).map(sv => ({
             id: sv.id,
+            temp: drinkTempValues.includes(sv.temp as DrinkTemp) ? sv.temp : 'caliente',
             size: sv.size,
             ingredients: sv.ingredients ?? [],
         })),
@@ -82,6 +84,7 @@ const sizeIngredientSchema = z.object({
 });
 
 const sizeVariantSchema = z.object({
+    temp: z.enum(drinkTempValues),
     size: z.enum(drinkSizes),
     ingredients: z.array(sizeIngredientSchema).default([]),
 });
@@ -134,6 +137,7 @@ router.post('/', async (req: Request, res: Response) => {
                 ingredients: { create: ingredients },
                 sizeVariants: {
                     create: sizeVariants.map(sv => ({
+                        temp: sv.temp,
                         size: sv.size,
                         ingredients: { create: sv.ingredients },
                     })),
@@ -161,6 +165,7 @@ router.put('/:id', async (req: Request, res: Response) => {
                 ingredients: { deleteMany: {}, create: ingredients },
                 sizeVariants: {
                     create: sizeVariants.map(sv => ({
+                        temp: sv.temp,
                         size: sv.size,
                         ingredients: { create: sv.ingredients },
                     })),

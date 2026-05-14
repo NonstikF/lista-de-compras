@@ -147,6 +147,10 @@ export interface InventoryMovement {
 }
 
 // ---------- Recetas ----------
+export type RecipeType = 'alimento' | 'bebida' | 'otros';
+export type DrinkTemp = 'fria' | 'caliente';
+export type DrinkSize = '10oz' | '12oz' | '16oz';
+
 export interface RecipeIngredient {
   name: string;
   quantity: string;
@@ -161,13 +165,10 @@ export interface RecipeSizeIngredient {
 
 export interface RecipeSizeVariant {
   id?: number;
-  size: '10oz' | '12oz' | '16oz';
+  temp: DrinkTemp;
+  size: DrinkSize;
   ingredients: RecipeSizeIngredient[];
 }
-
-export type RecipeType = 'alimento' | 'bebida' | 'otros';
-export type DrinkTemp = 'fria' | 'caliente';
-export type DrinkSize = '10oz' | '12oz' | '16oz';
 
 export interface Recipe {
   id: string;

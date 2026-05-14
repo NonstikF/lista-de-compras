@@ -171,9 +171,28 @@ router.post('/import-woocommerce', async (_req: Request, res: Response) => {
         const products = await fetchWooProducts();
         let created = 0, updated = 0, skipped = 0;
 
+        // Cache supplier IDs by category name to avoid repeated lookups/creates
+        const supplierCache = new Map<string, string>();
+        const getOrCreateSupplierByCategory = async (categoryName: string): Promise<string | null> => {
+            const name = categoryName.trim();
+            if (!name) return null;
+            const cached = supplierCache.get(name);
+            if (cached) return cached;
+            const existing = await prisma.supplier.findFirst({ where: { name }, select: { id: true } });
+            if (existing) {
+                supplierCache.set(name, existing.id);
+                return existing.id;
+            }
+            const newSupplier = await prisma.supplier.create({ data: { name }, select: { id: true } });
+            supplierCache.set(name, newSupplier.id);
+            return newSupplier.id;
+        };
+
         for (const product of products) {
             const data = mapWooProductToArticle(product);
             if (!data.name) { skipped += 1; continue; }
+
+            const supplierId = await getOrCreateSupplierByCategory(data.category);
 
             const existing = await prisma.article.findFirst({
                 where: { OR: [{ wooProductId: data.wooProductId }, { name: data.name }] },
@@ -182,9 +201,22 @@ router.post('/import-woocommerce', async (_req: Request, res: Response) => {
 
             if (existing) {
                 await prisma.article.update({ where: { id: existing.id }, data });
+                if (supplierId) {
+                    await prisma.articleSupplier.upsert({
+                        where: { articleId_supplierId: { articleId: existing.id, supplierId } },
+                        create: { articleId: existing.id, supplierId },
+                        update: {},
+                    });
+                }
                 updated += 1;
             } else {
-                await prisma.article.create({ data: { ...data, inventory: { create: {} } } });
+                await prisma.article.create({
+                    data: {
+                        ...data,
+                        inventory: { create: {} },
+                        ...(supplierId ? { suppliers: { create: { supplierId } } } : {}),
+                    },
+                });
                 created += 1;
             }
         }
