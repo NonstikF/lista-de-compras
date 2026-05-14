@@ -16,7 +16,9 @@ interface InventoryViewProps {
 
 type SortKey = 'name' | 'stock-asc' | 'stock-desc' | 'category';
 type StockFilter = 'all' | 'low' | 'out';
+type ViewMode = 'list' | 'counting' | 'review';
 const PREFS_KEY = 'inventory:prefs:v1';
+const COUNT_DRAFT_KEY = 'inventory:count-draft:v1';
 
 interface Prefs {
     sort: SortKey;
@@ -319,6 +321,328 @@ const StatCard: React.FC<{
     );
 };
 
+// ---------- Conteo: vista de captura ----------
+const CountingView: React.FC<{
+    items: InventoryItem[];
+    entries: Record<string, string>;
+    onEntryChange: (itemId: string, value: string) => void;
+    onReview: () => void;
+    onCancel: () => void;
+}> = ({ items, entries, onEntryChange, onReview, onCancel }) => {
+    const [search, setSearch] = useState('');
+    const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
+    const searchRef = useRef<HTMLInputElement>(null);
+
+    const categories = useMemo(() => {
+        const set = new Set<string>();
+        items.forEach(i => { if (i.article.category) set.add(i.article.category); });
+        return Array.from(set).sort((a, b) => a.localeCompare(b));
+    }, [items]);
+
+    const filtered = useMemo(() => {
+        const q = search.trim().toLowerCase();
+        return items.filter(i => {
+            if (categoryFilter && i.article.category !== categoryFilter) return false;
+            if (q) {
+                const hay = `${i.article.name} ${i.article.category || ''} ${i.unit}`.toLowerCase();
+                if (!hay.includes(q)) return false;
+            }
+            return true;
+        }).sort((a, b) => a.article.name.localeCompare(b.article.name));
+    }, [items, search, categoryFilter]);
+
+    const countedCount = useMemo(() => Object.values(entries).filter(v => v !== '').length, [entries]);
+    const canReview = countedCount > 0;
+
+    return (
+        <div className="max-w-5xl mx-auto px-4 md:px-6 py-6 md:py-8 pb-28 md:pb-10">
+            {/* Header */}
+            <div className="flex items-center justify-between mb-5 gap-3 flex-wrap">
+                <div className="flex items-center gap-3">
+                    <button
+                        onClick={onCancel}
+                        className="p-2 rounded-full text-on-surface-variant hover:bg-surface-container-low transition"
+                        title="Cancelar conteo"
+                    >
+                        <MIcon name="arrow_back" />
+                    </button>
+                    <div>
+                        <h1 className="font-epilogue text-2xl font-bold text-on-background">Conteo Físico</h1>
+                        <p className="text-on-surface-variant text-sm mt-0.5">
+                            {countedCount} de {items.length} artículos contados
+                        </p>
+                    </div>
+                </div>
+                <button
+                    onClick={onReview}
+                    disabled={!canReview}
+                    className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-primary text-on-primary font-semibold text-sm hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed transition shadow-sm"
+                >
+                    Ver Diferencias
+                    <MIcon name="arrow_forward" />
+                </button>
+            </div>
+
+            {/* Search */}
+            <div className="relative mb-3 sticky top-0 z-10 bg-background py-2 -mx-4 md:-mx-6 px-4 md:px-6">
+                <MIcon name="search" className="absolute left-7 md:left-9 top-1/2 -translate-y-1/2 text-on-surface-variant" />
+                <input
+                    ref={searchRef}
+                    value={search}
+                    onChange={e => setSearch(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Escape') setSearch(''); }}
+                    placeholder="Buscar insumo…"
+                    className="w-full pl-10 pr-10 py-2.5 rounded-xl bg-surface-container-low border border-outline-variant focus:border-primary focus:ring-2 focus:ring-primary/20 focus:bg-white outline-none text-sm transition"
+                />
+                {search && (
+                    <button
+                        onClick={() => setSearch('')}
+                        className="absolute right-6 md:right-8 top-1/2 -translate-y-1/2 p-1 rounded-full text-on-surface-variant hover:bg-surface-container"
+                    >
+                        <MIcon name="close" className="text-base" />
+                    </button>
+                )}
+            </div>
+
+            {/* Category chips */}
+            {categories.length > 0 && (
+                <div className="flex gap-1.5 overflow-x-auto pb-2 mb-3 -mx-4 px-4 md:mx-0 md:px-0 scrollbar-thin">
+                    <Chip active={categoryFilter === null} onClick={() => setCategoryFilter(null)}>Todas</Chip>
+                    {categories.map(c => (
+                        <Chip key={c} active={categoryFilter === c} onClick={() => setCategoryFilter(categoryFilter === c ? null : c)}>
+                            {c}
+                        </Chip>
+                    ))}
+                </div>
+            )}
+
+            {/* Items list */}
+            <div className="space-y-2">
+                {filtered.map(item => {
+                    const raw = entries[item.id] ?? '';
+                    const counted = raw === '' ? null : parseFloat(raw);
+                    const diff = counted !== null && !isNaN(counted) ? counted - item.stock : null;
+                    const diffLabel = diff === null ? null : diff === 0 ? '✓ Sin diferencia' : diff > 0 ? `+${diff} ${item.unit}` : `${diff} ${item.unit}`;
+                    const diffColor = diff === null ? '' : diff === 0 ? 'text-green-600' : diff > 0 ? 'text-blue-600' : 'text-red-600';
+
+                    return (
+                        <div
+                            key={item.id}
+                            className={`bg-white border rounded-xl px-3 md:px-4 py-3 transition ${
+                                raw !== '' ? 'border-primary/30 bg-primary/[0.02]' : 'border-surface-variant'
+                            }`}
+                        >
+                            <div className="flex items-center gap-3">
+                                {item.article.image ? (
+                                    <img src={item.article.image} alt={item.article.name} className="w-10 h-10 rounded-lg object-cover shrink-0" />
+                                ) : (
+                                    <div className="w-10 h-10 rounded-lg bg-surface-container flex items-center justify-center shrink-0">
+                                        <MIcon name="inventory_2" className="text-on-surface-variant" />
+                                    </div>
+                                )}
+
+                                <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                        <span className="font-semibold text-on-background text-sm truncate">{item.article.name}</span>
+                                        {item.article.category && (
+                                            <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-surface-container text-on-surface-variant font-bold">
+                                                {item.article.category}
+                                            </span>
+                                        )}
+                                    </div>
+                                    <div className="text-xs text-on-surface-variant mt-0.5">
+                                        Sistema: <span className="font-semibold text-on-surface">{item.stock} {item.unit}</span>
+                                    </div>
+                                </div>
+
+                                <div className="flex items-center gap-2 shrink-0">
+                                    {diffLabel && (
+                                        <span className={`text-xs font-semibold ${diffColor} min-w-[80px] text-right`}>
+                                            {diffLabel}
+                                        </span>
+                                    )}
+                                    <div className="flex items-center gap-1">
+                                        <input
+                                            type="number"
+                                            inputMode="decimal"
+                                            min="0"
+                                            step="any"
+                                            value={raw}
+                                            placeholder="—"
+                                            onChange={e => onEntryChange(item.id, e.target.value)}
+                                            onFocus={e => e.target.select()}
+                                            className="w-20 text-right px-2 py-1.5 rounded-lg border border-outline-variant focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none text-sm font-semibold bg-surface-container-low focus:bg-white transition"
+                                        />
+                                        <span className="text-xs text-on-surface-variant w-10 truncate">{item.unit}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
+
+            {/* Mobile bottom action */}
+            {canReview && (
+                <div className="fixed bottom-6 left-0 right-0 flex justify-center z-20 md:hidden px-4">
+                    <button
+                        onClick={onReview}
+                        className="flex items-center gap-2 px-6 py-3 rounded-2xl bg-primary text-on-primary font-semibold shadow-lg hover:bg-primary/90 transition"
+                    >
+                        Ver Diferencias
+                        <MIcon name="arrow_forward" />
+                    </button>
+                </div>
+            )}
+        </div>
+    );
+};
+
+// ---------- Conteo: vista de revisión ----------
+const CountReviewView: React.FC<{
+    items: InventoryItem[];
+    entries: Record<string, string>;
+    saving: boolean;
+    applyProgress: { done: number; total: number } | null;
+    onConfirm: () => void;
+    onBack: () => void;
+}> = ({ items, entries, saving, applyProgress, onConfirm, onBack }) => {
+    const withDiff = useMemo(() => items.filter(item => {
+        const raw = entries[item.id];
+        if (!raw || raw === '') return false;
+        const counted = parseFloat(raw);
+        if (isNaN(counted)) return false;
+        return counted !== item.stock;
+    }), [items, entries]);
+
+    const uncounted = useMemo(() => items.filter(item => !entries[item.id] || entries[item.id] === ''), [items, entries]);
+    const countedSame = items.length - withDiff.length - uncounted.length;
+
+    return (
+        <div className="max-w-5xl mx-auto px-4 md:px-6 py-6 md:py-8 pb-28 md:pb-10">
+            {/* Header */}
+            <div className="flex items-center justify-between mb-5 gap-3 flex-wrap">
+                <div className="flex items-center gap-3">
+                    <button
+                        onClick={onBack}
+                        disabled={saving}
+                        className="p-2 rounded-full text-on-surface-variant hover:bg-surface-container-low transition disabled:opacity-40"
+                        title="Volver al conteo"
+                    >
+                        <MIcon name="arrow_back" />
+                    </button>
+                    <div>
+                        <h1 className="font-epilogue text-2xl font-bold text-on-background">Resumen de Diferencias</h1>
+                        <p className="text-on-surface-variant text-sm mt-0.5">Revisa antes de aplicar ajustes</p>
+                    </div>
+                </div>
+                <button
+                    onClick={onConfirm}
+                    disabled={saving || withDiff.length === 0}
+                    className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-primary text-on-primary font-semibold text-sm hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed transition shadow-sm"
+                >
+                    {saving ? (
+                        <>
+                            <span className="material-symbols-outlined text-base animate-spin">progress_activity</span>
+                            {applyProgress ? `Aplicando ${applyProgress.done} de ${applyProgress.total}…` : 'Aplicando…'}
+                        </>
+                    ) : (
+                        <>
+                            <MIcon name="check_circle" fill />
+                            Aplicar Ajustes {withDiff.length > 0 && `(${withDiff.length})`}
+                        </>
+                    )}
+                </button>
+            </div>
+
+            {/* Stats */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-5">
+                {[
+                    { icon: 'inventory_2', label: 'Total artículos', value: items.length, color: 'text-on-surface-variant', bg: 'bg-surface-container-low' },
+                    { icon: 'fact_check', label: 'Sin diferencia', value: countedSame, color: 'text-green-600', bg: 'bg-green-50' },
+                    { icon: 'swap_vert', label: 'Con diferencia', value: withDiff.length, color: 'text-primary', bg: 'bg-primary/5' },
+                    { icon: 'remove_done', label: 'Sin contar', value: uncounted.length, color: 'text-on-surface-variant', bg: 'bg-surface-container-low' },
+                ].map(s => (
+                    <div key={s.label} className={`${s.bg} rounded-2xl px-4 py-3 border border-surface-variant`}>
+                        <div className={`text-2xl font-bold ${s.color}`}>{s.value}</div>
+                        <div className="text-xs text-on-surface-variant mt-0.5">{s.label}</div>
+                    </div>
+                ))}
+            </div>
+
+            {/* Differences */}
+            {withDiff.length > 0 ? (
+                <div className="mb-5">
+                    <h2 className="text-sm font-semibold text-on-surface-variant uppercase tracking-wide mb-2">Artículos con diferencia</h2>
+                    <div className="rounded-xl border border-surface-variant overflow-hidden divide-y divide-surface-variant">
+                        {withDiff.map(item => {
+                            const counted = parseFloat(entries[item.id]);
+                            const diff = counted - item.stock;
+                            const diffColor = diff > 0 ? 'text-blue-600' : 'text-red-600';
+                            const diffBg = diff > 0 ? 'bg-blue-50' : 'bg-red-50';
+                            return (
+                                <div key={item.id} className="flex items-center gap-3 px-4 py-3 bg-white">
+                                    {item.article.image ? (
+                                        <img src={item.article.image} alt={item.article.name} className="w-9 h-9 rounded-lg object-cover shrink-0" />
+                                    ) : (
+                                        <div className="w-9 h-9 rounded-lg bg-surface-container flex items-center justify-center shrink-0">
+                                            <MIcon name="inventory_2" className="text-on-surface-variant" size={18} />
+                                        </div>
+                                    )}
+                                    <div className="flex-1 min-w-0">
+                                        <p className="font-semibold text-on-background text-sm truncate">{item.article.name}</p>
+                                        <p className="text-xs text-on-surface-variant">
+                                            Sistema: {item.stock} {item.unit} → Contado: <span className="font-semibold text-on-surface">{counted} {item.unit}</span>
+                                        </p>
+                                    </div>
+                                    <span className={`text-sm font-bold px-2.5 py-1 rounded-full ${diffColor} ${diffBg}`}>
+                                        {diff > 0 ? '+' : ''}{diff} {item.unit}
+                                    </span>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            ) : (
+                <div className="text-center py-10 bg-green-50 rounded-2xl border border-green-200 mb-5">
+                    <MIcon name="check_circle" fill size={40} className="text-green-600 mb-2" />
+                    <p className="font-semibold text-green-800">¡Todo coincide!</p>
+                    <p className="text-sm text-green-700 mt-0.5">No hay diferencias entre el conteo físico y el sistema.</p>
+                </div>
+            )}
+
+            {/* Uncounted */}
+            {uncounted.length > 0 && (
+                <div>
+                    <h2 className="text-sm font-semibold text-on-surface-variant uppercase tracking-wide mb-2">
+                        Sin contar — stock no cambiará
+                    </h2>
+                    <div className="flex flex-wrap gap-2 p-4 bg-surface-container-low rounded-xl border border-surface-variant">
+                        {uncounted.map(item => (
+                            <span key={item.id} className="text-xs px-2.5 py-1 rounded-full bg-white border border-outline-variant text-on-surface-variant">
+                                {item.article.name}
+                            </span>
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            {/* Mobile bottom action */}
+            {withDiff.length > 0 && (
+                <div className="fixed bottom-6 left-0 right-0 flex justify-center z-20 md:hidden px-4">
+                    <button
+                        onClick={onConfirm}
+                        disabled={saving}
+                        className="flex items-center gap-2 px-6 py-3 rounded-2xl bg-primary text-on-primary font-semibold shadow-lg hover:bg-primary/90 disabled:opacity-40 transition"
+                    >
+                        {saving ? 'Aplicando…' : `Aplicar ${withDiff.length} ajuste${withDiff.length !== 1 ? 's' : ''}`}
+                    </button>
+                </div>
+            )}
+        </div>
+    );
+};
+
 // ---------- Vista principal ----------
 const InventoryView: React.FC<InventoryViewProps> = ({ authToken, onAuthError }) => {
     const toast = useToast();
@@ -329,6 +653,12 @@ const InventoryView: React.FC<InventoryViewProps> = ({ authToken, onAuthError })
     const [historyItem, setHistoryItem] = useState<InventoryItem | null>(null);
     const [movements, setMovements] = useState<InventoryMovement[]>([]);
     const [movementsLoading, setMovementsLoading] = useState(false);
+
+    // --- Conteo físico ---
+    const [viewMode, setViewMode] = useState<ViewMode>('list');
+    const [countEntries, setCountEntries] = useState<Record<string, string>>({});
+    const [applyingSaving, setApplyingSaving] = useState(false);
+    const [applyProgress, setApplyProgress] = useState<{ done: number; total: number } | null>(null);
 
     const [search, setSearch] = useState('');
     const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -409,6 +739,66 @@ const InventoryView: React.FC<InventoryViewProps> = ({ authToken, onAuthError })
         return list;
     }, [items, debouncedSearch, sort, stockFilter, categoryFilter]);
 
+    const startCounting = () => {
+        const draft = localStorage.getItem(COUNT_DRAFT_KEY);
+        if (draft) {
+            try { setCountEntries(JSON.parse(draft)); } catch { setCountEntries({}); }
+        } else {
+            setCountEntries({});
+        }
+        setViewMode('counting');
+    };
+
+    const cancelCounting = () => {
+        if (!window.confirm('¿Cancelar el conteo? Se perderán los datos ingresados.')) return;
+        localStorage.removeItem(COUNT_DRAFT_KEY);
+        setCountEntries({});
+        setViewMode('list');
+    };
+
+    const handleCountEntry = (itemId: string, value: string) => {
+        setCountEntries(prev => {
+            const next = { ...prev, [itemId]: value };
+            try { localStorage.setItem(COUNT_DRAFT_KEY, JSON.stringify(next)); } catch { /* ignore */ }
+            return next;
+        });
+    };
+
+    const applyCountAdjustments = async () => {
+        const toAdjust = items.filter(item => {
+            const raw = countEntries[item.id];
+            if (!raw || raw === '') return false;
+            const counted = parseFloat(raw);
+            return !isNaN(counted) && counted !== item.stock;
+        });
+        if (toAdjust.length === 0) return;
+
+        setApplyingSaving(true);
+        setApplyProgress({ done: 0, total: toAdjust.length });
+        try {
+            for (let i = 0; i < toAdjust.length; i++) {
+                const item = toAdjust[i];
+                await addInventoryMovement(authToken, item.id, {
+                    type: 'ajuste',
+                    quantity: parseFloat(countEntries[item.id]),
+                    reason: 'Conteo físico',
+                });
+                setApplyProgress({ done: i + 1, total: toAdjust.length });
+            }
+            localStorage.removeItem(COUNT_DRAFT_KEY);
+            setCountEntries({});
+            setViewMode('list');
+            await load();
+            toast('success', `${toAdjust.length} ajuste${toAdjust.length !== 1 ? 's' : ''} aplicado${toAdjust.length !== 1 ? 's' : ''}`);
+        } catch (err) {
+            if (err instanceof AuthError) { onAuthError(); return; }
+            toast('error', 'Error al aplicar ajustes');
+        } finally {
+            setApplyingSaving(false);
+            setApplyProgress(null);
+        }
+    };
+
     const handleEdit = async (data: { stockMin: number; unit: string }) => {
         if (!editingItem) return;
         try {
@@ -460,6 +850,31 @@ const InventoryView: React.FC<InventoryViewProps> = ({ authToken, onAuthError })
         setCategoryFilter(null);
     };
 
+    if (viewMode === 'counting') {
+        return (
+            <CountingView
+                items={items}
+                entries={countEntries}
+                onEntryChange={handleCountEntry}
+                onReview={() => setViewMode('review')}
+                onCancel={cancelCounting}
+            />
+        );
+    }
+
+    if (viewMode === 'review') {
+        return (
+            <CountReviewView
+                items={items}
+                entries={countEntries}
+                saving={applyingSaving}
+                applyProgress={applyProgress}
+                onConfirm={applyCountAdjustments}
+                onBack={() => setViewMode('counting')}
+            />
+        );
+    }
+
     return (
         <div className="max-w-5xl mx-auto px-4 md:px-6 py-6 md:py-8 pb-28 md:pb-10">
             {/* Header */}
@@ -468,6 +883,15 @@ const InventoryView: React.FC<InventoryViewProps> = ({ authToken, onAuthError })
                     <h1 className="font-epilogue text-2xl md:text-3xl font-bold text-on-background">Inventario</h1>
                     <p className="text-on-surface-variant text-sm mt-0.5">Control de insumos de cafetería</p>
                 </div>
+                <button
+                    onClick={startCounting}
+                    disabled={loading || items.length === 0}
+                    className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-primary text-primary font-semibold text-sm hover:bg-primary/5 disabled:opacity-40 disabled:cursor-not-allowed transition shrink-0"
+                >
+                    <MIcon name="checklist" />
+                    <span className="hidden sm:inline">Comenzar Inventario</span>
+                    <span className="sm:hidden">Inventariar</span>
+                </button>
             </div>
 
             {/* Stats */}
