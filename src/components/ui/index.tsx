@@ -47,11 +47,11 @@ export const Modal: React.FC<ModalProps> = ({ open, onClose, title, children, fo
   if (!open) return null;
   return (
     <div
-      className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-[fadeIn_0.15s_ease-out]"
+      className="fixed inset-0 z-[80] flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm sm:p-4 animate-[fadeIn_0.15s_ease-out]"
       onClick={onClose}
     >
       <div
-        className={`bg-white rounded-2xl shadow-2xl ${maxWidth} w-full max-h-[92vh] flex flex-col overflow-hidden border border-surface-variant`}
+        className={`bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl ${maxWidth} w-full max-h-[92vh] sm:max-h-[92vh] h-[92vh] sm:h-auto flex flex-col overflow-hidden border border-surface-variant`}
         onClick={e => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-6 py-4 border-b border-surface-variant">

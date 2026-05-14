@@ -387,87 +387,125 @@ const SupplierTicketsModal: React.FC<{
                 )}
 
                 {!isLoading && totalCount > 0 && (
-                    <div className="flex h-[420px]">
-                        {/* Sidebar */}
-                        <div className="w-52 flex-shrink-0 border-r border-surface-variant bg-surface-container-low flex flex-col overflow-y-auto">
+                    <div className="flex flex-col md:flex-row md:h-[420px]">
+                        {/* Sidebar — horizontal scroll en móvil, vertical en desktop */}
+                        <div className="md:w-52 md:flex-shrink-0 border-b md:border-b-0 md:border-r border-surface-variant bg-surface-container-low md:flex md:flex-col md:overflow-y-auto">
 
-                            {/* Sección: Pedidos WooCommerce */}
-                            {sortedOrderKeys.length > 0 && (
-                                <>
-                                    <p className="px-4 pt-4 pb-2 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">De lista de compras</p>
-                                    <div className="space-y-0.5 px-2">
-                                        {sortedOrderKeys.map(orderId => {
-                                            const grpKey = `order:${orderId}`;
-                                            const count = orderGroups[orderId].length;
-                                            const isActive = activeGroup === grpKey;
-                                            const date = new Date(orderGroups[orderId][0].createdAt).toLocaleDateString('es-MX', { day: 'numeric', month: 'short' });
-                                            return (
-                                                <button
-                                                    key={grpKey}
-                                                    type="button"
-                                                    onClick={() => setActiveGroup(grpKey)}
-                                                    className={`w-full text-left px-3 py-2.5 rounded-xl transition-all flex items-center gap-2.5 ${isActive ? 'bg-primary text-on-primary shadow-sm' : 'hover:bg-surface-container text-on-background'}`}
-                                                >
-                                                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 ${isActive ? 'bg-white/20' : 'bg-blue-50'}`}>
-                                                        <MIcon name="shopping_cart" className={`text-sm leading-none ${isActive ? 'text-white' : 'text-blue-400'}`} />
-                                                    </div>
-                                                    <div className="flex-1 min-w-0">
-                                                        <p className={`text-xs font-semibold truncate ${isActive ? 'text-white' : 'text-on-background'}`}>
-                                                            Pedido #{orderId}
-                                                        </p>
-                                                        <p className={`text-[10px] ${isActive ? 'text-white/70' : 'text-on-surface-variant'}`}>
-                                                            {count} ticket{count !== 1 ? 's' : ''} · {date}
-                                                        </p>
-                                                    </div>
-                                                </button>
-                                            );
-                                        })}
-                                    </div>
-                                </>
-                            )}
+                            {/* Mobile: tabs horizontales */}
+                            <div className="flex md:hidden overflow-x-auto gap-1.5 px-3 py-2 scrollbar-hide">
+                                {sortedOrderKeys.map(orderId => {
+                                    const grpKey = `order:${orderId}`;
+                                    const isActive = activeGroup === grpKey;
+                                    return (
+                                        <button
+                                            key={grpKey}
+                                            type="button"
+                                            onClick={() => setActiveGroup(grpKey)}
+                                            className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all whitespace-nowrap ${isActive ? 'bg-primary text-on-primary' : 'bg-surface-container text-on-surface-variant'}`}
+                                        >
+                                            <MIcon name="shopping_cart" className="text-sm leading-none" />
+                                            #{orderId}
+                                        </button>
+                                    );
+                                })}
+                                {sortedSupplierKeys.map(key => {
+                                    const grpKey = `supplier:${key}`;
+                                    const isActive = activeGroup === grpKey;
+                                    const allInvoiced = supplierGroups[key].every(t => t.invoiced);
+                                    return (
+                                        <button
+                                            key={grpKey}
+                                            type="button"
+                                            onClick={() => setActiveGroup(grpKey)}
+                                            className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all whitespace-nowrap ${isActive ? 'bg-primary text-on-primary' : 'bg-surface-container text-on-surface-variant'}`}
+                                        >
+                                            <MIcon name={allInvoiced ? 'check_circle' : 'receipt'} className="text-sm leading-none" fill={allInvoiced} />
+                                            {key || 'Sin ref.'}
+                                        </button>
+                                    );
+                                })}
+                            </div>
 
-                            {/* Sección: Tickets propios */}
-                            {sortedSupplierKeys.length > 0 && (
-                                <>
-                                    <p className="px-4 pt-4 pb-2 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">Propios</p>
-                                    <div className="space-y-0.5 px-2 pb-4">
-                                        {sortedSupplierKeys.map(key => {
-                                            const grpKey = `supplier:${key}`;
-                                            const count = supplierGroups[key].length;
-                                            const allInvoiced = supplierGroups[key].every(t => t.invoiced);
-                                            const someInvoiced = supplierGroups[key].some(t => t.invoiced);
-                                            const isActive = activeGroup === grpKey;
-                                            return (
-                                                <button
-                                                    key={grpKey}
-                                                    type="button"
-                                                    onClick={() => setActiveGroup(grpKey)}
-                                                    className={`w-full text-left px-3 py-2.5 rounded-xl transition-all flex items-center gap-2.5 ${isActive ? 'bg-primary text-on-primary shadow-sm' : 'hover:bg-surface-container text-on-background'}`}
-                                                >
-                                                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 ${isActive ? 'bg-white/20' : allInvoiced ? 'bg-success/10' : 'bg-surface-variant'}`}>
-                                                        <MIcon
-                                                            name={key ? 'receipt' : 'help_outline'}
-                                                            className={`text-sm leading-none ${isActive ? 'text-white' : allInvoiced ? 'text-success' : 'text-on-surface-variant'}`}
-                                                        />
-                                                    </div>
-                                                    <div className="flex-1 min-w-0">
-                                                        <p className={`text-xs font-semibold truncate ${isActive ? 'text-white' : 'text-on-background'}`}>
-                                                            {key || 'Sin referencia'}
-                                                        </p>
-                                                        <p className={`text-[10px] ${isActive ? 'text-white/70' : 'text-on-surface-variant'}`}>
-                                                            {count} ticket{count !== 1 ? 's' : ''}
-                                                            {someInvoiced ? ` · ${supplierGroups[key].filter(t => t.invoiced).length} fact.` : ''}
-                                                        </p>
-                                                    </div>
-                                                    {allInvoiced && !isActive && (
-                                                        <MIcon name="check_circle" className="text-sm text-success flex-shrink-0" fill />
-                                                    )}
-                                                </button>
-                                            );
-                                        })}
-                                    </div>
-                                </>
-                            )}
+                            {/* Desktop: sidebar vertical */}
+                            <div className="hidden md:block">
+                                {/* Sección: Pedidos WooCommerce */}
+                                {sortedOrderKeys.length > 0 && (
+                                    <>
+                                        <p className="px-4 pt-4 pb-2 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">De lista de compras</p>
+                                        <div className="space-y-0.5 px-2">
+                                            {sortedOrderKeys.map(orderId => {
+                                                const grpKey = `order:${orderId}`;
+                                                const count = orderGroups[orderId].length;
+                                                const isActive = activeGroup === grpKey;
+                                                const date = new Date(orderGroups[orderId][0].createdAt).toLocaleDateString('es-MX', { day: 'numeric', month: 'short' });
+                                                return (
+                                                    <button
+                                                        key={grpKey}
+                                                        type="button"
+                                                        onClick={() => setActiveGroup(grpKey)}
+                                                        className={`w-full text-left px-3 py-2.5 rounded-xl transition-all flex items-center gap-2.5 ${isActive ? 'bg-primary text-on-primary shadow-sm' : 'hover:bg-surface-container text-on-background'}`}
+                                                    >
+                                                        <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 ${isActive ? 'bg-white/20' : 'bg-blue-50'}`}>
+                                                            <MIcon name="shopping_cart" className={`text-sm leading-none ${isActive ? 'text-white' : 'text-blue-400'}`} />
+                                                        </div>
+                                                        <div className="flex-1 min-w-0">
+                                                            <p className={`text-xs font-semibold truncate ${isActive ? 'text-white' : 'text-on-background'}`}>
+                                                                Pedido #{orderId}
+                                                            </p>
+                                                            <p className={`text-[10px] ${isActive ? 'text-white/70' : 'text-on-surface-variant'}`}>
+                                                                {count} ticket{count !== 1 ? 's' : ''} · {date}
+                                                            </p>
+                                                        </div>
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    </>
+                                )}
+
+                                {/* Sección: Tickets propios */}
+                                {sortedSupplierKeys.length > 0 && (
+                                    <>
+                                        <p className="px-4 pt-4 pb-2 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">Propios</p>
+                                        <div className="space-y-0.5 px-2 pb-4">
+                                            {sortedSupplierKeys.map(key => {
+                                                const grpKey = `supplier:${key}`;
+                                                const count = supplierGroups[key].length;
+                                                const allInvoiced = supplierGroups[key].every(t => t.invoiced);
+                                                const someInvoiced = supplierGroups[key].some(t => t.invoiced);
+                                                const isActive = activeGroup === grpKey;
+                                                return (
+                                                    <button
+                                                        key={grpKey}
+                                                        type="button"
+                                                        onClick={() => setActiveGroup(grpKey)}
+                                                        className={`w-full text-left px-3 py-2.5 rounded-xl transition-all flex items-center gap-2.5 ${isActive ? 'bg-primary text-on-primary shadow-sm' : 'hover:bg-surface-container text-on-background'}`}
+                                                    >
+                                                        <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 ${isActive ? 'bg-white/20' : allInvoiced ? 'bg-success/10' : 'bg-surface-variant'}`}>
+                                                            <MIcon
+                                                                name={key ? 'receipt' : 'help_outline'}
+                                                                className={`text-sm leading-none ${isActive ? 'text-white' : allInvoiced ? 'text-success' : 'text-on-surface-variant'}`}
+                                                            />
+                                                        </div>
+                                                        <div className="flex-1 min-w-0">
+                                                            <p className={`text-xs font-semibold truncate ${isActive ? 'text-white' : 'text-on-background'}`}>
+                                                                {key || 'Sin referencia'}
+                                                            </p>
+                                                            <p className={`text-[10px] ${isActive ? 'text-white/70' : 'text-on-surface-variant'}`}>
+                                                                {count} ticket{count !== 1 ? 's' : ''}
+                                                                {someInvoiced ? ` · ${supplierGroups[key].filter(t => t.invoiced).length} fact.` : ''}
+                                                            </p>
+                                                        </div>
+                                                        {allInvoiced && !isActive && (
+                                                            <MIcon name="check_circle" className="text-sm text-success flex-shrink-0" fill />
+                                                        )}
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    </>
+                                )}
+                            </div>
                         </div>
 
                         {/* Panel derecho */}
@@ -475,7 +513,7 @@ const SupplierTicketsModal: React.FC<{
                             {activeGroup !== null && (
                                 <>
                                     {/* Header */}
-                                    <div className="sticky top-0 z-10 bg-white/95 backdrop-blur-sm border-b border-surface-variant px-5 py-3 flex items-center justify-between">
+                                    <div className="sticky top-0 z-10 bg-white/95 backdrop-blur-sm border-b border-surface-variant px-4 py-3 flex items-center justify-between">
                                         <div>
                                             <p className="font-semibold text-sm text-on-background">
                                                 {isOrderGroup
@@ -503,7 +541,7 @@ const SupplierTicketsModal: React.FC<{
 
                                     {/* Cards — OrderTickets */}
                                     {isOrderGroup && (
-                                        <div className="p-4 grid grid-cols-2 gap-3">
+                                        <div className="p-3 grid grid-cols-2 gap-3">
                                             {activeOrderTickets.map(ticket => {
                                                 const preview = contentCache[ticket.id];
                                                 const isPdf = ticket.mimeType === 'application/pdf';
@@ -511,7 +549,7 @@ const SupplierTicketsModal: React.FC<{
                                                     <div key={ticket.id} className={`rounded-2xl border overflow-hidden transition-all ${ticket.invoiced ? 'border-success/40 shadow-sm' : 'border-surface-variant hover:border-blue-200 hover:shadow-sm'}`}>
                                                         {/* Preview area */}
                                                         <div
-                                                            className={`relative w-full h-40 flex items-center justify-center cursor-pointer ${isPdf ? 'bg-red-50' : 'bg-surface-container-low'}`}
+                                                            className={`relative w-full h-36 flex items-center justify-center cursor-pointer ${isPdf ? 'bg-red-50' : 'bg-surface-container-low'}`}
                                                             onClick={async () => {
                                                                 try {
                                                                     const full = await getOrderTicketContent(authToken, ticket.orderId, ticket.id);
@@ -564,7 +602,7 @@ const SupplierTicketsModal: React.FC<{
 
                                     {/* Cards — SupplierTickets con preview inline */}
                                     {!isOrderGroup && (
-                                        <div className="p-4 grid grid-cols-2 gap-3">
+                                        <div className="p-3 grid grid-cols-2 gap-3">
                                             {activeSupplierTickets.map(ticket => {
                                                 const preview = contentCache[ticket.id];
                                                 const isPdf = ticket.mimeType === 'application/pdf';
@@ -572,7 +610,7 @@ const SupplierTicketsModal: React.FC<{
                                                     <div key={ticket.id} className={`rounded-2xl border overflow-hidden transition-all ${ticket.invoiced ? 'border-success/40 shadow-sm' : 'border-surface-variant hover:border-primary/30 hover:shadow-sm'}`}>
                                                         {/* Preview */}
                                                         <div
-                                                            className={`relative w-full h-40 flex items-center justify-center cursor-pointer ${isPdf ? 'bg-red-50' : 'bg-surface-container-low'}`}
+                                                            className={`relative w-full h-36 flex items-center justify-center cursor-pointer ${isPdf ? 'bg-red-50' : 'bg-surface-container-low'}`}
                                                             onClick={() => handleView(ticket)}
                                                         >
                                                             {isPdf ? (
