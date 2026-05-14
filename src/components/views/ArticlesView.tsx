@@ -290,12 +290,12 @@ const ArticleEditModal: React.FC<{
                                                             <MIcon name="close" size={16} />
                                                         </button>
                                                     </div>
-                                                    {s.zones.length > 0 && (
-                                                        <div className="flex items-center gap-2">
-                                                            <MIcon name="location_on" size={14} className="text-on-surface-variant shrink-0" />
+                                                    <div className="flex items-center gap-2">
+                                                        <MIcon name="location_on" size={14} className="text-on-surface-variant shrink-0" />
+                                                        {s.zones.length > 0 ? (
                                                             <select
                                                                 value={form.supplierZones[sid] ?? ''}
-                                                                onChange={e => setZone(sid, e.target.value)}
+                                                                onChange={e => { e.stopPropagation(); setZone(sid, e.target.value); }}
                                                                 className="text-sm rounded-lg border border-outline-variant bg-surface text-on-surface px-2 py-1 focus:outline-none focus:border-primary flex-1"
                                                             >
                                                                 <option value="">Sin zona</option>
@@ -303,8 +303,10 @@ const ArticleEditModal: React.FC<{
                                                                     <option key={z} value={z}>{z}</option>
                                                                 ))}
                                                             </select>
-                                                        </div>
-                                                    )}
+                                                        ) : (
+                                                            <span className="text-xs text-on-surface-variant italic">Sin zonas configuradas</span>
+                                                        )}
+                                                    </div>
                                                 </div>
                                             );
                                         })}
