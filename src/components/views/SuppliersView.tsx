@@ -139,6 +139,8 @@ const SupplierTicketsModal: React.FC<{
     const [togglingOrderId, setTogglingOrderId] = useState<string | null>(null);
     const [activeGroup, setActiveGroup] = useState<string | null>(null);
     const [orderTickets, setOrderTickets] = useState<OrderTicket[]>([]);
+    const [contentCache, setContentCache] = useState<Record<string, string>>({});
+    const [loadingPreviews, setLoadingPreviews] = useState(false);
     const fileRef = useRef<HTMLInputElement>(null);
     const toast = useToast();
 
@@ -297,6 +299,31 @@ const SupplierTicketsModal: React.FC<{
     const activeOrderTickets: OrderTicket[] = isOrderGroup ? (orderGroups[activeKey] ?? []) : [];
     const activeSupplierTickets: SupplierTicket[] = !isOrderGroup && activeGroup !== null ? (supplierGroups[activeKey] ?? []) : [];
     const invoicedCount = activeSupplierTickets.filter(t => t.invoiced).length;
+
+    // Load previews for active group
+    useEffect(() => {
+        if (!activeGroup) return;
+        const toLoad = isOrderGroup
+            ? activeOrderTickets.filter(t => t.mimeType !== 'application/pdf' && !contentCache[t.id])
+            : activeSupplierTickets.filter(t => t.mimeType !== 'application/pdf' && !contentCache[t.id]);
+        if (toLoad.length === 0) return;
+        let cancelled = false;
+        setLoadingPreviews(true);
+        Promise.all(
+            toLoad.map(t => isOrderGroup
+                ? getOrderTicketContent(authToken, (t as OrderTicket).orderId, t.id)
+                : getSupplierTicketContent(authToken, supplier.id, t.id)
+            )
+        ).then(results => {
+            if (cancelled) return;
+            setContentCache(prev => {
+                const next = { ...prev };
+                results.forEach(r => { if (r.content) next[r.id] = r.content; });
+                return next;
+            });
+        }).catch(() => {}).finally(() => { if (!cancelled) setLoadingPreviews(false); });
+        return () => { cancelled = true; };
+    }, [activeGroup]);
 
     return (
         <>
@@ -476,107 +503,126 @@ const SupplierTicketsModal: React.FC<{
 
                                     {/* Cards — OrderTickets */}
                                     {isOrderGroup && (
-                                        <div className="p-4 space-y-3">
-                                            {activeOrderTickets.map(ticket => (
-                                                <div key={ticket.id} className={`rounded-2xl border transition-all ${ticket.invoiced ? 'bg-success/4 border-success/25' : 'bg-white border-surface-variant hover:border-blue-200 hover:shadow-sm'}`}>
-                                                    <div className="flex items-center gap-3 px-4 py-3">
-                                                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${ticket.mimeType === 'application/pdf' ? 'bg-red-50' : 'bg-blue-50'}`}>
-                                                            <MIcon
-                                                                name={ticket.mimeType === 'application/pdf' ? 'picture_as_pdf' : 'image'}
-                                                                className={`text-xl ${ticket.mimeType === 'application/pdf' ? 'text-red-400' : 'text-blue-400'}`}
-                                                            />
+                                        <div className="p-4 grid grid-cols-2 gap-3">
+                                            {activeOrderTickets.map(ticket => {
+                                                const preview = contentCache[ticket.id];
+                                                const isPdf = ticket.mimeType === 'application/pdf';
+                                                return (
+                                                    <div key={ticket.id} className={`rounded-2xl border overflow-hidden transition-all ${ticket.invoiced ? 'border-success/40 shadow-sm' : 'border-surface-variant hover:border-blue-200 hover:shadow-sm'}`}>
+                                                        {/* Preview area */}
+                                                        <div
+                                                            className={`relative w-full h-40 flex items-center justify-center cursor-pointer ${isPdf ? 'bg-red-50' : 'bg-surface-container-low'}`}
+                                                            onClick={async () => {
+                                                                try {
+                                                                    const full = await getOrderTicketContent(authToken, ticket.orderId, ticket.id);
+                                                                    if (!full.content) return;
+                                                                    if (isPdf) { openPdfInNewTab(full.content, full.filename); }
+                                                                    else { setViewingContent(full.content); setViewingFilename(full.filename); }
+                                                                } catch { toast('error', 'No se pudo cargar el ticket'); }
+                                                            }}
+                                                        >
+                                                            {isPdf ? (
+                                                                <div className="flex flex-col items-center gap-1 text-red-400">
+                                                                    <MIcon name="picture_as_pdf" size={40} />
+                                                                    <span className="text-xs font-medium">PDF</span>
+                                                                </div>
+                                                            ) : preview ? (
+                                                                <img src={preview} alt={ticket.filename} className="w-full h-full object-cover" />
+                                                            ) : (
+                                                                <div className="animate-pulse w-8 h-8 rounded-full bg-surface-variant" />
+                                                            )}
+                                                            <div className="absolute inset-0 bg-black/0 hover:bg-black/10 transition-colors flex items-center justify-center opacity-0 hover:opacity-100">
+                                                                <div className="bg-black/50 rounded-full p-2">
+                                                                    <MIcon name="zoom_in" className="text-white text-xl" />
+                                                                </div>
+                                                            </div>
                                                         </div>
-                                                        <div className="flex-1 min-w-0">
-                                                            <p className="text-sm font-medium text-on-background truncate">{ticket.filename}</p>
-                                                            <p className="text-xs text-on-surface-variant mt-0.5">
-                                                                {formatSize(ticket.size)} · {new Date(ticket.createdAt).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' })}
-                                                            </p>
-                                                        </div>
-                                                        <div className="flex items-center gap-2 flex-shrink-0">
-                                                            <button
-                                                                type="button"
-                                                                onClick={async () => {
-                                                                    try {
-                                                                        const full = await getOrderTicketContent(authToken, ticket.orderId, ticket.id);
-                                                                        if (!full.content) return;
-                                                                        if (full.mimeType === 'application/pdf') { openPdfInNewTab(full.content, full.filename); }
-                                                                        else { setViewingContent(full.content); setViewingFilename(full.filename); }
-                                                                    } catch { toast('error', 'No se pudo cargar el ticket'); }
-                                                                }}
-                                                                className="p-1.5 rounded-lg text-on-surface-variant hover:text-primary hover:bg-primary/8 transition-colors"
-                                                                title="Ver ticket"
-                                                            >
-                                                                <MIcon name="visibility" className="text-lg leading-none" />
-                                                            </button>
-                                                            <div className="flex items-center gap-1.5 pl-2 border-l border-surface-variant">
+                                                        {/* Footer */}
+                                                        <div className={`px-3 py-2 ${ticket.invoiced ? 'bg-success/5' : 'bg-white'}`}>
+                                                            <p className="text-xs text-on-surface-variant">{new Date(ticket.createdAt).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
+                                                            <div className="flex items-center justify-between mt-1.5">
                                                                 <button
                                                                     type="button"
                                                                     role="switch"
                                                                     aria-checked={ticket.invoiced}
                                                                     disabled={togglingOrderId === ticket.id}
                                                                     onClick={() => handleToggleOrderInvoiced(ticket)}
-                                                                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none disabled:opacity-50 ${ticket.invoiced ? 'bg-success' : 'bg-surface-variant'}`}
+                                                                    className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none disabled:opacity-50 ${ticket.invoiced ? 'bg-success' : 'bg-surface-variant'}`}
                                                                 >
-                                                                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform ${ticket.invoiced ? 'translate-x-6' : 'translate-x-1'}`} />
+                                                                    <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-sm transition-transform ${ticket.invoiced ? 'translate-x-4.5' : 'translate-x-0.5'}`} />
                                                                 </button>
-                                                                <span className={`text-[11px] font-semibold w-16 ${ticket.invoiced ? 'text-success' : 'text-on-surface-variant'}`}>
+                                                                <span className={`text-[11px] font-semibold ${ticket.invoiced ? 'text-success' : 'text-on-surface-variant'}`}>
                                                                     {togglingOrderId === ticket.id ? '…' : ticket.invoiced ? 'Facturado' : 'Sin factura'}
                                                                 </span>
                                                             </div>
                                                         </div>
                                                     </div>
-                                                </div>
-                                            ))}
+                                                );
+                                            })}
                                         </div>
                                     )}
 
-                                    {/* Cards — SupplierTickets (con switch facturado) */}
+                                    {/* Cards — SupplierTickets con preview inline */}
                                     {!isOrderGroup && (
-                                        <div className="p-4 space-y-3">
-                                            {activeSupplierTickets.map(ticket => (
-                                                <div
-                                                    key={ticket.id}
-                                                    className={`rounded-2xl border transition-all ${ticket.invoiced ? 'bg-success/4 border-success/25' : 'bg-white border-surface-variant hover:border-primary/30 hover:shadow-sm'}`}
-                                                >
-                                                    <div className="flex items-center gap-3 px-4 py-3">
-                                                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${ticket.mimeType === 'application/pdf' ? 'bg-red-50' : 'bg-blue-50'}`}>
-                                                            <MIcon
-                                                                name={ticket.mimeType === 'application/pdf' ? 'picture_as_pdf' : 'image'}
-                                                                className={`text-xl ${ticket.mimeType === 'application/pdf' ? 'text-red-400' : 'text-blue-400'}`}
-                                                            />
+                                        <div className="p-4 grid grid-cols-2 gap-3">
+                                            {activeSupplierTickets.map(ticket => {
+                                                const preview = contentCache[ticket.id];
+                                                const isPdf = ticket.mimeType === 'application/pdf';
+                                                return (
+                                                    <div key={ticket.id} className={`rounded-2xl border overflow-hidden transition-all ${ticket.invoiced ? 'border-success/40 shadow-sm' : 'border-surface-variant hover:border-primary/30 hover:shadow-sm'}`}>
+                                                        {/* Preview */}
+                                                        <div
+                                                            className={`relative w-full h-40 flex items-center justify-center cursor-pointer ${isPdf ? 'bg-red-50' : 'bg-surface-container-low'}`}
+                                                            onClick={() => handleView(ticket)}
+                                                        >
+                                                            {isPdf ? (
+                                                                <div className="flex flex-col items-center gap-1 text-red-400">
+                                                                    <MIcon name="picture_as_pdf" size={40} />
+                                                                    <span className="text-xs font-medium">PDF</span>
+                                                                </div>
+                                                            ) : preview ? (
+                                                                <img src={preview} alt={ticket.filename} className="w-full h-full object-cover" />
+                                                            ) : (
+                                                                <div className="animate-pulse w-8 h-8 rounded-full bg-surface-variant" />
+                                                            )}
+                                                            <div className="absolute inset-0 bg-black/0 hover:bg-black/10 transition-colors flex items-center justify-center opacity-0 hover:opacity-100">
+                                                                <div className="bg-black/50 rounded-full p-2">
+                                                                    <MIcon name="zoom_in" className="text-white text-xl" />
+                                                                </div>
+                                                            </div>
                                                         </div>
-                                                        <div className="flex-1 min-w-0">
-                                                            <p className="text-sm font-medium text-on-background truncate">{ticket.filename}</p>
-                                                            <p className="text-xs text-on-surface-variant mt-0.5">
-                                                                {formatSize(ticket.size)} · {new Date(ticket.createdAt).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' })}
-                                                            </p>
-                                                        </div>
-                                                        <div className="flex items-center gap-2 flex-shrink-0">
-                                                            <button type="button" onClick={() => handleView(ticket)} className="p-1.5 rounded-lg text-on-surface-variant hover:text-primary hover:bg-primary/8 transition-colors" title="Ver">
-                                                                <MIcon name="visibility" className="text-lg leading-none" />
-                                                            </button>
-                                                            <button type="button" onClick={() => setConfirmDeleteId(ticket.id)} className="p-1.5 rounded-lg text-on-surface-variant hover:text-error hover:bg-error/8 transition-colors" title="Eliminar">
-                                                                <MIcon name="delete" className="text-lg leading-none" />
-                                                            </button>
-                                                            <div className="flex items-center gap-1.5 pl-2 border-l border-surface-variant">
+                                                        {/* Footer */}
+                                                        <div className={`px-3 py-2 ${ticket.invoiced ? 'bg-success/5' : 'bg-white'}`}>
+                                                            <p className="text-xs text-on-surface-variant">{new Date(ticket.createdAt).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
+                                                            <div className="flex items-center justify-between mt-1.5">
+                                                                <div className="flex items-center gap-1.5">
+                                                                    <button
+                                                                        type="button"
+                                                                        role="switch"
+                                                                        aria-checked={ticket.invoiced}
+                                                                        disabled={togglingId === ticket.id}
+                                                                        onClick={() => handleToggleInvoiced(ticket)}
+                                                                        className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none disabled:opacity-50 ${ticket.invoiced ? 'bg-success' : 'bg-surface-variant'}`}
+                                                                    >
+                                                                        <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-sm transition-transform ${ticket.invoiced ? 'translate-x-4.5' : 'translate-x-0.5'}`} />
+                                                                    </button>
+                                                                    <span className={`text-[11px] font-semibold ${ticket.invoiced ? 'text-success' : 'text-on-surface-variant'}`}>
+                                                                        {togglingId === ticket.id ? '…' : ticket.invoiced ? 'Facturado' : 'Sin factura'}
+                                                                    </span>
+                                                                </div>
                                                                 <button
                                                                     type="button"
-                                                                    role="switch"
-                                                                    aria-checked={ticket.invoiced}
-                                                                    disabled={togglingId === ticket.id}
-                                                                    onClick={() => handleToggleInvoiced(ticket)}
-                                                                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none disabled:opacity-50 ${ticket.invoiced ? 'bg-success' : 'bg-surface-variant'}`}
+                                                                    onClick={() => setConfirmDeleteId(ticket.id)}
+                                                                    className="p-1 rounded-lg text-on-surface-variant hover:text-error hover:bg-error/8 transition-colors"
+                                                                    title="Eliminar"
                                                                 >
-                                                                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform ${ticket.invoiced ? 'translate-x-6' : 'translate-x-1'}`} />
+                                                                    <MIcon name="delete" className="text-base leading-none" />
                                                                 </button>
-                                                                <span className={`text-[11px] font-semibold w-16 ${ticket.invoiced ? 'text-success' : 'text-on-surface-variant'}`}>
-                                                                    {togglingId === ticket.id ? '…' : ticket.invoiced ? 'Facturado' : 'Sin factura'}
-                                                                </span>
                                                             </div>
                                                         </div>
                                                     </div>
-                                                </div>
-                                            ))}
+                                                );
+                                            })}
                                         </div>
                                     )}
                                 </>
