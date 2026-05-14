@@ -177,6 +177,12 @@ export async function deleteSupplierTicket(token: string, supplierId: string, ti
   }));
 }
 
+export async function updateSupplierTicketInvoiced(token: string, supplierId: string, ticketId: string, invoiced: boolean): Promise<SupplierTicket> {
+  return handleResponse(await fetch(`${BASE}/api/suppliers/${supplierId}/tickets/${ticketId}`, {
+    method: 'PATCH', headers: authHeaders(token), body: JSON.stringify({ invoiced }),
+  }));
+}
+
 // ---- Artículos ----
 
 export async function getArticles(token: string): Promise<Article[]> {

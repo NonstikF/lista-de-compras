@@ -78,6 +78,8 @@ export interface OrderTicketUpload {
 export interface SupplierTicket {
   id: string;
   supplierId: string;
+  orderRef: string;
+  invoiced: boolean;
   filename: string;
   mimeType: string;
   size: number;
@@ -90,6 +92,7 @@ export interface SupplierTicketUpload {
   mimeType: string;
   size: number;
   content: string;
+  orderRef?: string;
 }
 
 // ---------- Artículos ----------

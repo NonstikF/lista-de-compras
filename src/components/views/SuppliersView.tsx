@@ -3,6 +3,7 @@ import type { Supplier, SupplierTicket } from '../../types';
 import {
     AuthError, getSuppliers, createSupplier, updateSupplier, deleteSupplier,
     getSupplierTickets, getSupplierTicketContent, createSupplierTicket, deleteSupplierTicket,
+    updateSupplierTicketInvoiced,
 } from '../../services/api';
 import { Modal, Button, Field, Input, MIcon, useToast } from '../ui';
 
@@ -128,10 +129,13 @@ const SupplierTicketsModal: React.FC<{
     const [isLoading, setIsLoading] = useState(true);
     const [uploading, setUploading] = useState(false);
     const [fileError, setFileError] = useState('');
+    const [pendingFile, setPendingFile] = useState<{ file: File; content: string } | null>(null);
+    const [orderRefInput, setOrderRefInput] = useState('');
     const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
     const [deleting, setDeleting] = useState(false);
     const [viewingContent, setViewingContent] = useState<string | null>(null);
     const [viewingFilename, setViewingFilename] = useState<string | null>(null);
+    const [togglingId, setTogglingId] = useState<string | null>(null);
     const fileRef = useRef<HTMLInputElement>(null);
     const toast = useToast();
 
@@ -157,35 +161,31 @@ const SupplierTicketsModal: React.FC<{
         const file = e.target.files?.[0];
         if (!file) return;
         e.target.value = '';
-
-        if (!ALLOWED_TYPES.includes(file.type)) {
-            setFileError('Solo se permiten archivos JPG, PNG o PDF.');
-            return;
-        }
-        if (file.size > 1_000_000) {
-            setFileError('El archivo no puede superar 1 MB.');
-            return;
-        }
+        if (!ALLOWED_TYPES.includes(file.type)) { setFileError('Solo se permiten archivos JPG, PNG o PDF.'); return; }
+        if (file.size > 1_000_000) { setFileError('El archivo no puede superar 1 MB.'); return; }
         setFileError('');
-
         const reader = new FileReader();
         reader.onload = ev => {
-            const content = ev.target?.result as string;
-            handleUpload(file, content);
+            setPendingFile({ file, content: ev.target?.result as string });
+            setOrderRefInput('');
         };
         reader.readAsDataURL(file);
     };
 
-    const handleUpload = async (file: File, content: string) => {
+    const handleUploadConfirm = async () => {
+        if (!pendingFile) return;
         setUploading(true);
         try {
             const ticket = await createSupplierTicket(authToken, supplier.id, {
-                filename: file.name,
-                mimeType: file.type,
-                size: file.size,
-                content,
+                filename: pendingFile.file.name,
+                mimeType: pendingFile.file.type,
+                size: pendingFile.file.size,
+                content: pendingFile.content,
+                orderRef: orderRefInput.trim(),
             });
             setTickets(prev => [ticket, ...prev]);
+            setPendingFile(null);
+            setOrderRefInput('');
             toast('success', 'Ticket subido correctamente');
         } catch (err) {
             if (err instanceof AuthError) { onAuthError(); return; }
@@ -211,6 +211,19 @@ const SupplierTicketsModal: React.FC<{
         }
     };
 
+    const handleToggleInvoiced = async (ticket: SupplierTicket) => {
+        setTogglingId(ticket.id);
+        try {
+            const updated = await updateSupplierTicketInvoiced(authToken, supplier.id, ticket.id, !ticket.invoiced);
+            setTickets(prev => prev.map(t => t.id === updated.id ? { ...t, invoiced: updated.invoiced } : t));
+        } catch (err) {
+            if (err instanceof AuthError) { onAuthError(); return; }
+            toast('error', 'No se pudo actualizar el estado');
+        } finally {
+            setTogglingId(null);
+        }
+    };
+
     const handleDelete = async () => {
         if (!confirmDeleteId) return;
         setDeleting(true);
@@ -226,6 +239,19 @@ const SupplierTicketsModal: React.FC<{
             setDeleting(false);
         }
     };
+
+    // Group tickets by orderRef
+    const groups = tickets.reduce<Record<string, SupplierTicket[]>>((acc, t) => {
+        const key = t.orderRef?.trim() || '';
+        if (!acc[key]) acc[key] = [];
+        acc[key].push(t);
+        return acc;
+    }, {});
+    const sortedGroupKeys = Object.keys(groups).sort((a, b) => {
+        if (a === '') return 1;
+        if (b === '') return -1;
+        return a.localeCompare(b, 'es', { numeric: true });
+    });
 
     return (
         <>
@@ -269,7 +295,7 @@ const SupplierTicketsModal: React.FC<{
                         )}
                     </div>
 
-                    {/* Lista de tickets */}
+                    {/* Lista agrupada */}
                     {isLoading && (
                         <div className="flex justify-center py-8">
                             <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-primary" />
@@ -284,33 +310,64 @@ const SupplierTicketsModal: React.FC<{
                     )}
 
                     {!isLoading && tickets.length > 0 && (
-                        <div className="space-y-2">
-                            {tickets.map(ticket => (
-                                <div
-                                    key={ticket.id}
-                                    className="flex items-center gap-3 bg-surface rounded-xl border border-surface-variant px-4 py-3"
-                                >
-                                    <MIcon
-                                        name={ticket.mimeType === 'application/pdf' ? 'picture_as_pdf' : 'image'}
-                                        className="text-on-surface-variant flex-shrink-0"
-                                    />
-                                    <div className="flex-1 min-w-0">
-                                        <p className="text-sm font-medium text-on-background truncate">{ticket.filename}</p>
-                                        <p className="text-xs text-on-surface-variant">
-                                            {formatSize(ticket.size)} · {new Date(ticket.createdAt).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' })}
-                                        </p>
+                        <div className="space-y-4">
+                            {sortedGroupKeys.map(groupKey => (
+                                <div key={groupKey}>
+                                    <div className="flex items-center gap-2 mb-2">
+                                        <MIcon name="shopping_bag" className="text-sm text-on-surface-variant" />
+                                        <span className="text-xs font-semibold uppercase tracking-wide text-on-surface-variant">
+                                            {groupKey ? `Pedido ${groupKey}` : 'Sin pedido'}
+                                        </span>
+                                        <div className="flex-1 h-px bg-surface-variant" />
                                     </div>
-                                    <div className="flex gap-1 flex-shrink-0">
-                                        <Button variant="tonal" size="sm" icon="visibility" onClick={() => handleView(ticket)}>
-                                            Ver
-                                        </Button>
-                                        <Button
-                                            variant="text"
-                                            size="sm"
-                                            icon="delete"
-                                            className="text-error hover:bg-error/8"
-                                            onClick={() => setConfirmDeleteId(ticket.id)}
-                                        />
+                                    <div className="space-y-2">
+                                        {groups[groupKey].map(ticket => (
+                                            <div
+                                                key={ticket.id}
+                                                className={`flex items-center gap-3 rounded-xl border px-4 py-3 transition-colors ${ticket.invoiced ? 'bg-success/5 border-success/30' : 'bg-surface border-surface-variant'}`}
+                                            >
+                                                <MIcon
+                                                    name={ticket.mimeType === 'application/pdf' ? 'picture_as_pdf' : 'image'}
+                                                    className="text-on-surface-variant flex-shrink-0"
+                                                />
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="text-sm font-medium text-on-background truncate">{ticket.filename}</p>
+                                                    <p className="text-xs text-on-surface-variant">
+                                                        {formatSize(ticket.size)} · {new Date(ticket.createdAt).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                                    </p>
+                                                </div>
+                                                {/* Switch facturado */}
+                                                <div className="flex items-center gap-1.5 flex-shrink-0">
+                                                    <span className={`text-xs font-medium ${ticket.invoiced ? 'text-success' : 'text-on-surface-variant'}`}>
+                                                        {ticket.invoiced ? 'Facturado' : 'Sin factura'}
+                                                    </span>
+                                                    <button
+                                                        type="button"
+                                                        role="switch"
+                                                        aria-checked={ticket.invoiced}
+                                                        disabled={togglingId === ticket.id}
+                                                        onClick={() => handleToggleInvoiced(ticket)}
+                                                        className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50 ${ticket.invoiced ? 'bg-success' : 'bg-surface-variant'}`}
+                                                    >
+                                                        <span
+                                                            className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${ticket.invoiced ? 'translate-x-4.5' : 'translate-x-0.5'}`}
+                                                        />
+                                                    </button>
+                                                </div>
+                                                <div className="flex gap-1 flex-shrink-0">
+                                                    <Button variant="tonal" size="sm" icon="visibility" onClick={() => handleView(ticket)}>
+                                                        Ver
+                                                    </Button>
+                                                    <Button
+                                                        variant="text"
+                                                        size="sm"
+                                                        icon="delete"
+                                                        className="text-error hover:bg-error/8"
+                                                        onClick={() => setConfirmDeleteId(ticket.id)}
+                                                    />
+                                                </div>
+                                            </div>
+                                        ))}
                                     </div>
                                 </div>
                             ))}
@@ -318,6 +375,40 @@ const SupplierTicketsModal: React.FC<{
                     )}
                 </div>
             </Modal>
+
+            {/* Modal: ingresar referencia de pedido antes de subir */}
+            {pendingFile && (
+                <Modal
+                    open
+                    onClose={() => { setPendingFile(null); setOrderRefInput(''); }}
+                    title="Referencia de pedido"
+                    maxWidth="max-w-sm"
+                    footer={
+                        <>
+                            <Button variant="neutral" onClick={() => { setPendingFile(null); setOrderRefInput(''); }} disabled={uploading}>
+                                Cancelar
+                            </Button>
+                            <Button variant="filled" icon="upload" onClick={handleUploadConfirm} disabled={uploading}>
+                                {uploading ? 'Subiendo…' : 'Subir ticket'}
+                            </Button>
+                        </>
+                    }
+                >
+                    <div className="p-6 space-y-4">
+                        <p className="text-sm text-on-surface-variant">
+                            Archivo: <span className="font-medium text-on-background">{pendingFile.file.name}</span>
+                        </p>
+                        <Field label="Número o referencia de pedido (opcional)">
+                            <Input
+                                value={orderRefInput}
+                                onChange={e => setOrderRefInput(e.target.value)}
+                                placeholder="Ej. 1042, Sem-23, etc."
+                                autoFocus
+                            />
+                        </Field>
+                    </div>
+                </Modal>
+            )}
 
             {/* Confirmar eliminar ticket */}
             {confirmDeleteId && (

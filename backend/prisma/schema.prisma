@@ -191,6 +191,8 @@ model InventoryMovement {
 model SupplierTicket {
   id         String   @id @default(cuid())
   supplierId String
+  orderRef   String   @default("")
+  invoiced   Boolean  @default(false)
   filename   String
   mimeType   String
   size       Int
