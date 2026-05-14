@@ -104,6 +104,7 @@ export interface Article {
   image: string | null;
   price: number;
   sku?: string;
+  barcode?: string;
   category?: string;
   description?: string;
   stockStatus?: string;

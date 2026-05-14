@@ -63,6 +63,7 @@ model Article {
   image        String?
   price        Float
   sku          String            @default("")
+  barcode      String            @default("")
   category     String            @default("")
   description  String            @default("")
   stockStatus  String            @default("")

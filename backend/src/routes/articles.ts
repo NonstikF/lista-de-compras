@@ -13,6 +13,7 @@ const articleSchema = z.object({
     image: z.string().nullable().default(null),
     price: z.number().min(0, 'Precio inválido'),
     sku: z.string().default(''),
+    barcode: z.string().default(''),
     category: z.string().default(''),
     description: z.string().default(''),
     stockStatus: z.string().default(''),
@@ -26,6 +27,7 @@ function formatArticle(a: {
     image: string | null;
     price: number;
     sku: string;
+    barcode: string;
     category: string;
     description: string;
     stockStatus: string;
@@ -40,6 +42,7 @@ function formatArticle(a: {
         image: a.image,
         price: a.price,
         sku: a.sku,
+        barcode: a.barcode,
         category: a.category,
         description: a.description,
         stockStatus: a.stockStatus,
@@ -119,11 +122,11 @@ router.get('/', async (_req: Request, res: Response) => {
 router.post('/', async (req: Request, res: Response) => {
     const parsed = articleSchema.safeParse(req.body);
     if (!parsed.success) { res.status(400).json({ error: parsed.error.issues[0].message }); return; }
-    const { wooProductId, name, image, price, sku, category, description, stockStatus, supplierIds } = parsed.data;
+    const { wooProductId, name, image, price, sku, barcode, category, description, stockStatus, supplierIds } = parsed.data;
     try {
         const article = await prisma.article.create({
             data: {
-                wooProductId, name, image, price, sku, category, description, stockStatus,
+                wooProductId, name, image, price, sku, barcode, category, description, stockStatus,
                 suppliers: { create: supplierIds.map((sid: string) => ({ supplierId: sid })) },
                 inventory: { create: {} },
             },
@@ -139,12 +142,12 @@ router.post('/', async (req: Request, res: Response) => {
 router.put('/:id', async (req: Request, res: Response) => {
     const parsed = articleSchema.safeParse(req.body);
     if (!parsed.success) { res.status(400).json({ error: parsed.error.issues[0].message }); return; }
-    const { wooProductId, name, image, price, sku, category, description, stockStatus, supplierIds } = parsed.data;
+    const { wooProductId, name, image, price, sku, barcode, category, description, stockStatus, supplierIds } = parsed.data;
     try {
         const article = await prisma.article.update({
             where: { id: req.params.id },
             data: {
-                wooProductId, name, image, price, sku, category, description, stockStatus,
+                wooProductId, name, image, price, sku, barcode, category, description, stockStatus,
                 suppliers: { deleteMany: {}, create: supplierIds.map((sid: string) => ({ supplierId: sid })) },
             },
             include: { suppliers: { select: { supplierId: true } } },
