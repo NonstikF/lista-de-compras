@@ -128,6 +128,23 @@ router.delete('/:id/tickets/:ticketId', async (req: Request, res: Response) => {
     }
 });
 
+// GET /api/suppliers/:id/order-tickets — OrderTickets que coinciden por nombre de proveedor
+router.get('/:id/order-tickets', async (req: Request, res: Response) => {
+    try {
+        const supplier = await prisma.supplier.findUnique({ where: { id: req.params.id }, select: { id: true, name: true } });
+        if (!supplier) { res.status(404).json({ error: 'Proveedor no encontrado' }); return; }
+        const tickets = await prisma.orderTicket.findMany({
+            where: { supplierName: supplier.name },
+            select: { id: true, orderId: true, supplierName: true, filename: true, mimeType: true, size: true, createdAt: true },
+            orderBy: { createdAt: 'desc' },
+        });
+        res.json(tickets);
+    } catch (err) {
+        console.error('Error al obtener order-tickets de proveedor:', err);
+        res.status(500).json({ error: 'Error al obtener tickets de pedidos' });
+    }
+});
+
 router.patch('/:id/tickets/:ticketId', async (req: Request, res: Response) => {
     const parsed = z.object({ invoiced: z.boolean() }).safeParse(req.body);
     if (!parsed.success) { res.status(400).json({ error: 'invoiced debe ser boolean' }); return; }

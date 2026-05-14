@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import type { Supplier, SupplierTicket } from '../../types';
+import type { Supplier, SupplierTicket, OrderTicket } from '../../types';
 import {
     AuthError, getSuppliers, createSupplier, updateSupplier, deleteSupplier,
     getSupplierTickets, getSupplierTicketContent, createSupplierTicket, deleteSupplierTicket,
-    updateSupplierTicketInvoiced,
+    updateSupplierTicketInvoiced, getSupplierOrderTickets, getOrderTicketContent,
 } from '../../services/api';
 import { Modal, Button, Field, Input, MIcon, useToast } from '../ui';
 
@@ -137,6 +137,7 @@ const SupplierTicketsModal: React.FC<{
     const [viewingFilename, setViewingFilename] = useState<string | null>(null);
     const [togglingId, setTogglingId] = useState<string | null>(null);
     const [activeGroup, setActiveGroup] = useState<string | null>(null);
+    const [orderTickets, setOrderTickets] = useState<OrderTicket[]>([]);
     const fileRef = useRef<HTMLInputElement>(null);
     const toast = useToast();
 
@@ -145,8 +146,11 @@ const SupplierTicketsModal: React.FC<{
         const load = async () => {
             setIsLoading(true);
             try {
-                const data = await getSupplierTickets(authToken, supplier.id);
-                if (!cancelled) setTickets(data);
+                const [supplierData, orderData] = await Promise.all([
+                    getSupplierTickets(authToken, supplier.id),
+                    getSupplierOrderTickets(authToken, supplier.id),
+                ]);
+                if (!cancelled) { setTickets(supplierData); setOrderTickets(orderData); }
             } catch (err) {
                 if (err instanceof AuthError) { onAuthError(); return; }
                 if (!cancelled) toast('error', err instanceof Error ? err.message : 'Error al cargar tickets');
@@ -241,28 +245,44 @@ const SupplierTicketsModal: React.FC<{
         }
     };
 
-    // Group tickets by orderRef
-    const groups = tickets.reduce<Record<string, SupplierTicket[]>>((acc, t) => {
+    // SupplierTickets grouped by orderRef
+    const supplierGroups = tickets.reduce<Record<string, SupplierTicket[]>>((acc, t) => {
         const key = t.orderRef?.trim() || '';
         if (!acc[key]) acc[key] = [];
         acc[key].push(t);
         return acc;
     }, {});
-    const sortedGroupKeys = Object.keys(groups).sort((a, b) => {
+    const sortedSupplierKeys = Object.keys(supplierGroups).sort((a, b) => {
         if (a === '') return 1;
         if (b === '') return -1;
         return a.localeCompare(b, 'es', { numeric: true });
     });
 
-    // Set first group active once tickets load
-    useEffect(() => {
-        if (tickets.length > 0 && activeGroup === null) {
-            setActiveGroup(sortedGroupKeys[0] ?? null);
-        }
-    }, [tickets.length]);
+    // OrderTickets grouped by orderId — key prefix "order:"
+    const orderGroups = orderTickets.reduce<Record<string, OrderTicket[]>>((acc, t) => {
+        const key = String(t.orderId);
+        if (!acc[key]) acc[key] = [];
+        acc[key].push(t);
+        return acc;
+    }, {});
+    const sortedOrderKeys = Object.keys(orderGroups).sort((a, b) => Number(b) - Number(a));
 
-    const activeTickets = activeGroup !== null ? (groups[activeGroup] ?? []) : [];
-    const invoicedCount = activeTickets.filter(t => t.invoiced).length;
+    const totalCount = tickets.length + orderTickets.length;
+    const totalGroups = sortedSupplierKeys.length + sortedOrderKeys.length;
+
+    // Set first group active once data loads
+    useEffect(() => {
+        if (activeGroup === null) {
+            if (sortedOrderKeys.length > 0) setActiveGroup(`order:${sortedOrderKeys[0]}`);
+            else if (sortedSupplierKeys.length > 0) setActiveGroup(`supplier:${sortedSupplierKeys[0]}`);
+        }
+    }, [orderTickets.length, tickets.length]);
+
+    const isOrderGroup = activeGroup?.startsWith('order:') ?? false;
+    const activeKey = activeGroup?.replace(/^(order|supplier):/, '') ?? '';
+    const activeOrderTickets: OrderTicket[] = isOrderGroup ? (orderGroups[activeKey] ?? []) : [];
+    const activeSupplierTickets: SupplierTicket[] = !isOrderGroup && activeGroup !== null ? (supplierGroups[activeKey] ?? []) : [];
+    const invoicedCount = activeSupplierTickets.filter(t => t.invoiced).length;
 
     return (
         <>
@@ -277,7 +297,7 @@ const SupplierTicketsModal: React.FC<{
                         <div>
                             <span className="text-base font-bold text-on-background">{supplier.name}</span>
                             <p className="text-xs font-normal text-on-surface-variant leading-none mt-0.5">
-                                {tickets.length} ticket{tickets.length !== 1 ? 's' : ''} · {sortedGroupKeys.length} pedido{sortedGroupKeys.length !== 1 ? 's' : ''}
+                                {totalCount} ticket{totalCount !== 1 ? 's' : ''} · {totalGroups} pedido{totalGroups !== 1 ? 's' : ''}
                             </p>
                         </div>
                     </div>
@@ -315,7 +335,7 @@ const SupplierTicketsModal: React.FC<{
                     </div>
                 )}
 
-                {!isLoading && tickets.length === 0 && (
+                {!isLoading && totalCount === 0 && (
                     <div className="flex flex-col items-center justify-center py-20 text-center text-on-surface-variant gap-3">
                         <div className="w-16 h-16 rounded-2xl bg-surface-container-high flex items-center justify-center">
                             <MIcon name="receipt_long" size={32} className="opacity-40" />
@@ -325,136 +345,209 @@ const SupplierTicketsModal: React.FC<{
                     </div>
                 )}
 
-                {!isLoading && tickets.length > 0 && (
+                {!isLoading && totalCount > 0 && (
                     <div className="flex h-[420px]">
-                        {/* Sidebar — grupos de pedidos */}
-                        <div className="w-48 flex-shrink-0 border-r border-surface-variant bg-surface-container-low flex flex-col">
-                            <p className="px-4 pt-4 pb-2 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">Pedidos</p>
-                            <div className="flex-1 overflow-y-auto space-y-0.5 px-2 pb-4">
-                                {sortedGroupKeys.map(key => {
-                                    const count = groups[key].length;
-                                    const allInvoiced = groups[key].every(t => t.invoiced);
-                                    const someInvoiced = groups[key].some(t => t.invoiced);
-                                    const isActive = activeGroup === key;
-                                    return (
-                                        <button
-                                            key={key}
-                                            type="button"
-                                            onClick={() => setActiveGroup(key)}
-                                            className={`w-full text-left px-3 py-2.5 rounded-xl transition-all flex items-center gap-2.5 ${isActive ? 'bg-primary text-on-primary shadow-sm' : 'hover:bg-surface-container text-on-background'}`}
-                                        >
-                                            <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 ${isActive ? 'bg-white/20' : allInvoiced ? 'bg-success/10' : 'bg-surface-variant'}`}>
-                                                <MIcon
-                                                    name={key ? 'local_shipping' : 'help_outline'}
-                                                    className={`text-sm leading-none ${isActive ? 'text-white' : allInvoiced ? 'text-success' : 'text-on-surface-variant'}`}
-                                                />
-                                            </div>
-                                            <div className="flex-1 min-w-0">
-                                                <p className={`text-xs font-semibold truncate ${isActive ? 'text-white' : 'text-on-background'}`}>
-                                                    {key || 'Sin pedido'}
-                                                </p>
-                                                <p className={`text-[10px] ${isActive ? 'text-white/70' : 'text-on-surface-variant'}`}>
-                                                    {count} ticket{count !== 1 ? 's' : ''}
-                                                    {someInvoiced ? ` · ${groups[key].filter(t => t.invoiced).length} fact.` : ''}
-                                                </p>
-                                            </div>
-                                            {allInvoiced && !isActive && (
-                                                <MIcon name="check_circle" className="text-sm text-success flex-shrink-0" fill />
-                                            )}
-                                        </button>
-                                    );
-                                })}
-                            </div>
+                        {/* Sidebar */}
+                        <div className="w-52 flex-shrink-0 border-r border-surface-variant bg-surface-container-low flex flex-col overflow-y-auto">
+
+                            {/* Sección: Pedidos WooCommerce */}
+                            {sortedOrderKeys.length > 0 && (
+                                <>
+                                    <p className="px-4 pt-4 pb-2 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">De lista de compras</p>
+                                    <div className="space-y-0.5 px-2">
+                                        {sortedOrderKeys.map(orderId => {
+                                            const grpKey = `order:${orderId}`;
+                                            const count = orderGroups[orderId].length;
+                                            const isActive = activeGroup === grpKey;
+                                            const date = new Date(orderGroups[orderId][0].createdAt).toLocaleDateString('es-MX', { day: 'numeric', month: 'short' });
+                                            return (
+                                                <button
+                                                    key={grpKey}
+                                                    type="button"
+                                                    onClick={() => setActiveGroup(grpKey)}
+                                                    className={`w-full text-left px-3 py-2.5 rounded-xl transition-all flex items-center gap-2.5 ${isActive ? 'bg-primary text-on-primary shadow-sm' : 'hover:bg-surface-container text-on-background'}`}
+                                                >
+                                                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 ${isActive ? 'bg-white/20' : 'bg-blue-50'}`}>
+                                                        <MIcon name="shopping_cart" className={`text-sm leading-none ${isActive ? 'text-white' : 'text-blue-400'}`} />
+                                                    </div>
+                                                    <div className="flex-1 min-w-0">
+                                                        <p className={`text-xs font-semibold truncate ${isActive ? 'text-white' : 'text-on-background'}`}>
+                                                            Pedido #{orderId}
+                                                        </p>
+                                                        <p className={`text-[10px] ${isActive ? 'text-white/70' : 'text-on-surface-variant'}`}>
+                                                            {count} ticket{count !== 1 ? 's' : ''} · {date}
+                                                        </p>
+                                                    </div>
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </>
+                            )}
+
+                            {/* Sección: Tickets propios */}
+                            {sortedSupplierKeys.length > 0 && (
+                                <>
+                                    <p className="px-4 pt-4 pb-2 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">Propios</p>
+                                    <div className="space-y-0.5 px-2 pb-4">
+                                        {sortedSupplierKeys.map(key => {
+                                            const grpKey = `supplier:${key}`;
+                                            const count = supplierGroups[key].length;
+                                            const allInvoiced = supplierGroups[key].every(t => t.invoiced);
+                                            const someInvoiced = supplierGroups[key].some(t => t.invoiced);
+                                            const isActive = activeGroup === grpKey;
+                                            return (
+                                                <button
+                                                    key={grpKey}
+                                                    type="button"
+                                                    onClick={() => setActiveGroup(grpKey)}
+                                                    className={`w-full text-left px-3 py-2.5 rounded-xl transition-all flex items-center gap-2.5 ${isActive ? 'bg-primary text-on-primary shadow-sm' : 'hover:bg-surface-container text-on-background'}`}
+                                                >
+                                                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 ${isActive ? 'bg-white/20' : allInvoiced ? 'bg-success/10' : 'bg-surface-variant'}`}>
+                                                        <MIcon
+                                                            name={key ? 'receipt' : 'help_outline'}
+                                                            className={`text-sm leading-none ${isActive ? 'text-white' : allInvoiced ? 'text-success' : 'text-on-surface-variant'}`}
+                                                        />
+                                                    </div>
+                                                    <div className="flex-1 min-w-0">
+                                                        <p className={`text-xs font-semibold truncate ${isActive ? 'text-white' : 'text-on-background'}`}>
+                                                            {key || 'Sin referencia'}
+                                                        </p>
+                                                        <p className={`text-[10px] ${isActive ? 'text-white/70' : 'text-on-surface-variant'}`}>
+                                                            {count} ticket{count !== 1 ? 's' : ''}
+                                                            {someInvoiced ? ` · ${supplierGroups[key].filter(t => t.invoiced).length} fact.` : ''}
+                                                        </p>
+                                                    </div>
+                                                    {allInvoiced && !isActive && (
+                                                        <MIcon name="check_circle" className="text-sm text-success flex-shrink-0" fill />
+                                                    )}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </>
+                            )}
                         </div>
 
-                        {/* Panel derecho — tickets del grupo activo */}
+                        {/* Panel derecho */}
                         <div className="flex-1 overflow-y-auto">
                             {activeGroup !== null && (
                                 <>
-                                    {/* Header del grupo */}
+                                    {/* Header */}
                                     <div className="sticky top-0 z-10 bg-white/95 backdrop-blur-sm border-b border-surface-variant px-5 py-3 flex items-center justify-between">
                                         <div>
                                             <p className="font-semibold text-sm text-on-background">
-                                                {activeGroup ? `Pedido ${activeGroup}` : 'Sin pedido'}
+                                                {isOrderGroup
+                                                    ? `Pedido #${activeKey}`
+                                                    : activeKey ? `Ref. ${activeKey}` : 'Sin referencia'}
                                             </p>
                                             <p className="text-xs text-on-surface-variant">
-                                                {activeTickets.length} ticket{activeTickets.length !== 1 ? 's' : ''} · {invoicedCount} facturado{invoicedCount !== 1 ? 's' : ''}
+                                                {isOrderGroup
+                                                    ? `${activeOrderTickets.length} ticket${activeOrderTickets.length !== 1 ? 's' : ''} · solo lectura`
+                                                    : `${activeSupplierTickets.length} ticket${activeSupplierTickets.length !== 1 ? 's' : ''} · ${invoicedCount} facturado${invoicedCount !== 1 ? 's' : ''}`
+                                                }
                                             </p>
                                         </div>
-                                        {invoicedCount === activeTickets.length && activeTickets.length > 0 && (
+                                        {isOrderGroup && (
+                                            <span className="flex items-center gap-1 text-xs font-medium text-blue-500 bg-blue-50 px-2.5 py-1 rounded-full">
+                                                <MIcon name="shopping_cart" className="text-sm" /> WooCommerce
+                                            </span>
+                                        )}
+                                        {!isOrderGroup && invoicedCount === activeSupplierTickets.length && activeSupplierTickets.length > 0 && (
                                             <span className="flex items-center gap-1 text-xs font-semibold text-success bg-success/10 px-2.5 py-1 rounded-full">
                                                 <MIcon name="check_circle" className="text-sm" fill /> Completo
                                             </span>
                                         )}
                                     </div>
 
-                                    {/* Cards de tickets */}
-                                    <div className="p-4 space-y-3">
-                                        {activeTickets.map(ticket => (
-                                            <div
-                                                key={ticket.id}
-                                                className={`group relative rounded-2xl border transition-all ${ticket.invoiced ? 'bg-success/4 border-success/25' : 'bg-white border-surface-variant hover:border-primary/30 hover:shadow-sm'}`}
-                                            >
-                                                <div className="flex items-center gap-3 px-4 py-3">
-                                                    {/* Thumbnail placeholder */}
-                                                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${ticket.mimeType === 'application/pdf' ? 'bg-red-50' : 'bg-blue-50'}`}>
-                                                        <MIcon
-                                                            name={ticket.mimeType === 'application/pdf' ? 'picture_as_pdf' : 'image'}
-                                                            className={`text-xl ${ticket.mimeType === 'application/pdf' ? 'text-red-400' : 'text-blue-400'}`}
-                                                        />
-                                                    </div>
-
-                                                    {/* Info */}
-                                                    <div className="flex-1 min-w-0">
-                                                        <p className="text-sm font-medium text-on-background truncate">{ticket.filename}</p>
-                                                        <p className="text-xs text-on-surface-variant mt-0.5">
-                                                            {formatSize(ticket.size)} · {new Date(ticket.createdAt).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' })}
-                                                        </p>
-                                                    </div>
-
-                                                    {/* Actions */}
-                                                    <div className="flex items-center gap-2 flex-shrink-0">
+                                    {/* Cards — OrderTickets (read-only) */}
+                                    {isOrderGroup && (
+                                        <div className="p-4 space-y-3">
+                                            {activeOrderTickets.map(ticket => (
+                                                <div key={ticket.id} className="rounded-2xl border bg-white border-surface-variant hover:border-blue-200 hover:shadow-sm transition-all">
+                                                    <div className="flex items-center gap-3 px-4 py-3">
+                                                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${ticket.mimeType === 'application/pdf' ? 'bg-red-50' : 'bg-blue-50'}`}>
+                                                            <MIcon
+                                                                name={ticket.mimeType === 'application/pdf' ? 'picture_as_pdf' : 'image'}
+                                                                className={`text-xl ${ticket.mimeType === 'application/pdf' ? 'text-red-400' : 'text-blue-400'}`}
+                                                            />
+                                                        </div>
+                                                        <div className="flex-1 min-w-0">
+                                                            <p className="text-sm font-medium text-on-background truncate">{ticket.filename}</p>
+                                                            <p className="text-xs text-on-surface-variant mt-0.5">
+                                                                {formatSize(ticket.size)} · {new Date(ticket.createdAt).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                                            </p>
+                                                        </div>
                                                         <button
                                                             type="button"
-                                                            onClick={() => handleView(ticket)}
+                                                            onClick={async () => {
+                                                                try {
+                                                                    const full = await getOrderTicketContent(authToken, ticket.orderId, ticket.id);
+                                                                    if (!full.content) return;
+                                                                    if (full.mimeType === 'application/pdf') { openPdfInNewTab(full.content, full.filename); }
+                                                                    else { setViewingContent(full.content); setViewingFilename(full.filename); }
+                                                                } catch { toast('error', 'No se pudo cargar el ticket'); }
+                                                            }}
                                                             className="p-1.5 rounded-lg text-on-surface-variant hover:text-primary hover:bg-primary/8 transition-colors"
                                                             title="Ver ticket"
                                                         >
                                                             <MIcon name="visibility" className="text-lg leading-none" />
                                                         </button>
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => setConfirmDeleteId(ticket.id)}
-                                                            className="p-1.5 rounded-lg text-on-surface-variant hover:text-error hover:bg-error/8 transition-colors"
-                                                            title="Eliminar"
-                                                        >
-                                                            <MIcon name="delete" className="text-lg leading-none" />
-                                                        </button>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
 
-                                                        {/* Switch facturado */}
-                                                        <div
-                                                            className={`flex items-center gap-1.5 pl-2 border-l border-surface-variant`}
-                                                        >
-                                                            <button
-                                                                type="button"
-                                                                role="switch"
-                                                                aria-checked={ticket.invoiced}
-                                                                disabled={togglingId === ticket.id}
-                                                                onClick={() => handleToggleInvoiced(ticket)}
-                                                                title={ticket.invoiced ? 'Marcar sin factura' : 'Marcar como facturado'}
-                                                                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50 ${ticket.invoiced ? 'bg-success' : 'bg-surface-variant'}`}
-                                                            >
-                                                                <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform ${ticket.invoiced ? 'translate-x-6' : 'translate-x-1'}`} />
+                                    {/* Cards — SupplierTickets (con switch facturado) */}
+                                    {!isOrderGroup && (
+                                        <div className="p-4 space-y-3">
+                                            {activeSupplierTickets.map(ticket => (
+                                                <div
+                                                    key={ticket.id}
+                                                    className={`rounded-2xl border transition-all ${ticket.invoiced ? 'bg-success/4 border-success/25' : 'bg-white border-surface-variant hover:border-primary/30 hover:shadow-sm'}`}
+                                                >
+                                                    <div className="flex items-center gap-3 px-4 py-3">
+                                                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${ticket.mimeType === 'application/pdf' ? 'bg-red-50' : 'bg-blue-50'}`}>
+                                                            <MIcon
+                                                                name={ticket.mimeType === 'application/pdf' ? 'picture_as_pdf' : 'image'}
+                                                                className={`text-xl ${ticket.mimeType === 'application/pdf' ? 'text-red-400' : 'text-blue-400'}`}
+                                                            />
+                                                        </div>
+                                                        <div className="flex-1 min-w-0">
+                                                            <p className="text-sm font-medium text-on-background truncate">{ticket.filename}</p>
+                                                            <p className="text-xs text-on-surface-variant mt-0.5">
+                                                                {formatSize(ticket.size)} · {new Date(ticket.createdAt).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                                            </p>
+                                                        </div>
+                                                        <div className="flex items-center gap-2 flex-shrink-0">
+                                                            <button type="button" onClick={() => handleView(ticket)} className="p-1.5 rounded-lg text-on-surface-variant hover:text-primary hover:bg-primary/8 transition-colors" title="Ver">
+                                                                <MIcon name="visibility" className="text-lg leading-none" />
                                                             </button>
-                                                            <span className={`text-[11px] font-semibold w-16 ${ticket.invoiced ? 'text-success' : 'text-on-surface-variant'}`}>
-                                                                {togglingId === ticket.id ? '…' : ticket.invoiced ? 'Facturado' : 'Sin factura'}
-                                                            </span>
+                                                            <button type="button" onClick={() => setConfirmDeleteId(ticket.id)} className="p-1.5 rounded-lg text-on-surface-variant hover:text-error hover:bg-error/8 transition-colors" title="Eliminar">
+                                                                <MIcon name="delete" className="text-lg leading-none" />
+                                                            </button>
+                                                            <div className="flex items-center gap-1.5 pl-2 border-l border-surface-variant">
+                                                                <button
+                                                                    type="button"
+                                                                    role="switch"
+                                                                    aria-checked={ticket.invoiced}
+                                                                    disabled={togglingId === ticket.id}
+                                                                    onClick={() => handleToggleInvoiced(ticket)}
+                                                                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none disabled:opacity-50 ${ticket.invoiced ? 'bg-success' : 'bg-surface-variant'}`}
+                                                                >
+                                                                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform ${ticket.invoiced ? 'translate-x-6' : 'translate-x-1'}`} />
+                                                                </button>
+                                                                <span className={`text-[11px] font-semibold w-16 ${ticket.invoiced ? 'text-success' : 'text-on-surface-variant'}`}>
+                                                                    {togglingId === ticket.id ? '…' : ticket.invoiced ? 'Facturado' : 'Sin factura'}
+                                                                </span>
+                                                            </div>
                                                         </div>
                                                     </div>
                                                 </div>
-                                            </div>
-                                        ))}
-                                    </div>
+                                            ))}
+                                        </div>
+                                    )}
                                 </>
                             )}
                         </div>
