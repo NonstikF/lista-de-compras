@@ -13,6 +13,8 @@ export const navItems: { view: AppView; label: string; icon: string }[] = [
   { view: 'inventory',  label: 'Inventario',  icon: 'inventory'        },
 ];
 
+const PRIMARY_NAV: AppView[] = ['dashboard', 'orders', 'articles', 'store'];
+
 interface SidebarProps {
   onLogout: () => void;
   setView: (view: AppView) => void;
@@ -21,6 +23,16 @@ interface SidebarProps {
 
 const Sidebar: React.FC<SidebarProps> = ({ onLogout, setView, currentView }) => {
   const [collapsed, setCollapsed] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
+
+  const primaryItems = navItems.filter(n => PRIMARY_NAV.includes(n.view));
+  const moreItems = navItems.filter(n => !PRIMARY_NAV.includes(n.view));
+  const moreIsActive = moreItems.some(n => n.view === currentView);
+
+  const handleMoreNav = (view: AppView) => {
+    setView(view);
+    setMoreOpen(false);
+  };
 
   return (
     <>
@@ -99,14 +111,50 @@ const Sidebar: React.FC<SidebarProps> = ({ onLogout, setView, currentView }) => 
         </div>
       </aside>
 
+      {/* More drawer backdrop */}
+      {moreOpen && (
+        <div
+          className="md:hidden fixed inset-0 z-40 bg-black/30"
+          onClick={() => setMoreOpen(false)}
+        />
+      )}
+
+      {/* More drawer */}
+      {moreOpen && (
+        <div className="md:hidden fixed bottom-16 left-0 right-0 z-50 bg-white border-t border-surface-variant shadow-2xl rounded-t-2xl px-4 py-4">
+          <div className="grid grid-cols-4 gap-2">
+            {moreItems.map(({ view, label, icon }) => (
+              <button
+                key={view}
+                onClick={() => handleMoreNav(view)}
+                aria-label={label}
+                className={`flex flex-col items-center gap-1 px-2 py-3 rounded-xl transition text-[10px] font-semibold ${
+                  currentView === view
+                    ? 'text-primary bg-primary/10'
+                    : 'text-on-surface-variant hover:bg-surface-container-low'
+                }`}
+              >
+                <span
+                  className="material-symbols-outlined text-2xl"
+                  style={currentView === view ? { fontVariationSettings: "'FILL' 1" } : {}}
+                >
+                  {icon}
+                </span>
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Mobile bottom nav */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-surface-variant shadow-lg flex justify-around items-center px-1 py-1.5">
-        {navItems.map(({ view, label, icon }) => (
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-surface-variant shadow-lg flex justify-around items-center px-2 py-1.5">
+        {primaryItems.map(({ view, label, icon }) => (
           <button
             key={view}
             onClick={() => setView(view)}
             aria-label={label}
-            className={`flex flex-col items-center gap-0 px-1 py-1 rounded-xl transition text-[7px] font-bold uppercase tracking-wider ${
+            className={`flex flex-col items-center gap-0.5 px-3 py-1 rounded-xl transition text-[10px] font-semibold ${
               currentView === view ? 'text-primary' : 'text-on-surface-variant'
             }`}
           >
@@ -119,6 +167,21 @@ const Sidebar: React.FC<SidebarProps> = ({ onLogout, setView, currentView }) => 
             {label}
           </button>
         ))}
+        <button
+          onClick={() => setMoreOpen(o => !o)}
+          aria-label="Más opciones"
+          className={`flex flex-col items-center gap-0.5 px-3 py-1 rounded-xl transition text-[10px] font-semibold ${
+            moreIsActive || moreOpen ? 'text-primary' : 'text-on-surface-variant'
+          }`}
+        >
+          <span
+            className="material-symbols-outlined text-2xl"
+            style={moreIsActive || moreOpen ? { fontVariationSettings: "'FILL' 1" } : {}}
+          >
+            more_horiz
+          </span>
+          Más
+        </button>
       </nav>
     </>
   );
