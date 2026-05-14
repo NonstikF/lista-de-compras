@@ -211,6 +211,32 @@ function openPdfBlob(dataUrl: string, filename: string) {
 }
 
 const TICKET_ALLOWED_TYPES = ['image/jpeg', 'image/png', 'application/pdf'];
+const MAX_IMAGE_BYTES = 950_000;
+
+function compressImage(dataUrl: string): Promise<string> {
+    return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => {
+            const MAX_DIM = 1920;
+            const scale = Math.min(1, MAX_DIM / Math.max(img.width, img.height));
+            const canvas = document.createElement('canvas');
+            canvas.width = Math.round(img.width * scale);
+            canvas.height = Math.round(img.height * scale);
+            const ctx = canvas.getContext('2d');
+            if (!ctx) { reject(new Error('Canvas no disponible')); return; }
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+            let quality = 0.85;
+            let result = canvas.toDataURL('image/jpeg', quality);
+            while (Math.round((result.length * 3) / 4) > MAX_IMAGE_BYTES && quality > 0.2) {
+                quality = Math.round((quality - 0.1) * 10) / 10;
+                result = canvas.toDataURL('image/jpeg', quality);
+            }
+            resolve(result);
+        };
+        img.onerror = () => reject(new Error('No se pudo leer la imagen'));
+        img.src = dataUrl;
+    });
+}
 
 // --- Modal de tickets ---
 const OrderTicketModal: React.FC<{
@@ -230,6 +256,7 @@ const OrderTicketModal: React.FC<{
     const [deleting, setDeleting] = useState(false);
     const [viewingContent, setViewingContent] = useState<string | null>(null);
     const [viewingFilename, setViewingFilename] = useState<string | null>(null);
+    const [contentCache, setContentCache] = useState<Record<string, string>>({});
     const fileRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
@@ -250,15 +277,49 @@ const OrderTicketModal: React.FC<{
         return () => { cancelled = true; };
     }, [orderId, supplierName]);
 
+    // Load previews for image tickets
+    useEffect(() => {
+        const toLoad = tickets.filter(t => t.mimeType !== 'application/pdf' && !contentCache[t.id]);
+        if (toLoad.length === 0) return;
+        let cancelled = false;
+        Promise.all(toLoad.map(t => getOrderTicketContent(authToken, orderId, t.id)))
+            .then(results => {
+                if (cancelled) return;
+                setContentCache(prev => {
+                    const next = { ...prev };
+                    results.forEach(r => { if (r.content) next[r.id] = r.content; });
+                    return next;
+                });
+            })
+            .catch(() => {});
+        return () => { cancelled = true; };
+    }, [tickets.length]);
+
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
         e.target.value = '';
         if (!TICKET_ALLOWED_TYPES.includes(file.type)) { setFileError('Solo se permiten archivos JPG, PNG o PDF.'); return; }
-        if (file.size > 1_000_000) { setFileError('El archivo no puede superar 1 MB.'); return; }
+        if (file.type === 'application/pdf') {
+            if (file.size > 1_000_000) { setFileError('El PDF no puede superar 1 MB.'); return; }
+            setFileError('');
+            const reader = new FileReader();
+            reader.onload = ev => handleUpload(file, ev.target?.result as string, 'application/pdf');
+            reader.readAsDataURL(file);
+            return;
+        }
         setFileError('');
+        setUploading(true);
         const reader = new FileReader();
-        reader.onload = ev => handleUpload(file, ev.target?.result as string, file.type);
+        reader.onload = async ev => {
+            try {
+                const compressed = await compressImage(ev.target?.result as string);
+                await handleUpload(file, compressed, 'image/jpeg');
+            } catch {
+                setFileError('No se pudo procesar la imagen.');
+                setUploading(false);
+            }
+        };
         reader.readAsDataURL(file);
     };
 
@@ -361,45 +422,49 @@ const OrderTicketModal: React.FC<{
                             </div>
                         )}
                         {!isLoading && tickets.length > 0 && (
-                            <div className="space-y-2">
-                                {tickets.map(ticket => (
-                                    <div key={ticket.id} className="border border-surface-variant rounded-xl overflow-hidden bg-surface-container-low">
-                                        {ticket.content && ticket.mimeType !== 'application/pdf' && (
-                                            <button type="button" onClick={() => { setViewingContent(ticket.content!); setViewingFilename(ticket.filename); }} className="block w-full">
-                                                <img src={ticket.content} alt={ticket.filename} className="w-full max-h-48 object-cover" />
-                                            </button>
-                                        )}
-                                        {ticket.content && ticket.mimeType === 'application/pdf' && (
-                                            <button type="button" onClick={() => openPdfBlob(ticket.content!, ticket.filename)} className="w-full flex items-center justify-center gap-2 py-4 bg-error-container/20 hover:bg-error-container/40 transition text-error text-sm font-medium">
-                                                <span className="material-symbols-outlined text-2xl">picture_as_pdf</span>
-                                                Abrir PDF
-                                            </button>
-                                        )}
-                                        <div className="flex items-center gap-3 px-3 py-2.5">
-                                            {!ticket.content && (
-                                                <span className="material-symbols-outlined text-on-surface-variant text-xl flex-shrink-0">
-                                                    {ticket.mimeType === 'application/pdf' ? 'picture_as_pdf' : 'image'}
-                                                </span>
-                                            )}
-                                            <div className="flex-1 min-w-0">
-                                                <p className="text-sm font-medium text-on-surface truncate">{ticket.filename}</p>
-                                                <p className="text-xs text-on-surface-variant">
-                                                    {formatTicketSize(ticket.size)} · {new Date(ticket.createdAt).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' })}
-                                                </p>
-                                            </div>
-                                            <div className="flex gap-1 flex-shrink-0">
-                                                {!ticket.content && (
-                                                    <button onClick={() => handleView(ticket)} className="px-2.5 py-1 text-xs font-medium bg-primary/10 text-primary rounded-full hover:bg-primary/20 transition">
-                                                        Ver
-                                                    </button>
+                            <div className="grid grid-cols-2 gap-3">
+                                {tickets.map(ticket => {
+                                    const preview = contentCache[ticket.id];
+                                    const isPdf = ticket.mimeType === 'application/pdf';
+                                    return (
+                                        <div key={ticket.id} className="rounded-2xl border border-surface-variant overflow-hidden bg-white hover:border-primary/30 hover:shadow-sm transition-all">
+                                            {/* Preview area */}
+                                            <div
+                                                className={`relative w-full h-36 flex items-center justify-center cursor-pointer ${isPdf ? 'bg-red-50' : 'bg-surface-container-low'}`}
+                                                onClick={() => {
+                                                    if (isPdf) handleView(ticket);
+                                                    else if (preview) { setViewingContent(preview); setViewingFilename(ticket.filename); }
+                                                    else handleView(ticket);
+                                                }}
+                                            >
+                                                {isPdf ? (
+                                                    <div className="flex flex-col items-center gap-1 text-red-400">
+                                                        <span className="material-symbols-outlined text-4xl">picture_as_pdf</span>
+                                                        <span className="text-xs font-medium">PDF</span>
+                                                    </div>
+                                                ) : preview ? (
+                                                    <img src={preview} alt={ticket.filename} className="w-full h-full object-cover" />
+                                                ) : (
+                                                    <div className="animate-pulse w-8 h-8 rounded-full bg-surface-variant" />
                                                 )}
+                                                <div className="absolute inset-0 bg-black/0 hover:bg-black/10 transition-colors flex items-center justify-center opacity-0 hover:opacity-100">
+                                                    <div className="bg-black/50 rounded-full p-2">
+                                                        <span className="material-symbols-outlined text-white text-xl">zoom_in</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            {/* Footer */}
+                                            <div className="flex items-center justify-between px-3 py-2">
+                                                <p className="text-xs text-on-surface-variant">
+                                                    {new Date(ticket.createdAt).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                                </p>
                                                 <button onClick={() => setConfirmDeleteId(ticket.id)} className="p-1 text-on-surface-variant hover:text-error hover:bg-error-container/30 rounded-full transition">
                                                     <XMarkIcon className="w-4 h-4" />
                                                 </button>
                                             </div>
                                         </div>
-                                    </div>
-                                ))}
+                                    );
+                                })}
                             </div>
                         )}
                     </div>
