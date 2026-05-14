@@ -124,10 +124,6 @@ const ArticleEditModal: React.FC<{
     const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
         const f = e.target.files?.[0];
         if (!f) return;
-        if (f.size > 2_000_000) {
-            setErrors(prev => ({ ...prev, image: 'La imagen debe pesar menos de 2 MB' }));
-            return;
-        }
         setErrors(prev => ({ ...prev, image: undefined }));
         const reader = new FileReader();
         reader.onload = ev => {
@@ -218,7 +214,7 @@ const ArticleEditModal: React.FC<{
                             : (
                                 <div className="flex flex-col items-center gap-2 text-on-surface-variant">
                                     <MIcon name="add_photo_alternate" size={40} />
-                                    <span className="text-xs text-center px-2">Haz clic para subir<br />(máx. 2 MB)</span>
+                                    <span className="text-xs text-center px-2">Haz clic para subir<br />(se comprime automáticamente)</span>
                                 </div>
                             )
                         }
