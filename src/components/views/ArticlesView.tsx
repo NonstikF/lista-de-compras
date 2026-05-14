@@ -124,13 +124,30 @@ const ArticleEditModal: React.FC<{
     const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
         const f = e.target.files?.[0];
         if (!f) return;
-        if (f.size > 500_000) {
-            setErrors(prev => ({ ...prev, image: 'La imagen debe pesar menos de 500 KB' }));
+        if (f.size > 2_000_000) {
+            setErrors(prev => ({ ...prev, image: 'La imagen debe pesar menos de 2 MB' }));
             return;
         }
         setErrors(prev => ({ ...prev, image: undefined }));
         const reader = new FileReader();
-        reader.onload = ev => update('image', ev.target?.result as string);
+        reader.onload = ev => {
+            const src = ev.target?.result as string;
+            const img = new Image();
+            img.onload = () => {
+                const MAX = 1200;
+                let { width, height } = img;
+                if (width > MAX || height > MAX) {
+                    if (width > height) { height = Math.round(height * MAX / width); width = MAX; }
+                    else { width = Math.round(width * MAX / height); height = MAX; }
+                }
+                const canvas = document.createElement('canvas');
+                canvas.width = width;
+                canvas.height = height;
+                canvas.getContext('2d')!.drawImage(img, 0, 0, width, height);
+                update('image', canvas.toDataURL('image/webp', 0.85));
+            };
+            img.src = src;
+        };
         reader.readAsDataURL(f);
     };
 
@@ -201,7 +218,7 @@ const ArticleEditModal: React.FC<{
                             : (
                                 <div className="flex flex-col items-center gap-2 text-on-surface-variant">
                                     <MIcon name="add_photo_alternate" size={40} />
-                                    <span className="text-xs text-center px-2">Haz clic para subir<br />(máx. 500 KB)</span>
+                                    <span className="text-xs text-center px-2">Haz clic para subir<br />(máx. 2 MB)</span>
                                 </div>
                             )
                         }
@@ -330,7 +347,18 @@ const ArticlesView: React.FC<ArticlesViewProps> = ({ authToken, onAuthError }) =
     const [confirmDelete, setConfirmDelete] = useState<Article | null>(null);
     const [deleting, setDeleting] = useState(false);
     const [importing, setImporting] = useState(false);
+    const [search, setSearch] = useState('');
+    const [categoryFilter, setCategoryFilter] = useState('');
     const toast = useToast();
+
+    const categories = Array.from(new Set(articles.map(a => a.category ?? '').filter(Boolean))).sort();
+
+    const filtered = articles.filter(a => {
+        const q = search.toLowerCase();
+        const matchSearch = !q || a.name.toLowerCase().includes(q) || (a.sku ?? '').toLowerCase().includes(q) || (a.barcode ?? '').toLowerCase().includes(q);
+        const matchCat = !categoryFilter || a.category === categoryFilter;
+        return matchSearch && matchCat;
+    });
 
     useEffect(() => {
         let cancelled = false;
@@ -408,11 +436,11 @@ const ArticlesView: React.FC<ArticlesViewProps> = ({ authToken, onAuthError }) =
 
     return (
         <main className="max-w-6xl mx-auto px-4 md:px-6 py-8 pb-28 md:pb-10">
-            <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center justify-between mb-4">
                 <div>
                     <h1 className="font-epilogue text-3xl font-bold text-on-background">Artículos</h1>
                     <p className="text-on-surface-variant mt-0.5">
-                        {isLoading ? 'Cargando…' : articles.length === 0 ? 'Sin artículos' : `${articles.length} artículo${articles.length !== 1 ? 's' : ''}`}
+                        {isLoading ? 'Cargando…' : articles.length === 0 ? 'Sin artículos' : `${filtered.length} de ${articles.length} artículo${articles.length !== 1 ? 's' : ''}`}
                     </p>
                 </div>
                 <div className="flex flex-wrap items-center justify-end gap-2">
@@ -424,6 +452,45 @@ const ArticlesView: React.FC<ArticlesViewProps> = ({ authToken, onAuthError }) =
                     </Button>
                 </div>
             </div>
+
+            {!isLoading && articles.length > 0 && (
+                <div className="flex flex-col gap-3 mb-6">
+                    <div className="relative">
+                        <MIcon name="search" size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant pointer-events-none" />
+                        <input
+                            type="text"
+                            value={search}
+                            onChange={e => setSearch(e.target.value)}
+                            placeholder="Buscar por nombre, SKU o código de barras…"
+                            className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-outline-variant bg-surface-container-low text-on-surface text-sm focus:outline-none focus:border-primary"
+                        />
+                        {search && (
+                            <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-on-surface-variant hover:text-on-surface transition">
+                                <MIcon name="close" size={16} />
+                            </button>
+                        )}
+                    </div>
+                    {categories.length > 0 && (
+                        <div className="flex flex-wrap gap-2">
+                            <button
+                                onClick={() => setCategoryFilter('')}
+                                className={`px-3 py-1 rounded-full text-sm font-medium border transition ${!categoryFilter ? 'bg-primary text-on-primary border-primary' : 'bg-surface-container-low text-on-surface border-outline-variant hover:bg-surface-container'}`}
+                            >
+                                Todas
+                            </button>
+                            {categories.map(cat => (
+                                <button
+                                    key={cat}
+                                    onClick={() => setCategoryFilter(c => c === cat ? '' : cat)}
+                                    className={`px-3 py-1 rounded-full text-sm font-medium border transition ${categoryFilter === cat ? 'bg-primary text-on-primary border-primary' : 'bg-surface-container-low text-on-surface border-outline-variant hover:bg-surface-container'}`}
+                                >
+                                    {cat}
+                                </button>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            )}
 
             {isLoading && (
                 <div className="flex justify-center py-20">
@@ -449,9 +516,19 @@ const ArticlesView: React.FC<ArticlesViewProps> = ({ authToken, onAuthError }) =
                 </div>
             )}
 
-            {!isLoading && articles.length > 0 && (
+            {!isLoading && articles.length > 0 && filtered.length === 0 && (
+                <div className="flex flex-col items-center justify-center py-16 text-center">
+                    <MIcon name="search_off" size={40} className="text-on-surface-variant mb-3" />
+                    <p className="text-on-surface-variant">Sin resultados para la búsqueda actual.</p>
+                    <button onClick={() => { setSearch(''); setCategoryFilter(''); }} className="mt-2 text-sm text-primary hover:underline">
+                        Limpiar filtros
+                    </button>
+                </div>
+            )}
+
+            {!isLoading && articles.length > 0 && filtered.length > 0 && (
                 <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
-                    {articles.map(a => (
+                    {filtered.map(a => (
                         <ArticleCard
                             key={a.id}
                             article={a}
