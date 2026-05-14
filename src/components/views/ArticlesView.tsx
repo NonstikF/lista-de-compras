@@ -261,40 +261,55 @@ const ArticleEditModal: React.FC<{
                         {suppliers.length === 0 ? (
                             <p className="text-sm text-on-surface-variant">No hay proveedores — agrégalos en el módulo Proveedores.</p>
                         ) : (
-                            <div className="flex flex-col gap-2">
-                                {suppliers.map(s => {
-                                    const active = form.supplierIds.includes(s.id);
-                                    return (
-                                        <div key={s.id} className="flex flex-col gap-1.5">
-                                            <button
-                                                type="button"
-                                                onClick={() => toggleSupplier(s.id)}
-                                                className={`px-3 py-1.5 rounded-full text-sm font-medium border transition self-start ${
-                                                    active
-                                                        ? 'bg-primary text-on-primary border-primary'
-                                                        : 'bg-surface-container-low text-on-surface border-outline-variant hover:bg-surface-container'
-                                                }`}
-                                            >
-                                                {s.name}
-                                            </button>
-                                            {active && s.zones.length > 0 && (
-                                                <div className="ml-3 flex items-center gap-2">
-                                                    <MIcon name="location_on" size={16} className="text-on-surface-variant shrink-0" />
-                                                    <select
-                                                        value={form.supplierZones[s.id] ?? ''}
-                                                        onChange={e => setZone(s.id, e.target.value)}
-                                                        className="text-sm rounded-lg border border-outline-variant bg-surface-container-low text-on-surface px-2 py-1 focus:outline-none focus:border-primary"
-                                                    >
-                                                        <option value="">Sin zona</option>
-                                                        {s.zones.map(z => (
-                                                            <option key={z} value={z}>{z}</option>
-                                                        ))}
-                                                    </select>
+                            <div className="flex flex-col gap-3">
+                                <select
+                                    value=""
+                                    onChange={e => { if (e.target.value) toggleSupplier(e.target.value); }}
+                                    className="text-sm rounded-lg border border-outline-variant bg-surface-container-low text-on-surface px-3 py-2 focus:outline-none focus:border-primary"
+                                >
+                                    <option value="">Agregar proveedor…</option>
+                                    {suppliers.filter(s => !form.supplierIds.includes(s.id)).map(s => (
+                                        <option key={s.id} value={s.id}>{s.name}</option>
+                                    ))}
+                                </select>
+                                {form.supplierIds.length > 0 && (
+                                    <div className="flex flex-col gap-2">
+                                        {form.supplierIds.map(sid => {
+                                            const s = suppliers.find(x => x.id === sid);
+                                            if (!s) return null;
+                                            return (
+                                                <div key={sid} className="rounded-xl border border-outline-variant bg-surface-container-low px-3 py-2 flex flex-col gap-2">
+                                                    <div className="flex items-center justify-between">
+                                                        <span className="text-sm font-medium text-on-surface">{s.name}</span>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => toggleSupplier(sid)}
+                                                            className="text-on-surface-variant hover:text-error transition"
+                                                            aria-label={`Quitar ${s.name}`}
+                                                        >
+                                                            <MIcon name="close" size={16} />
+                                                        </button>
+                                                    </div>
+                                                    {s.zones.length > 0 && (
+                                                        <div className="flex items-center gap-2">
+                                                            <MIcon name="location_on" size={14} className="text-on-surface-variant shrink-0" />
+                                                            <select
+                                                                value={form.supplierZones[sid] ?? ''}
+                                                                onChange={e => setZone(sid, e.target.value)}
+                                                                className="text-sm rounded-lg border border-outline-variant bg-surface text-on-surface px-2 py-1 focus:outline-none focus:border-primary flex-1"
+                                                            >
+                                                                <option value="">Sin zona</option>
+                                                                {s.zones.map(z => (
+                                                                    <option key={z} value={z}>{z}</option>
+                                                                ))}
+                                                            </select>
+                                                        </div>
+                                                    )}
                                                 </div>
-                                            )}
-                                        </div>
-                                    );
-                                })}
+                                            );
+                                        })}
+                                    </div>
+                                )}
                             </div>
                         )}
                     </div>
