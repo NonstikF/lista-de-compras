@@ -151,6 +151,12 @@ export async function deleteOrderTicket(token: string, orderId: number, ticketId
   }));
 }
 
+export async function updateOrderTicketInvoiced(token: string, orderId: number, ticketId: string, invoiced: boolean): Promise<OrderTicket> {
+  return handleResponse(await fetch(`${BASE}/api/orders/${orderId}/tickets/${ticketId}`, {
+    method: 'PATCH', headers: authHeaders(token), body: JSON.stringify({ invoiced }),
+  }));
+}
+
 // ---- Tickets de proveedor ----
 
 export async function getSupplierTickets(token: string, supplierId: string): Promise<SupplierTicket[]> {

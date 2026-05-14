@@ -232,7 +232,7 @@ router.get('/:orderId/tickets', async (req: Request, res: Response) => {
     try {
         const tickets = await prisma.orderTicket.findMany({
             where: { orderId, ...(supplierName ? { supplierName: String(supplierName) } : {}) },
-            select: { id: true, orderId: true, supplierName: true, filename: true, mimeType: true, size: true, createdAt: true },
+            select: { id: true, orderId: true, supplierName: true, invoiced: true, filename: true, mimeType: true, size: true, createdAt: true },
             orderBy: { createdAt: 'desc' },
         });
         res.json(tickets);
@@ -284,6 +284,28 @@ router.delete('/:orderId/tickets/:ticketId', async (req: Request, res: Response)
         }
         console.error('Error al eliminar ticket:', err);
         res.status(500).json({ error: 'Error al eliminar ticket' });
+    }
+});
+
+// PATCH /api/orders/:orderId/tickets/:ticketId — toggle invoiced
+router.patch('/:orderId/tickets/:ticketId', async (req: Request, res: Response) => {
+    const orderId = parseInt(req.params.orderId);
+    if (isNaN(orderId)) { res.status(400).json({ error: 'orderId inválido' }); return; }
+    const parsed = z.object({ invoiced: z.boolean() }).safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: 'invoiced debe ser boolean' }); return; }
+    try {
+        const ticket = await prisma.orderTicket.update({
+            where: { id: req.params.ticketId },
+            data: { invoiced: parsed.data.invoiced },
+            select: { id: true, orderId: true, supplierName: true, invoiced: true, filename: true, mimeType: true, size: true, createdAt: true },
+        });
+        res.json(ticket);
+    } catch (err: unknown) {
+        if (err && typeof err === 'object' && 'code' in err && (err as { code: string }).code === 'P2025') {
+            res.status(404).json({ error: 'Ticket no encontrado' }); return;
+        }
+        console.error('Error al actualizar ticket:', err);
+        res.status(500).json({ error: 'Error al actualizar ticket' });
     }
 });
 

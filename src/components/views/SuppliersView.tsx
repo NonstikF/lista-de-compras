@@ -3,7 +3,7 @@ import type { Supplier, SupplierTicket, OrderTicket } from '../../types';
 import {
     AuthError, getSuppliers, createSupplier, updateSupplier, deleteSupplier,
     getSupplierTickets, getSupplierTicketContent, createSupplierTicket, deleteSupplierTicket,
-    updateSupplierTicketInvoiced, getSupplierOrderTickets, getOrderTicketContent,
+    updateSupplierTicketInvoiced, getSupplierOrderTickets, getOrderTicketContent, updateOrderTicketInvoiced,
 } from '../../services/api';
 import { Modal, Button, Field, Input, MIcon, useToast } from '../ui';
 
@@ -136,6 +136,7 @@ const SupplierTicketsModal: React.FC<{
     const [viewingContent, setViewingContent] = useState<string | null>(null);
     const [viewingFilename, setViewingFilename] = useState<string | null>(null);
     const [togglingId, setTogglingId] = useState<string | null>(null);
+    const [togglingOrderId, setTogglingOrderId] = useState<string | null>(null);
     const [activeGroup, setActiveGroup] = useState<string | null>(null);
     const [orderTickets, setOrderTickets] = useState<OrderTicket[]>([]);
     const fileRef = useRef<HTMLInputElement>(null);
@@ -226,6 +227,19 @@ const SupplierTicketsModal: React.FC<{
             toast('error', 'No se pudo actualizar el estado');
         } finally {
             setTogglingId(null);
+        }
+    };
+
+    const handleToggleOrderInvoiced = async (ticket: OrderTicket) => {
+        setTogglingOrderId(ticket.id);
+        try {
+            const updated = await updateOrderTicketInvoiced(authToken, ticket.orderId, ticket.id, !ticket.invoiced);
+            setOrderTickets(prev => prev.map(t => t.id === updated.id ? { ...t, invoiced: updated.invoiced } : t));
+        } catch (err) {
+            if (err instanceof AuthError) { onAuthError(); return; }
+            toast('error', 'No se pudo actualizar el estado');
+        } finally {
+            setTogglingOrderId(null);
         }
     };
 
@@ -443,7 +457,7 @@ const SupplierTicketsModal: React.FC<{
                                             </p>
                                             <p className="text-xs text-on-surface-variant">
                                                 {isOrderGroup
-                                                    ? `${activeOrderTickets.length} ticket${activeOrderTickets.length !== 1 ? 's' : ''} · solo lectura`
+                                                    ? `${activeOrderTickets.length} ticket${activeOrderTickets.length !== 1 ? 's' : ''}`
                                                     : `${activeSupplierTickets.length} ticket${activeSupplierTickets.length !== 1 ? 's' : ''} · ${invoicedCount} facturado${invoicedCount !== 1 ? 's' : ''}`
                                                 }
                                             </p>
@@ -460,11 +474,11 @@ const SupplierTicketsModal: React.FC<{
                                         )}
                                     </div>
 
-                                    {/* Cards — OrderTickets (read-only) */}
+                                    {/* Cards — OrderTickets */}
                                     {isOrderGroup && (
                                         <div className="p-4 space-y-3">
                                             {activeOrderTickets.map(ticket => (
-                                                <div key={ticket.id} className="rounded-2xl border bg-white border-surface-variant hover:border-blue-200 hover:shadow-sm transition-all">
+                                                <div key={ticket.id} className={`rounded-2xl border transition-all ${ticket.invoiced ? 'bg-success/4 border-success/25' : 'bg-white border-surface-variant hover:border-blue-200 hover:shadow-sm'}`}>
                                                     <div className="flex items-center gap-3 px-4 py-3">
                                                         <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${ticket.mimeType === 'application/pdf' ? 'bg-red-50' : 'bg-blue-50'}`}>
                                                             <MIcon
@@ -478,21 +492,38 @@ const SupplierTicketsModal: React.FC<{
                                                                 {formatSize(ticket.size)} · {new Date(ticket.createdAt).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' })}
                                                             </p>
                                                         </div>
-                                                        <button
-                                                            type="button"
-                                                            onClick={async () => {
-                                                                try {
-                                                                    const full = await getOrderTicketContent(authToken, ticket.orderId, ticket.id);
-                                                                    if (!full.content) return;
-                                                                    if (full.mimeType === 'application/pdf') { openPdfInNewTab(full.content, full.filename); }
-                                                                    else { setViewingContent(full.content); setViewingFilename(full.filename); }
-                                                                } catch { toast('error', 'No se pudo cargar el ticket'); }
-                                                            }}
-                                                            className="p-1.5 rounded-lg text-on-surface-variant hover:text-primary hover:bg-primary/8 transition-colors"
-                                                            title="Ver ticket"
-                                                        >
-                                                            <MIcon name="visibility" className="text-lg leading-none" />
-                                                        </button>
+                                                        <div className="flex items-center gap-2 flex-shrink-0">
+                                                            <button
+                                                                type="button"
+                                                                onClick={async () => {
+                                                                    try {
+                                                                        const full = await getOrderTicketContent(authToken, ticket.orderId, ticket.id);
+                                                                        if (!full.content) return;
+                                                                        if (full.mimeType === 'application/pdf') { openPdfInNewTab(full.content, full.filename); }
+                                                                        else { setViewingContent(full.content); setViewingFilename(full.filename); }
+                                                                    } catch { toast('error', 'No se pudo cargar el ticket'); }
+                                                                }}
+                                                                className="p-1.5 rounded-lg text-on-surface-variant hover:text-primary hover:bg-primary/8 transition-colors"
+                                                                title="Ver ticket"
+                                                            >
+                                                                <MIcon name="visibility" className="text-lg leading-none" />
+                                                            </button>
+                                                            <div className="flex items-center gap-1.5 pl-2 border-l border-surface-variant">
+                                                                <button
+                                                                    type="button"
+                                                                    role="switch"
+                                                                    aria-checked={ticket.invoiced}
+                                                                    disabled={togglingOrderId === ticket.id}
+                                                                    onClick={() => handleToggleOrderInvoiced(ticket)}
+                                                                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none disabled:opacity-50 ${ticket.invoiced ? 'bg-success' : 'bg-surface-variant'}`}
+                                                                >
+                                                                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform ${ticket.invoiced ? 'translate-x-6' : 'translate-x-1'}`} />
+                                                                </button>
+                                                                <span className={`text-[11px] font-semibold w-16 ${ticket.invoiced ? 'text-success' : 'text-on-surface-variant'}`}>
+                                                                    {togglingOrderId === ticket.id ? '…' : ticket.invoiced ? 'Facturado' : 'Sin factura'}
+                                                                </span>
+                                                            </div>
+                                                        </div>
                                                     </div>
                                                 </div>
                                             ))}
@@ -630,7 +661,7 @@ const SupplierTicketsModal: React.FC<{
             {/* Visor de imagen */}
             {viewingContent && (
                 <div
-                    className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4"
+                    className="fixed inset-0 z-[200] bg-black/80 flex items-center justify-center p-4"
                     onClick={() => setViewingContent(null)}
                 >
                     <div className="relative max-w-3xl w-full" onClick={e => e.stopPropagation()}>

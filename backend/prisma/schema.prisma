@@ -152,6 +152,7 @@ model OrderTicket {
   id           String   @id @default(cuid())
   orderId      Int
   supplierName String
+  invoiced     Boolean  @default(false)
   filename     String
   mimeType     String
   size         Int

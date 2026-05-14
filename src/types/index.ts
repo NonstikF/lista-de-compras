@@ -59,6 +59,7 @@ export interface OrderTicket {
   id: string;
   orderId: number;
   supplierName: string;
+  invoiced: boolean;
   filename: string;
   mimeType: string;
   size: number;
