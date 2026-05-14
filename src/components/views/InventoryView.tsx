@@ -16,7 +16,7 @@ interface InventoryViewProps {
 
 type SortKey = 'name' | 'stock-asc' | 'stock-desc' | 'category';
 type StockFilter = 'all' | 'low' | 'out';
-type ViewMode = 'list' | 'counting' | 'review';
+type ViewMode = 'list' | 'movements' | 'counting' | 'review';
 const PREFS_KEY = 'inventory:prefs:v1';
 const COUNT_DRAFT_KEY = 'inventory:count-draft:v1';
 
@@ -321,6 +321,151 @@ const StatCard: React.FC<{
     );
 };
 
+// ---------- Movimientos rápidos ----------
+const MovementsView: React.FC<{
+    items: InventoryItem[];
+    authToken: string;
+    onAuthError: () => void;
+    onBack: () => void;
+    onMovementDone: () => void;
+}> = ({ items, authToken, onAuthError, onBack, onMovementDone }) => {
+    const toast = useToast();
+    const [search, setSearch] = useState('');
+    const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
+    const [movType, setMovType] = useState<'entrada' | 'salida'>('entrada');
+
+    const filtered = useMemo(() => {
+        const q = search.trim().toLowerCase();
+        if (!q) return items.slice().sort((a, b) => a.article.name.localeCompare(b.article.name));
+        return items.filter(i =>
+            `${i.article.name} ${i.article.category || ''} ${i.unit}`.toLowerCase().includes(q)
+        ).sort((a, b) => a.article.name.localeCompare(b.article.name));
+    }, [items, search]);
+
+    const handleSave = async (data: { type: 'entrada' | 'salida' | 'ajuste'; quantity: number; reason: string }) => {
+        if (!selectedItem) return;
+        try {
+            await addInventoryMovement(authToken, selectedItem.id, data);
+            const label = data.type === 'entrada' ? 'Entrada' : 'Salida';
+            toast('success', `${label} registrada`);
+            setSelectedItem(null);
+            onMovementDone();
+        } catch (err) {
+            if (err instanceof AuthError) { onAuthError(); return; }
+            toast('error', err instanceof Error ? err.message : 'Error al registrar');
+            throw err;
+        }
+    };
+
+    return (
+        <div className="max-w-5xl mx-auto px-4 md:px-6 py-6 md:py-8 pb-28 md:pb-10">
+            {/* Header */}
+            <div className="flex items-center gap-3 mb-5">
+                <button
+                    onClick={onBack}
+                    className="p-2 rounded-full text-on-surface-variant hover:bg-surface-container-low transition"
+                    title="Volver"
+                >
+                    <MIcon name="arrow_back" />
+                </button>
+                <div>
+                    <h1 className="font-epilogue text-2xl font-bold text-on-background">Movimientos Rápidos</h1>
+                    <p className="text-on-surface-variant text-sm mt-0.5">Registra entradas y salidas de stock</p>
+                </div>
+            </div>
+
+            {/* Tipo selector */}
+            <div className="flex gap-2 mb-4">
+                <button
+                    onClick={() => setMovType('entrada')}
+                    className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold text-sm transition border ${
+                        movType === 'entrada'
+                            ? 'bg-green-600 text-white border-green-600 shadow-sm'
+                            : 'bg-white text-green-700 border-green-200 hover:bg-green-50'
+                    }`}
+                >
+                    <MIcon name="add_circle" fill /> Entrada
+                </button>
+                <button
+                    onClick={() => setMovType('salida')}
+                    className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold text-sm transition border ${
+                        movType === 'salida'
+                            ? 'bg-red-500 text-white border-red-500 shadow-sm'
+                            : 'bg-white text-red-600 border-red-200 hover:bg-red-50'
+                    }`}
+                >
+                    <MIcon name="remove_circle" fill /> Salida
+                </button>
+            </div>
+
+            {/* Search */}
+            <div className="relative mb-3">
+                <MIcon name="search" className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant" />
+                <input
+                    value={search}
+                    onChange={e => setSearch(e.target.value)}
+                    placeholder="Buscar insumo…"
+                    className="w-full pl-10 pr-10 py-2.5 rounded-xl bg-surface-container-low border border-outline-variant focus:border-primary focus:ring-2 focus:ring-primary/20 focus:bg-white outline-none text-sm transition"
+                />
+                {search && (
+                    <button onClick={() => setSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-full text-on-surface-variant hover:bg-surface-container">
+                        <MIcon name="close" className="text-base" />
+                    </button>
+                )}
+            </div>
+
+            {/* Items */}
+            <div className="space-y-2">
+                {filtered.map(item => {
+                    const isOut = item.stock <= 0;
+                    const isLow = !isOut && item.stock <= item.stockMin;
+                    return (
+                        <button
+                            key={item.id}
+                            onClick={() => setSelectedItem(item)}
+                            className={`w-full bg-white border rounded-xl px-3 md:px-4 py-3 flex items-center gap-3 text-left hover:shadow-sm hover:border-primary/30 active:scale-[0.995] transition ${
+                                isOut ? 'border-red-200' : isLow ? 'border-amber-200' : 'border-surface-variant'
+                            }`}
+                        >
+                            {item.article.image ? (
+                                <img src={item.article.image} alt={item.article.name} className="w-10 h-10 rounded-lg object-cover shrink-0" />
+                            ) : (
+                                <div className="w-10 h-10 rounded-lg bg-surface-container flex items-center justify-center shrink-0">
+                                    <MIcon name="inventory_2" className="text-on-surface-variant" />
+                                </div>
+                            )}
+                            <div className="flex-1 min-w-0">
+                                <p className="font-semibold text-on-background text-sm truncate">{item.article.name}</p>
+                                {item.article.category && (
+                                    <p className="text-xs text-on-surface-variant">{item.article.category}</p>
+                                )}
+                            </div>
+                            <div className="shrink-0 text-right">
+                                <div className={`text-lg font-bold tabular-nums ${isOut ? 'text-red-600' : isLow ? 'text-amber-700' : 'text-on-background'}`}>
+                                    {item.stock}
+                                </div>
+                                <div className="text-xs text-on-surface-variant">{item.unit}</div>
+                            </div>
+                            <MIcon name={movType === 'entrada' ? 'add_circle' : 'remove_circle'} fill
+                                className={movType === 'entrada' ? 'text-green-600' : 'text-red-500'}
+                            />
+                        </button>
+                    );
+                })}
+            </div>
+
+            {selectedItem && (
+                <MovementModal
+                    item={selectedItem}
+                    type={movType}
+                    onClose={() => setSelectedItem(null)}
+                    onSave={handleSave}
+                />
+            )}
+        </div>
+    );
+};
+
 // ---------- Conteo: vista de captura ----------
 const CountingView: React.FC<{
     items: InventoryItem[];
@@ -457,23 +602,39 @@ const CountingView: React.FC<{
 
                                 <div className="flex items-center gap-2 shrink-0">
                                     {diffLabel && (
-                                        <span className={`text-xs font-semibold ${diffColor} min-w-[80px] text-right`}>
+                                        <span className={`text-xs font-semibold ${diffColor} min-w-[72px] text-right hidden sm:block`}>
                                             {diffLabel}
                                         </span>
                                     )}
                                     <div className="flex items-center gap-1">
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                const cur = raw === '' ? item.stock : parseFloat(raw) || 0;
+                                                onEntryChange(item.id, String(Math.max(0, cur - 1)));
+                                            }}
+                                            className="w-8 h-8 flex items-center justify-center rounded-full bg-surface-container text-on-surface hover:bg-red-50 hover:text-red-600 transition text-lg font-bold"
+                                        >−</button>
                                         <input
                                             type="number"
                                             inputMode="decimal"
                                             min="0"
                                             step="any"
                                             value={raw}
-                                            placeholder="—"
+                                            placeholder={String(item.stock)}
                                             onChange={e => onEntryChange(item.id, e.target.value)}
                                             onFocus={e => e.target.select()}
-                                            className="w-20 text-right px-2 py-1.5 rounded-lg border border-outline-variant focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none text-sm font-semibold bg-surface-container-low focus:bg-white transition"
+                                            className="w-16 text-center px-1 py-1.5 rounded-lg border border-outline-variant focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none text-sm font-semibold bg-surface-container-low focus:bg-white transition"
                                         />
-                                        <span className="text-xs text-on-surface-variant w-10 truncate">{item.unit}</span>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                const cur = raw === '' ? item.stock : parseFloat(raw) || 0;
+                                                onEntryChange(item.id, String(cur + 1));
+                                            }}
+                                            className="w-8 h-8 flex items-center justify-center rounded-full bg-surface-container text-on-surface hover:bg-green-50 hover:text-green-600 transition text-lg font-bold"
+                                        >+</button>
+                                        <span className="text-xs text-on-surface-variant w-8 truncate">{item.unit}</span>
                                     </div>
                                 </div>
                             </div>
@@ -850,6 +1011,18 @@ const InventoryView: React.FC<InventoryViewProps> = ({ authToken, onAuthError })
         setCategoryFilter(null);
     };
 
+    if (viewMode === 'movements') {
+        return (
+            <MovementsView
+                items={items}
+                authToken={authToken}
+                onAuthError={onAuthError}
+                onBack={() => setViewMode('list')}
+                onMovementDone={load}
+            />
+        );
+    }
+
     if (viewMode === 'counting') {
         return (
             <CountingView
@@ -883,15 +1056,24 @@ const InventoryView: React.FC<InventoryViewProps> = ({ authToken, onAuthError })
                     <h1 className="font-epilogue text-2xl md:text-3xl font-bold text-on-background">Inventario</h1>
                     <p className="text-on-surface-variant text-sm mt-0.5">Control de insumos de cafetería</p>
                 </div>
-                <button
-                    onClick={startCounting}
-                    disabled={loading || items.length === 0}
-                    className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-primary text-primary font-semibold text-sm hover:bg-primary/5 disabled:opacity-40 disabled:cursor-not-allowed transition shrink-0"
-                >
-                    <MIcon name="checklist" />
-                    <span className="hidden sm:inline">Comenzar Inventario</span>
-                    <span className="sm:hidden">Inventariar</span>
-                </button>
+                <div className="flex items-center gap-2 shrink-0">
+                    <button
+                        onClick={() => setViewMode('movements')}
+                        disabled={loading || items.length === 0}
+                        className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-outline-variant text-on-surface font-semibold text-sm hover:bg-surface-container-low disabled:opacity-40 disabled:cursor-not-allowed transition"
+                    >
+                        <MIcon name="swap_vert" />
+                        <span className="hidden sm:inline">Movimientos</span>
+                    </button>
+                    <button
+                        onClick={startCounting}
+                        disabled={loading || items.length === 0}
+                        className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-primary text-primary font-semibold text-sm hover:bg-primary/5 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                    >
+                        <MIcon name="checklist" />
+                        <span className="hidden sm:inline">Inventariar</span>
+                    </button>
+                </div>
             </div>
 
             {/* Stats */}
@@ -1054,11 +1236,8 @@ const InventoryView: React.FC<InventoryViewProps> = ({ authToken, onAuthError })
                                                 </span>
                                             )}
                                         </div>
-                                        <div className="flex items-center gap-3 mt-1 text-sm">
-                                            <span className={`font-bold ${isOut ? 'text-red-600' : isLow ? 'text-amber-700' : 'text-on-background'}`}>
-                                                {item.stock} {item.unit}
-                                            </span>
-                                            <span className="text-on-surface-variant text-xs">mín: {item.stockMin} {item.unit}</span>
+                                        <div className="flex items-center gap-3 mt-1 text-xs text-on-surface-variant">
+                                            <span>mín: {item.stockMin} {item.unit}</span>
                                         </div>
                                         {item.stockMin > 0 && (
                                             <div className="mt-1.5 h-1 rounded-full bg-surface-container overflow-hidden">
@@ -1067,50 +1246,11 @@ const InventoryView: React.FC<InventoryViewProps> = ({ authToken, onAuthError })
                                         )}
                                     </div>
 
-                                    <div className="flex items-center gap-0.5 shrink-0">
-                                        <button
-                                            onClick={() => setMovementItem({ item, type: 'entrada' })}
-                                            title="Registrar entrada"
-                                            className="p-2 md:p-2.5 rounded-full text-green-600 hover:bg-green-50 active:scale-95 transition"
-                                        >
-                                            <MIcon name="add_circle" fill />
-                                        </button>
-                                        <button
-                                            onClick={() => setMovementItem({ item, type: 'salida' })}
-                                            title="Registrar salida"
-                                            className="p-2 md:p-2.5 rounded-full text-red-500 hover:bg-red-50 active:scale-95 transition"
-                                        >
-                                            <MIcon name="remove_circle" fill />
-                                        </button>
-                                        <div className="hidden md:flex items-center gap-0.5">
-                                            <button
-                                                onClick={() => setMovementItem({ item, type: 'ajuste' })}
-                                                title="Ajustar stock"
-                                                className="p-2.5 rounded-full text-blue-500 hover:bg-blue-50 active:scale-95 transition"
-                                            >
-                                                <MIcon name="tune" />
-                                            </button>
-                                            <button
-                                                onClick={() => openHistory(item)}
-                                                title="Ver historial"
-                                                className="p-2.5 rounded-full text-on-surface-variant hover:bg-surface-container-low active:scale-95 transition"
-                                            >
-                                                <MIcon name="history" />
-                                            </button>
-                                            <button
-                                                onClick={() => setEditingItem(item)}
-                                                title="Editar"
-                                                className="p-2.5 rounded-full text-on-surface-variant hover:bg-surface-container-low active:scale-95 transition"
-                                            >
-                                                <MIcon name="edit" />
-                                            </button>
+                                    <div className="shrink-0 text-right">
+                                        <div className={`text-xl font-bold tabular-nums ${isOut ? 'text-red-600' : isLow ? 'text-amber-700' : 'text-on-background'}`}>
+                                            {item.stock}
                                         </div>
-                                        <MobileMoreMenu
-                                            item={item}
-                                            onAjuste={() => setMovementItem({ item, type: 'ajuste' })}
-                                            onHistory={() => openHistory(item)}
-                                            onEdit={() => setEditingItem(item)}
-                                        />
+                                        <div className="text-xs text-on-surface-variant">{item.unit}</div>
                                     </div>
                                 </div>
                             </div>
