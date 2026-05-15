@@ -202,13 +202,7 @@ const OrderItem = React.memo<{
                         <EyeIcon className="w-5 h-5" />
                     </button>
                 )}
-                <button
-                    onClick={handleDelete}
-                    aria-label={`Eliminar ${item.name}`}
-                    className="p-1 text-on-surface-variant hover:text-error hover:bg-error-container/30 rounded-full transition"
-                >
-                    <XMarkIcon className="w-5 h-5" />
-                </button>
+
                 <button
                     onClick={handleToggle}
                     aria-label={isPurchased ? 'Marcar como pendiente' : 'Marcar como comprado'}
