@@ -265,7 +265,7 @@ export async function getStoreOrders(token: string): Promise<StoreOrder[]> {
 
 export async function createStoreOrder(
   token: string,
-  data: { customerName: string; customerPhone?: string; notes: string; items: StoreOrderItem[] },
+  data: { customerName: string; customerPhone?: string; notes: string; items: Pick<StoreOrderItem, 'articleId' | 'name' | 'price' | 'qty'>[] },
 ): Promise<StoreOrder> {
   return handleResponse(await fetch(`${BASE}/api/store-orders`, {
     method: 'POST', headers: authHeaders(token), body: JSON.stringify(data),

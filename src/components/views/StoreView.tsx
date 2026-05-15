@@ -322,7 +322,7 @@ const StoreView: React.FC<StoreViewProps> = ({ authToken, onAuthError }) => {
 
     const handleConfirm = async (form: CheckoutForm) => {
         const articleMap = Object.fromEntries(articles.map(a => [a.id, a]));
-        const items: StoreOrderItem[] = cart.map(e => ({
+        const items = cart.map(e => ({
             articleId: e.articleId,
             name: articleMap[e.articleId]?.name ?? e.articleId,
             price: articleMap[e.articleId]?.price ?? 0,
