@@ -2,6 +2,15 @@ import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma';
 
+const TICKET_SUPPLIER = 'Tienda';
+
+const storeTicketSchema = z.object({
+    filename: z.string().min(1),
+    mimeType: z.enum(['image/jpeg', 'image/png', 'application/pdf']),
+    size: z.number().int().min(0),
+    content: z.string().min(1),
+});
+
 const router = Router();
 
 const storeOrderSchema = z.object({
@@ -24,7 +33,7 @@ function formatStoreOrder(o: {
     customerPhone: string;
     notes: string;
     total: number;
-    items: { id: number; orderId: number; articleId: string; name: string; price: number; qty: number }[];
+    items: { id: number; orderId: number; articleId: string; name: string; price: number; qty: number; isPurchased: boolean; quantityPurchased: number; imageUrl: string | null }[];
 }) {
     return { ...o, id: `T-${o.id}`, dateCreated: o.dateCreated.toISOString() };
 }
@@ -74,6 +83,87 @@ router.patch('/:id/complete', async (req: Request, res: Response) => {
     } catch (err) {
         console.error('Error al completar pedido de tienda:', err);
         res.status(500).json({ error: 'Error al completar pedido de tienda' });
+    }
+});
+
+// PATCH /api/store-orders/:id/items/:itemId — toggle purchased / set quantity
+router.patch('/:id/items/:itemId', async (req: Request, res: Response) => {
+    const itemId = parseInt(req.params.itemId, 10);
+    if (!Number.isFinite(itemId)) { res.status(400).json({ error: 'itemId inválido' }); return; }
+    const parsed = z.object({
+        isPurchased: z.boolean().optional(),
+        quantityPurchased: z.number().int().min(0).optional(),
+    }).safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: parsed.error.issues[0].message }); return; }
+    try {
+        const item = await prisma.storeOrderItem.update({
+            where: { id: itemId },
+            data: parsed.data,
+        });
+        res.json(item);
+    } catch (err) {
+        console.error('Error al actualizar item de tienda:', err);
+        res.status(500).json({ error: 'Error al actualizar item' });
+    }
+});
+
+// GET /api/store-orders/:id/tickets
+router.get('/:id/tickets', async (req: Request, res: Response) => {
+    const rawId = req.params.id.startsWith('T-') ? parseInt(req.params.id.slice(2), 10) : parseInt(req.params.id, 10);
+    if (!Number.isFinite(rawId)) { res.status(400).json({ error: 'ID inválido' }); return; }
+    try {
+        const tickets = await prisma.orderTicket.findMany({
+            where: { orderId: rawId, supplierName: TICKET_SUPPLIER },
+            select: { id: true, orderId: true, supplierName: true, invoiced: true, filename: true, mimeType: true, size: true, createdAt: true },
+            orderBy: { createdAt: 'desc' },
+        });
+        res.json(tickets);
+    } catch (err) {
+        console.error('Error al obtener tickets de tienda:', err);
+        res.status(500).json({ error: 'Error al obtener tickets' });
+    }
+});
+
+// GET /api/store-orders/:id/tickets/:ticketId
+router.get('/:id/tickets/:ticketId', async (req: Request, res: Response) => {
+    const rawId = req.params.id.startsWith('T-') ? parseInt(req.params.id.slice(2), 10) : parseInt(req.params.id, 10);
+    if (!Number.isFinite(rawId)) { res.status(400).json({ error: 'ID inválido' }); return; }
+    try {
+        const ticket = await prisma.orderTicket.findFirst({ where: { id: req.params.ticketId, orderId: rawId } });
+        if (!ticket) { res.status(404).json({ error: 'Ticket no encontrado' }); return; }
+        res.json(ticket);
+    } catch (err) {
+        console.error('Error al obtener ticket:', err);
+        res.status(500).json({ error: 'Error al obtener ticket' });
+    }
+});
+
+// POST /api/store-orders/:id/tickets
+router.post('/:id/tickets', async (req: Request, res: Response) => {
+    const rawId = req.params.id.startsWith('T-') ? parseInt(req.params.id.slice(2), 10) : parseInt(req.params.id, 10);
+    if (!Number.isFinite(rawId)) { res.status(400).json({ error: 'ID inválido' }); return; }
+    const parsed = storeTicketSchema.safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: parsed.error.issues[0].message }); return; }
+    try {
+        const ticket = await prisma.orderTicket.create({ data: { orderId: rawId, supplierName: TICKET_SUPPLIER, ...parsed.data } });
+        res.status(201).json(ticket);
+    } catch (err) {
+        console.error('Error al crear ticket de tienda:', err);
+        res.status(500).json({ error: 'Error al crear ticket' });
+    }
+});
+
+// DELETE /api/store-orders/:id/tickets/:ticketId
+router.delete('/:id/tickets/:ticketId', async (req: Request, res: Response) => {
+    try {
+        await prisma.orderTicket.delete({ where: { id: req.params.ticketId } });
+        res.json({ success: true });
+    } catch (err: unknown) {
+        if (err && typeof err === 'object' && 'code' in err && (err as { code: string }).code === 'P2025') {
+            res.status(404).json({ error: 'Ticket no encontrado' }); return;
+        }
+        console.error('Error al eliminar ticket de tienda:', err);
+        res.status(500).json({ error: 'Error al eliminar ticket' });
     }
 });
 

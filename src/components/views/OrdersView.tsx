@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import type { Order, LineItem, StoreOrder, OrderTicket } from '../../types';
+import type { Order, LineItem, StoreOrder, StoreOrderItem, OrderTicket } from '../../types';
 import { getOrders, saveItemStatus, completeOrder, AuthError, type OrderStatusType } from '../../services/api';
-import { getStoreOrders, completeStoreOrder, getOrderTickets, getOrderTicketContent, createOrderTicket, deleteOrderTicket, getOrderTicketCounts } from '../../services/api';
+import { getStoreOrders, completeStoreOrder, getOrderTickets, getOrderTicketContent, createOrderTicket, deleteOrderTicket, getOrderTicketCounts, updateStoreItemStatus, getStoreOrderTickets, getStoreOrderTicketContent, createStoreOrderTicket, deleteStoreOrderTicket } from '../../services/api';
 import { CheckCircleIcon, ChevronDownIcon, XMarkIcon, EyeIcon } from '../ui/icons';
 import { showToast } from '../ui/Toast';
 import { fmt } from '../ui';
@@ -56,13 +56,367 @@ const EmptyStoreOrders: React.FC = () => (
 );
 
 // --- Tarjeta pedido de Tienda ---
-const StoreOrderCard: React.FC<{ order: StoreOrder; onComplete: (id: string) => void }> = ({ order, onComplete }) => {
+// --- StoreItem ---
+const StoreItem = React.memo<{
+    item: StoreOrderItem;
+    onQuantityChange: (itemId: number, newQty: number, isPurchased: boolean) => void;
+    onViewImage: (url: string, name: string) => void;
+}>(({ item, onQuantityChange, onViewImage }) => {
+    const isPurchased = item.isPurchased;
+    const displayQty = item.quantityPurchased;
+    const isInProgress = displayQty > 0 && !isPurchased;
+
+    const handleToggle = () => {
+        const newQty = isPurchased ? 0 : item.qty;
+        onQuantityChange(item.id, newQty, !isPurchased);
+    };
+    const handleIncrement = () => {
+        if (displayQty < item.qty) {
+            const newQty = displayQty + 1;
+            onQuantityChange(item.id, newQty, newQty >= item.qty);
+        }
+    };
+    const handleDecrement = () => {
+        if (displayQty > 0) {
+            const newQty = displayQty - 1;
+            onQuantityChange(item.id, newQty, false);
+        }
+    };
+
+    const bgClass = isPurchased
+        ? 'bg-primary/5 text-on-surface-variant'
+        : isInProgress
+            ? 'bg-secondary-container/60'
+            : 'bg-white hover:bg-surface-container-low';
+
+    return (
+        <div className={`flex items-center justify-between p-3 transition-all duration-300 ${bgClass}`}>
+            <div className="flex items-center gap-4 flex-grow">
+                <span className="text-primary font-bold text-lg shrink-0">{item.qty}x</span>
+                <div>
+                    <p className={`font-semibold text-on-background ${isPurchased ? 'line-through opacity-60' : ''}`}>
+                        {item.name}
+                    </p>
+                    <p className="text-xs text-on-surface-variant">{fmt(item.price)} c/u</p>
+                </div>
+            </div>
+            <div className="flex items-center gap-3">
+                {item.qty > 1 && (
+                    <div className="flex items-center gap-2">
+                        <button onClick={handleDecrement} disabled={displayQty === 0} className="w-7 h-7 flex items-center justify-center rounded-full bg-surface-container text-on-surface hover:bg-surface-container-high disabled:opacity-40 transition">-</button>
+                        <span className="font-mono text-base font-semibold text-on-background w-8 text-center">{displayQty}</span>
+                        <button onClick={handleIncrement} disabled={displayQty >= item.qty} className="w-7 h-7 flex items-center justify-center rounded-full bg-surface-container text-on-surface hover:bg-surface-container-high disabled:opacity-40 transition">+</button>
+                    </div>
+                )}
+                {item.imageUrl && (
+                    <button
+                        onClick={() => onViewImage(item.imageUrl!, item.name)}
+                        className="p-1 text-on-surface-variant hover:text-primary rounded-full transition"
+                        aria-label={`Ver imagen de ${item.name}`}
+                    >
+                        <EyeIcon className="w-5 h-5" />
+                    </button>
+                )}
+                <button
+                    onClick={handleToggle}
+                    aria-label={isPurchased ? 'Marcar como pendiente' : 'Marcar como comprado'}
+                    className={`relative w-14 h-8 rounded-full flex items-center transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 ${isPurchased ? 'bg-success-purchased focus:ring-success-purchased' : 'bg-surface-container-high focus:ring-primary'}`}
+                >
+                    <span className={`inline-block w-6 h-6 bg-white rounded-full shadow transform transition-transform duration-300 ${isPurchased ? 'translate-x-7' : 'translate-x-1'}`} />
+                </button>
+            </div>
+        </div>
+    );
+});
+
+// --- StoreOrderTicketModal ---
+const StoreOrderTicketModal: React.FC<{
+    orderId: string;
+    authToken: string;
+    onAuthError: () => void;
+    onClose: () => void;
+    onTicketUploaded: () => void;
+    onTicketDeleted: () => void;
+}> = ({ orderId, authToken, onAuthError, onClose, onTicketUploaded, onTicketDeleted }) => {
+    const [tickets, setTickets] = useState<OrderTicket[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [uploading, setUploading] = useState(false);
+    const [fileError, setFileError] = useState('');
+    const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+    const [deleting, setDeleting] = useState(false);
+    const [viewingContent, setViewingContent] = useState<string | null>(null);
+    const [viewingFilename, setViewingFilename] = useState<string | null>(null);
+    const [contentCache, setContentCache] = useState<Record<string, string>>({});
+    const fileRef = useRef<HTMLInputElement>(null);
+
+    useEffect(() => {
+        let cancelled = false;
+        const load = async () => {
+            setIsLoading(true);
+            try {
+                const data = await getStoreOrderTickets(authToken, orderId);
+                if (!cancelled) setTickets(data);
+            } catch (err) {
+                if (err instanceof AuthError) { onAuthError(); return; }
+                if (!cancelled) showToast('error', 'Error al cargar tickets');
+            } finally {
+                if (!cancelled) setIsLoading(false);
+            }
+        };
+        load();
+        return () => { cancelled = true; };
+    }, [orderId]);
+
+    useEffect(() => {
+        const toLoad = tickets.filter(t => t.mimeType !== 'application/pdf' && !contentCache[t.id]);
+        if (toLoad.length === 0) return;
+        let cancelled = false;
+        Promise.all(toLoad.map(t => getStoreOrderTicketContent(authToken, orderId, t.id)))
+            .then(results => {
+                if (cancelled) return;
+                setContentCache(prev => {
+                    const next = { ...prev };
+                    results.forEach(r => { if (r.content) next[r.id] = r.content; });
+                    return next;
+                });
+            })
+            .catch(() => {});
+        return () => { cancelled = true; };
+    }, [tickets.length]);
+
+    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        e.target.value = '';
+        if (!TICKET_ALLOWED_TYPES.includes(file.type)) { setFileError('Solo se permiten archivos JPG, PNG o PDF.'); return; }
+        if (file.type === 'application/pdf') {
+            if (file.size > 1_000_000) { setFileError('El PDF no puede superar 1 MB.'); return; }
+            setFileError('');
+            const reader = new FileReader();
+            reader.onload = ev => handleUpload(file, ev.target?.result as string, 'application/pdf');
+            reader.readAsDataURL(file);
+            return;
+        }
+        setFileError('');
+        setUploading(true);
+        const reader = new FileReader();
+        reader.onload = async ev => {
+            try {
+                const compressed = await compressImage(ev.target?.result as string);
+                await handleUpload(file, compressed, 'image/jpeg');
+            } catch {
+                setFileError('No se pudo procesar la imagen.');
+                setUploading(false);
+            }
+        };
+        reader.readAsDataURL(file);
+    };
+
+    const handleUpload = async (file: File, content: string, mimeType: string) => {
+        const approxSize = Math.round((content.length * 3) / 4);
+        try {
+            const ticket = await createStoreOrderTicket(authToken, orderId, {
+                filename: mimeType === 'image/jpeg' && !file.name.match(/\.jpe?g$/i) ? file.name.replace(/\.[^.]+$/, '.jpg') : file.name,
+                mimeType,
+                size: approxSize,
+                content,
+            });
+            setTickets(prev => [ticket, ...prev]);
+            onTicketUploaded();
+            showToast('success', 'Ticket subido');
+        } catch (err) {
+            if (err instanceof AuthError) { onAuthError(); return; }
+            showToast('error', err instanceof Error ? err.message : 'Error al subir ticket');
+        } finally {
+            setUploading(false);
+        }
+    };
+
+    const handleView = async (ticket: OrderTicket) => {
+        try {
+            const full = await getStoreOrderTicketContent(authToken, orderId, ticket.id);
+            if (!full.content) return;
+            if (full.mimeType === 'application/pdf') openPdfBlob(full.content, full.filename);
+            else { setViewingContent(full.content); setViewingFilename(full.filename); }
+        } catch (err) {
+            if (err instanceof AuthError) { onAuthError(); return; }
+            showToast('error', 'No se pudo cargar el ticket');
+        }
+    };
+
+    const handleDelete = async () => {
+        if (!confirmDeleteId) return;
+        setDeleting(true);
+        try {
+            await deleteStoreOrderTicket(authToken, orderId, confirmDeleteId);
+            setTickets(prev => prev.filter(t => t.id !== confirmDeleteId));
+            onTicketDeleted();
+            showToast('success', 'Ticket eliminado');
+            setConfirmDeleteId(null);
+        } catch (err) {
+            if (err instanceof AuthError) { onAuthError(); return; }
+            showToast('error', err instanceof Error ? err.message : 'Error al eliminar');
+        } finally {
+            setDeleting(false);
+        }
+    };
+
+    return (
+        <>
+            <div className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
+                <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col border border-surface-variant" onClick={e => e.stopPropagation()}>
+                    <div className="flex items-center justify-between px-6 py-4 border-b border-surface-variant">
+                        <div>
+                            <h3 className="font-epilogue font-bold text-on-background text-lg">Tickets — Tienda</h3>
+                            <p className="text-xs text-on-surface-variant">Pedido {orderId}</p>
+                        </div>
+                        <button onClick={onClose} className="p-2 rounded-full hover:bg-surface-container-low text-on-surface-variant transition">
+                            <XMarkIcon className="w-5 h-5" />
+                        </button>
+                    </div>
+                    <div className="flex-1 overflow-y-auto p-5 space-y-4">
+                        <div>
+                            <input ref={fileRef} type="file" accept="image/jpeg,image/png,application/pdf" className="hidden" onChange={handleFileChange} />
+                            <button
+                                type="button"
+                                onClick={() => fileRef.current?.click()}
+                                disabled={uploading}
+                                className="w-full border-2 border-dashed border-outline-variant rounded-2xl p-5 flex flex-col items-center gap-2 hover:border-primary hover:bg-primary/5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                {uploading
+                                    ? <span className="material-symbols-outlined text-primary text-4xl animate-spin">progress_activity</span>
+                                    : <span className="material-symbols-outlined text-on-surface-variant text-4xl">upload_file</span>
+                                }
+                                <span className="text-sm text-on-surface-variant">{uploading ? 'Subiendo…' : 'Foto o PDF del ticket'}</span>
+                            </button>
+                            {fileError && (
+                                <p className="mt-1.5 text-sm text-error flex items-center gap-1">
+                                    <span className="material-symbols-outlined text-sm">error</span>
+                                    {fileError}
+                                </p>
+                            )}
+                        </div>
+                        {isLoading && (
+                            <div className="flex justify-center py-6">
+                                <span className="material-symbols-outlined text-primary text-4xl animate-spin">progress_activity</span>
+                            </div>
+                        )}
+                        {!isLoading && tickets.length === 0 && (
+                            <div className="flex flex-col items-center py-6 text-on-surface-variant text-sm">
+                                <span className="material-symbols-outlined text-4xl mb-1 opacity-40">receipt_long</span>
+                                No hay tickets para este pedido
+                            </div>
+                        )}
+                        {!isLoading && tickets.length > 0 && (
+                            <div className="grid grid-cols-2 gap-3">
+                                {tickets.map(ticket => {
+                                    const preview = contentCache[ticket.id];
+                                    const isPdf = ticket.mimeType === 'application/pdf';
+                                    return (
+                                        <div key={ticket.id} className="rounded-2xl border border-surface-variant overflow-hidden bg-white hover:border-primary/30 hover:shadow-sm transition-all">
+                                            <div
+                                                className={`relative w-full h-36 flex items-center justify-center cursor-pointer ${isPdf ? 'bg-red-50' : 'bg-surface-container-low'}`}
+                                                onClick={() => {
+                                                    if (isPdf) handleView(ticket);
+                                                    else if (preview) { setViewingContent(preview); setViewingFilename(ticket.filename); }
+                                                    else handleView(ticket);
+                                                }}
+                                            >
+                                                {isPdf ? (
+                                                    <div className="flex flex-col items-center gap-1 text-red-400">
+                                                        <span className="material-symbols-outlined text-4xl">picture_as_pdf</span>
+                                                        <span className="text-xs font-medium">PDF</span>
+                                                    </div>
+                                                ) : preview ? (
+                                                    <img src={preview} alt={ticket.filename} className="w-full h-full object-cover" />
+                                                ) : (
+                                                    <div className="animate-pulse w-8 h-8 rounded-full bg-surface-variant" />
+                                                )}
+                                                <div className="absolute inset-0 bg-black/0 hover:bg-black/10 transition-colors flex items-center justify-center opacity-0 hover:opacity-100">
+                                                    <div className="bg-black/50 rounded-full p-2">
+                                                        <span className="material-symbols-outlined text-white text-xl">zoom_in</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center justify-between px-3 py-2">
+                                                <p className="text-xs text-on-surface-variant">
+                                                    {new Date(ticket.createdAt).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                                </p>
+                                                <button onClick={() => setConfirmDeleteId(ticket.id)} className="p-1 text-on-surface-variant hover:text-error hover:bg-error-container/30 rounded-full transition">
+                                                    <XMarkIcon className="w-4 h-4" />
+                                                </button>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </div>
+                    <div className="px-6 py-4 border-t border-surface-variant flex justify-end">
+                        <button onClick={onClose} className="px-4 py-2 text-sm font-medium text-on-surface bg-surface-container rounded-full hover:bg-surface-container-high transition">
+                            Cerrar
+                        </button>
+                    </div>
+                </div>
+            </div>
+            {confirmDeleteId && (
+                <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+                    <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 border border-surface-variant">
+                        <p className="text-on-surface font-medium mb-4">¿Eliminar este ticket? Esta acción no se puede deshacer.</p>
+                        <div className="flex justify-end gap-2">
+                            <button onClick={() => setConfirmDeleteId(null)} disabled={deleting} className="px-4 py-2 text-sm text-on-surface bg-surface-container rounded-full hover:bg-surface-container-high disabled:opacity-50 transition">
+                                Cancelar
+                            </button>
+                            <button onClick={handleDelete} disabled={deleting} className="px-4 py-2 text-sm font-semibold bg-error text-on-error rounded-full hover:bg-error/90 disabled:opacity-50 transition">
+                                {deleting ? 'Eliminando…' : 'Eliminar'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+            {viewingContent && (
+                <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4" onClick={() => setViewingContent(null)}>
+                    <div className="relative max-w-2xl w-full" onClick={e => e.stopPropagation()}>
+                        <button className="absolute -top-9 right-0 text-white text-sm flex items-center gap-1 hover:opacity-80" onClick={() => setViewingContent(null)}>
+                            <XMarkIcon className="w-4 h-4" /> Cerrar
+                        </button>
+                        <img src={viewingContent} alt={viewingFilename ?? 'Ticket'} className="w-full rounded-xl object-contain max-h-[80vh]" />
+                        <p className="text-center text-white/60 text-xs mt-2">{viewingFilename}</p>
+                    </div>
+                </div>
+            )}
+        </>
+    );
+};
+
+// --- StoreOrderCard ---
+const StoreOrderCard: React.FC<{
+    order: StoreOrder;
+    authToken: string;
+    onAuthError: () => void;
+    onComplete: (id: string) => void;
+    onItemUpdate: (orderId: string, itemId: number, isPurchased: boolean, quantityPurchased: number) => void;
+    onViewImage: (url: string, name: string) => void;
+}> = ({ order, authToken, onAuthError, onComplete, onItemUpdate, onViewImage }) => {
     const [isExpanded, setIsExpanded] = useState(false);
+    const [ticketModal, setTicketModal] = useState(false);
+    const [ticketCount, setTicketCount] = useState(0);
     const isPending = order.status === 'pending';
     const date = new Date(order.dateCreated).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' });
+    const purchasedCount = order.items.filter(i => i.isPurchased).length;
+    const allPurchased = purchasedCount === order.items.length;
 
     const statusColor = isPending ? 'bg-secondary-container/60 text-on-secondary-container' : 'bg-success-purchased/15 text-success-purchased';
     const statusLabel = isPending ? 'Pendiente' : 'Completado';
+
+    const handleQuantityChange = useCallback((itemId: number, newQty: number, isPurchased: boolean) => {
+        onItemUpdate(order.id, itemId, isPurchased, newQty);
+        updateStoreItemStatus(authToken, order.id, itemId, { isPurchased, quantityPurchased: newQty })
+            .catch(err => {
+                if (err instanceof AuthError) onAuthError();
+                else showToast('error', 'Error al guardar progreso');
+            });
+    }, [authToken, order.id, onItemUpdate, onAuthError]);
 
     return (
         <article aria-labelledby={`store-order-heading-${order.id}`} className="bg-white rounded-2xl shadow-sm border border-surface-variant overflow-hidden">
@@ -85,16 +439,19 @@ const StoreOrderCard: React.FC<{ order: StoreOrder; onComplete: (id: string) => 
                         )}
                     </div>
                 </div>
-
                 <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-lg font-bold text-on-background">{fmt(order.total)}</span>
+                    <span className={`px-2 py-0.5 text-xs font-semibold rounded-full bg-surface-container-high text-on-surface-variant`}>
+                        {purchasedCount}/{order.items.length}
+                    </span>
                     <span className={`px-3 py-1 text-xs font-semibold rounded-full ${statusColor}`}>
                         {statusLabel}
                     </span>
                     {isPending && (
                         <button
                             onClick={e => { e.stopPropagation(); onComplete(order.id); }}
-                            className="px-3 py-1.5 text-sm font-semibold bg-primary text-on-primary rounded-full hover:bg-primary-container shadow-sm transition"
+                            disabled={!allPurchased}
+                            className="px-3 py-1.5 text-sm font-semibold bg-primary text-on-primary rounded-full hover:bg-primary-container shadow-sm transition disabled:opacity-40 disabled:cursor-not-allowed"
                         >
                             Completar Pedido
                         </button>
@@ -103,29 +460,41 @@ const StoreOrderCard: React.FC<{ order: StoreOrder; onComplete: (id: string) => 
             </button>
 
             {isExpanded && (
-                <div className="p-4">
+                <div className="p-4 space-y-3">
                     <div className="rounded-xl border border-surface-variant overflow-hidden">
-                        <div className="px-4 py-2 bg-surface-container-low border-b border-surface-variant">
+                        <div className="px-4 py-2 bg-surface-container-low border-b border-surface-variant flex items-center justify-between">
                             <span className="text-sm font-semibold text-on-surface-variant">Artículos</span>
+                            <button
+                                onClick={() => setTicketModal(true)}
+                                className="flex items-center gap-1.5 px-3 py-1 text-xs font-semibold rounded-full bg-surface-container hover:bg-surface-container-high text-on-surface-variant transition"
+                            >
+                                <span className="material-symbols-outlined text-sm">receipt_long</span>
+                                Tickets{ticketCount > 0 ? ` (${ticketCount})` : ''}
+                            </button>
                         </div>
                         <div className="divide-y divide-surface-variant">
-                            {order.items.map((item, i) => (
-                                <div key={i} className="flex items-center justify-between p-3 bg-white hover:bg-surface-container-low transition-colors">
-                                    <div className="flex items-center gap-4 flex-grow">
-                                        <span className="text-primary font-bold text-lg shrink-0">{item.qty}x</span>
-                                        <div>
-                                            <p className="font-semibold text-on-background">{item.name}</p>
-                                            <p className="text-xs text-on-surface-variant">{fmt(item.price)} c/u</p>
-                                        </div>
-                                    </div>
-                                    <span className="font-semibold text-on-background text-sm">
-                                        {fmt(item.price * item.qty)}
-                                    </span>
-                                </div>
+                            {order.items.map(item => (
+                                <StoreItem
+                                    key={item.id}
+                                    item={item}
+                                    onQuantityChange={handleQuantityChange}
+                                    onViewImage={onViewImage}
+                                />
                             ))}
                         </div>
                     </div>
                 </div>
+            )}
+
+            {ticketModal && (
+                <StoreOrderTicketModal
+                    orderId={order.id}
+                    authToken={authToken}
+                    onAuthError={onAuthError}
+                    onClose={() => setTicketModal(false)}
+                    onTicketUploaded={() => setTicketCount(c => c + 1)}
+                    onTicketDeleted={() => setTicketCount(c => Math.max(0, c - 1))}
+                />
             )}
         </article>
     );
@@ -780,6 +1149,13 @@ const OrdersView: React.FC<OrdersViewProps> = ({ authToken, onAuthError }) => {
         }
     }, [authToken, onAuthError]);
 
+    const handleStoreItemUpdate = useCallback((orderId: string, itemId: number, isPurchased: boolean, quantityPurchased: number) => {
+        setStoreOrders(prev => prev.map(o => {
+            if (o.id !== orderId) return o;
+            return { ...o, items: o.items.map(i => i.id === itemId ? { ...i, isPurchased, quantityPurchased } : i) };
+        }));
+    }, []);
+
     useEffect(() => {
         if (tabMode !== 'store') return;
         let cancelled = false;
@@ -920,7 +1296,15 @@ const OrdersView: React.FC<OrdersViewProps> = ({ authToken, onAuthError }) => {
                     {loadingStoreOrders && <LoadingSpinner />}
                     {!loadingStoreOrders && storeOrders.length === 0 && <EmptyStoreOrders />}
                     {!loadingStoreOrders && storeOrders.map(order => (
-                        <StoreOrderCard key={order.id} order={order} onComplete={handleCompleteStoreOrder} />
+                        <StoreOrderCard
+                            key={order.id}
+                            order={order}
+                            authToken={authToken}
+                            onAuthError={onAuthError}
+                            onComplete={handleCompleteStoreOrder}
+                            onItemUpdate={handleStoreItemUpdate}
+                            onViewImage={handleViewImage}
+                        />
                     ))}
                 </div>
             )}

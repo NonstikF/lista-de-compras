@@ -141,13 +141,16 @@ model StoreOrder {
 }
 
 model StoreOrderItem {
-  id        Int        @id @default(autoincrement())
-  orderId   Int
-  articleId String
-  name      String
-  price     Float
-  qty       Int
-  order     StoreOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  id                Int        @id @default(autoincrement())
+  orderId           Int
+  articleId         String
+  name              String
+  price             Float
+  qty               Int
+  isPurchased       Boolean    @default(false)
+  quantityPurchased Int        @default(0)
+  imageUrl          String?
+  order             StoreOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
 }
 
 // ---------- Tickets de pedido ----------

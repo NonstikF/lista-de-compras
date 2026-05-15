@@ -115,10 +115,15 @@ export interface Article {
 
 // ---------- Pedidos de Tienda ----------
 export interface StoreOrderItem {
+  id: number;
+  orderId: number;
   articleId: string;
   name: string;
   price: number;
   qty: number;
+  isPurchased: boolean;
+  quantityPurchased: number;
+  imageUrl?: string | null;
 }
 
 export interface StoreOrder {

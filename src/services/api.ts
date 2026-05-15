@@ -278,6 +278,37 @@ export async function completeStoreOrder(token: string, id: string): Promise<Sto
   }));
 }
 
+export async function updateStoreItemStatus(
+  token: string,
+  orderId: string,
+  itemId: number,
+  data: { isPurchased?: boolean; quantityPurchased?: number },
+): Promise<StoreOrderItem> {
+  return handleResponse(await fetch(`${BASE}/api/store-orders/${orderId}/items/${itemId}`, {
+    method: 'PATCH', headers: authHeaders(token), body: JSON.stringify(data),
+  }));
+}
+
+export async function getStoreOrderTickets(token: string, orderId: string): Promise<OrderTicket[]> {
+  return handleResponse(await fetch(`${BASE}/api/store-orders/${orderId}/tickets`, { headers: authHeaders(token) }));
+}
+
+export async function getStoreOrderTicketContent(token: string, orderId: string, ticketId: string): Promise<OrderTicket> {
+  return handleResponse(await fetch(`${BASE}/api/store-orders/${orderId}/tickets/${ticketId}`, { headers: authHeaders(token) }));
+}
+
+export async function createStoreOrderTicket(token: string, orderId: string, data: { filename: string; mimeType: string; size: number; content: string }): Promise<OrderTicket> {
+  return handleResponse(await fetch(`${BASE}/api/store-orders/${orderId}/tickets`, {
+    method: 'POST', headers: authHeaders(token), body: JSON.stringify(data),
+  }));
+}
+
+export async function deleteStoreOrderTicket(token: string, orderId: string, ticketId: string): Promise<void> {
+  await handleResponse(await fetch(`${BASE}/api/store-orders/${orderId}/tickets/${ticketId}`, {
+    method: 'DELETE', headers: authHeaders(token),
+  }));
+}
+
 // ---- Inventario ----
 
 export async function getInventory(token: string): Promise<InventoryItem[]> {
