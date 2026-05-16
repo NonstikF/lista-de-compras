@@ -370,16 +370,7 @@ const StoreView: React.FC<StoreViewProps> = ({ authToken, onAuthError }) => {
                     {/* footer carrito */}
                     {cartItems.length > 0 && (
                         <div className="flex-shrink-0 border-t border-neutral-200 p-4 space-y-3 bg-white">
-                            {/* desglose */}
-                            <div className="space-y-1.5">
-                                {cartItems.map(e => (
-                                    <div key={e.articleId} className="flex justify-between text-xs text-neutral-500">
-                                        <span className="truncate mr-2">{e.qty}× {e.article.name}</span>
-                                        <span className="flex-shrink-0 font-medium text-neutral-700">{fmt(e.article.price * e.qty)}</span>
-                                    </div>
-                                ))}
-                            </div>
-                            <div className="flex justify-between items-center pt-2 border-t border-neutral-100">
+                            <div className="flex justify-between items-center border-t border-neutral-100 pt-2">
                                 <span className="text-sm font-semibold text-neutral-700">Total</span>
                                 <span className="text-xl font-bold text-neutral-900 font-epilogue tabular-nums">{fmt(subtotal)}</span>
                             </div>
