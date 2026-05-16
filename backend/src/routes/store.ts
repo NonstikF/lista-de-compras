@@ -27,17 +27,44 @@ const storeOrderSchema = z.object({
     })).min(1, 'El pedido necesita al menos un artículo'),
 });
 
-function formatStoreOrder(o: {
-    id: number;
-    dateCreated: Date;
-    status: string;
-    customerName: string;
-    customerPhone: string;
-    notes: string;
-    total: number;
+type ArticleInfo = { image: string | null; supplierName: string };
+
+async function getArticleInfoMap(articleIds: string[]): Promise<Record<string, ArticleInfo>> {
+    if (articleIds.length === 0) return {};
+    const articles = await prisma.article.findMany({
+        where: { id: { in: articleIds } },
+        select: {
+            id: true,
+            image: true,
+            suppliers: { include: { supplier: { select: { name: true } } }, take: 1 },
+        },
+    });
+    return Object.fromEntries(articles.map(a => [
+        a.id,
+        { image: a.image, supplierName: a.suppliers[0]?.supplier?.name ?? '' },
+    ]));
+}
+
+type RawOrder = {
+    id: number; dateCreated: Date; status: string; customerName: string;
+    customerPhone: string; notes: string; total: number;
     items: { id: number; orderId: number; articleId: string; name: string; price: number; qty: number; isPurchased: boolean; quantityPurchased: number; imageUrl: string | null; supplierName: string }[];
-}) {
-    return { ...o, id: `T-${o.id}`, dateCreated: o.dateCreated.toISOString() };
+};
+
+function formatStoreOrder(o: RawOrder, articleMap: Record<string, ArticleInfo> = {}) {
+    return {
+        ...o,
+        id: `T-${o.id}`,
+        dateCreated: o.dateCreated.toISOString(),
+        items: o.items.map(item => {
+            const info = articleMap[item.articleId];
+            return {
+                ...item,
+                imageUrl: info?.image ?? item.imageUrl,
+                supplierName: info?.supplierName || item.supplierName || 'Sin proveedor',
+            };
+        }),
+    };
 }
 
 router.get('/', async (_req: Request, res: Response) => {
@@ -46,7 +73,9 @@ router.get('/', async (_req: Request, res: Response) => {
             include: { items: true },
             orderBy: { dateCreated: 'desc' },
         });
-        res.json(orders.map(formatStoreOrder));
+        const allIds = [...new Set(orders.flatMap(o => o.items.map(i => i.articleId)))];
+        const articleMap = await getArticleInfoMap(allIds);
+        res.json(orders.map(o => formatStoreOrder(o, articleMap)));
     } catch (err) {
         console.error('Error al obtener pedidos de tienda:', err);
         res.status(500).json({ error: 'Error al obtener pedidos de tienda' });
@@ -63,7 +92,8 @@ router.post('/', async (req: Request, res: Response) => {
             data: { ...rest, total, items: { create: items } },
             include: { items: true },
         });
-        res.status(201).json(formatStoreOrder(order));
+        const articleMap = await getArticleInfoMap(order.items.map(i => i.articleId));
+        res.status(201).json(formatStoreOrder(order, articleMap));
     } catch (err) {
         console.error('Error al crear pedido de tienda:', err);
         res.status(500).json({ error: 'Error al crear pedido de tienda' });
@@ -81,7 +111,8 @@ router.patch('/:id/complete', async (req: Request, res: Response) => {
             data: { status: 'completed' },
             include: { items: true },
         });
-        res.json(formatStoreOrder(order));
+        const articleMap = await getArticleInfoMap(order.items.map(i => i.articleId));
+        res.json(formatStoreOrder(order, articleMap));
     } catch (err) {
         console.error('Error al completar pedido de tienda:', err);
         res.status(500).json({ error: 'Error al completar pedido de tienda' });
