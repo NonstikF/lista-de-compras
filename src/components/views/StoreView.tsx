@@ -94,11 +94,11 @@ const CartSidebar: React.FC<{
     const totalQty = items.reduce((s, e) => s + e.qty, 0);
 
     return (
-        <aside className="flex flex-col h-full bg-neutral-950 text-white">
+        <aside className="flex flex-col h-full border-l border-neutral-200" style={{ backgroundColor: '#F7F4EF' }}>
             {/* header */}
-            <div className="px-5 pt-6 pb-4 flex-shrink-0">
+            <div className="px-5 pt-5 pb-4 flex-shrink-0">
                 <div className="flex items-center justify-between">
-                    <h2 className="font-epilogue text-lg font-bold tracking-tight">Pedido</h2>
+                    <h2 className="font-epilogue text-lg font-bold text-neutral-800 tracking-tight">Pedido</h2>
                     {totalQty > 0 && (
                         <span className="bg-primary text-on-primary text-xs font-bold rounded-full px-2.5 py-1 leading-none">
                             {totalQty}
@@ -106,37 +106,37 @@ const CartSidebar: React.FC<{
                     )}
                 </div>
                 {totalQty > 0 && (
-                    <p className="text-neutral-400 text-xs mt-1">{totalQty} artículo{totalQty !== 1 ? 's' : ''} seleccionados</p>
+                    <p className="text-neutral-500 text-xs mt-1">{totalQty} artículo{totalQty !== 1 ? 's' : ''} seleccionados</p>
                 )}
             </div>
 
             {/* divider */}
-            <div className="h-px bg-white/10 flex-shrink-0 mx-5" />
+            <div className="h-px bg-neutral-200 flex-shrink-0 mx-5" />
 
             {/* items */}
             <div className="flex-1 overflow-y-auto py-3 px-3 space-y-1.5">
                 {items.length === 0 ? (
                     <div className="flex flex-col items-center justify-center h-full text-center py-12">
-                        <div className="w-14 h-14 rounded-2xl bg-white/5 flex items-center justify-center mb-3">
-                            <MIcon name="shopping_bag" size={28} className="text-neutral-500" />
+                        <div className="w-14 h-14 rounded-2xl bg-neutral-200 flex items-center justify-center mb-3">
+                            <MIcon name="shopping_bag" size={28} className="text-neutral-400" />
                         </div>
-                        <p className="text-neutral-400 text-sm font-medium">Carrito vacío</p>
-                        <p className="text-neutral-600 text-xs mt-1">Selecciona artículos del catálogo</p>
+                        <p className="text-neutral-500 text-sm font-medium">Carrito vacío</p>
+                        <p className="text-neutral-400 text-xs mt-1">Selecciona artículos del catálogo</p>
                     </div>
                 ) : (
                     items.map(e => (
-                        <div key={e.articleId} className="flex items-center gap-2.5 bg-white/5 hover:bg-white/8 rounded-xl p-2 transition-colors">
-                            <div className="w-10 h-10 rounded-lg overflow-hidden flex-shrink-0 bg-neutral-800">
+                        <div key={e.articleId} className="flex items-center gap-2.5 bg-white hover:bg-neutral-50 rounded-xl p-2 transition-colors shadow-sm border border-neutral-100">
+                            <div className="w-10 h-10 rounded-lg overflow-hidden flex-shrink-0 bg-neutral-100">
                                 <ArticleThumb article={e.article} className="w-full h-full" />
                             </div>
                             <div className="flex-1 min-w-0">
-                                <p className="text-xs font-medium text-white leading-snug line-clamp-1">{e.article.name}</p>
+                                <p className="text-xs font-semibold text-neutral-800 leading-snug line-clamp-1">{e.article.name}</p>
                                 <p className="text-xs text-primary font-bold mt-0.5">{fmt(e.article.price * e.qty)}</p>
                             </div>
-                            <div className="flex items-center gap-0.5 bg-white/10 rounded-lg p-0.5 flex-shrink-0">
-                                <button onClick={() => onDecrement(e.articleId)} className="w-6 h-6 flex items-center justify-center rounded-md hover:bg-white/10 text-white font-bold transition text-sm">−</button>
-                                <span className="w-5 text-center text-xs font-bold text-white tabular-nums">{e.qty}</span>
-                                <button onClick={() => onIncrement(e.articleId)} className="w-6 h-6 flex items-center justify-center rounded-md hover:bg-white/10 text-white font-bold transition text-sm">+</button>
+                            <div className="flex items-center gap-0.5 bg-neutral-100 border border-neutral-200 rounded-lg p-0.5 flex-shrink-0">
+                                <button onClick={() => onDecrement(e.articleId)} className="w-6 h-6 flex items-center justify-center rounded-md hover:bg-neutral-200 text-neutral-700 font-bold transition text-sm">−</button>
+                                <span className="w-5 text-center text-xs font-bold text-neutral-800 tabular-nums">{e.qty}</span>
+                                <button onClick={() => onIncrement(e.articleId)} className="w-6 h-6 flex items-center justify-center rounded-md hover:bg-neutral-200 text-neutral-700 font-bold transition text-sm">+</button>
                             </div>
                         </div>
                     ))
@@ -147,14 +147,14 @@ const CartSidebar: React.FC<{
             <div className="flex-shrink-0 px-4 pb-5 pt-3 space-y-3">
                 {items.length > 0 && (
                     <>
-                        <div className="h-px bg-white/10" />
+                        <div className="h-px bg-neutral-200" />
                         <div className="flex justify-between items-center">
-                            <span className="text-neutral-400 text-sm">Total</span>
-                            <span className="text-white text-2xl font-bold font-epilogue tabular-nums">{fmt(subtotal)}</span>
+                            <span className="text-neutral-500 text-sm">Total</span>
+                            <span className="text-neutral-900 text-2xl font-bold font-epilogue tabular-nums">{fmt(subtotal)}</span>
                         </div>
                         <button
                             onClick={onCheckout}
-                            className="w-full bg-primary hover:bg-primary/90 active:scale-[0.98] text-on-primary rounded-2xl py-3.5 font-bold text-sm flex items-center justify-center gap-2 transition-all shadow-lg shadow-primary/30"
+                            className="w-full bg-primary hover:bg-primary/90 active:scale-[0.98] text-on-primary rounded-2xl py-3.5 font-bold text-sm flex items-center justify-center gap-2 transition-all shadow-md shadow-primary/20"
                         >
                             <MIcon name="check_circle" fill />
                             Confirmar pedido
@@ -460,13 +460,13 @@ const StoreView: React.FC<StoreViewProps> = ({ authToken, onAuthError }) => {
                 <>
                     <div className="fixed inset-0 z-[70] bg-black/60 lg:hidden" onClick={() => setMobileCartOpen(false)} />
                     <div className="fixed bottom-0 left-0 right-0 z-[75] lg:hidden rounded-t-3xl overflow-hidden shadow-2xl flex flex-col max-h-[85vh] animate-[slideUp_0.25s_ease-out]">
-                        <div className="bg-neutral-950 flex items-center justify-between px-5 py-4 flex-shrink-0">
-                            <h2 className="font-epilogue text-lg font-bold text-white flex items-center gap-2">
-                                <MIcon name="shopping_bag" fill />
+                        <div className="flex items-center justify-between px-5 py-4 flex-shrink-0 border-b border-neutral-200" style={{ backgroundColor: '#F7F4EF' }}>
+                            <h2 className="font-epilogue text-lg font-bold text-neutral-800 flex items-center gap-2">
+                                <MIcon name="shopping_bag" className="text-primary" fill />
                                 Pedido
-                                {cartCount > 0 && <span className="text-xs font-normal text-neutral-400 ml-1">· {cartCount} art{cartCount !== 1 ? 's.' : '.'}</span>}
+                                {cartCount > 0 && <span className="text-xs font-normal text-neutral-500 ml-1">· {cartCount} art{cartCount !== 1 ? 's.' : '.'}</span>}
                             </h2>
-                            <button onClick={() => setMobileCartOpen(false)} className="p-1.5 rounded-full hover:bg-white/10 text-neutral-400 transition">
+                            <button onClick={() => setMobileCartOpen(false)} className="p-1.5 rounded-full hover:bg-neutral-200 text-neutral-500 transition">
                                 <MIcon name="close" />
                             </button>
                         </div>
