@@ -231,23 +231,36 @@ const CheckoutModal: React.FC<{
 
             {step === 2 && (
                 <div className="p-6 space-y-4">
-                    <div className="bg-surface-container-low rounded-xl p-4 space-y-1">
-                        <p className="text-sm font-semibold text-on-background">{form.customerName}</p>
-                        {form.notes && <p className="text-sm text-on-surface-variant italic">{form.notes}</p>}
-                    </div>
-                    <div className="space-y-2">
-                        {items.map(e => (
-                            <div key={e.articleId} className="flex items-center justify-between text-sm">
-                                <span className="text-on-background">{e.article.name}</span>
-                                <span className="text-on-surface-variant">{e.qty} × {fmt(e.article.price)} = <strong className="text-on-background">{fmt(e.article.price * e.qty)}</strong></span>
-                            </div>
-                        ))}
-                        <div className="flex justify-between font-bold text-on-background border-t border-surface-variant pt-2 mt-2">
-                            <span>Total</span>
-                            <span>{fmt(subtotal)}</span>
+                    <div className="bg-surface-container-low rounded-xl px-4 py-3 flex items-center gap-3">
+                        <span className="material-symbols-outlined text-primary text-xl">person</span>
+                        <div>
+                            <p className="text-sm font-semibold text-on-background leading-tight">{form.customerName}</p>
+                            {form.notes && <p className="text-xs text-on-surface-variant italic mt-0.5">{form.notes}</p>}
                         </div>
                     </div>
-                    <div className="flex justify-end gap-2 pt-2">
+
+                    <div className="border border-surface-variant rounded-xl overflow-hidden">
+                        <div className="divide-y divide-surface-variant">
+                            {items.map(e => (
+                                <div key={e.articleId} className="flex items-center gap-3 px-4 py-2.5">
+                                    <div className="w-9 h-9 rounded-lg overflow-hidden flex-shrink-0 bg-surface-container">
+                                        <ArticleThumb article={e.article} className="w-full h-full" />
+                                    </div>
+                                    <span className="flex-1 text-sm text-on-background leading-tight min-w-0">{e.article.name}</span>
+                                    <div className="text-right flex-shrink-0">
+                                        <p className="text-sm font-bold text-on-background">{fmt(e.article.price * e.qty)}</p>
+                                        <p className="text-xs text-on-surface-variant">{e.qty} × {fmt(e.article.price)}</p>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                        <div className="flex justify-between items-center px-4 py-3 bg-surface-container-low border-t border-surface-variant">
+                            <span className="text-sm font-bold text-on-background">Total</span>
+                            <span className="text-lg font-bold text-primary">{fmt(subtotal)}</span>
+                        </div>
+                    </div>
+
+                    <div className="flex justify-end gap-2 pt-1">
                         <Button variant="neutral" onClick={() => setStep(1)} disabled={loading}>Atrás</Button>
                         <Button variant="filled" icon="check_circle" onClick={handleConfirm} disabled={loading}>
                             {loading ? 'Creando pedido…' : 'Confirmar pedido'}
