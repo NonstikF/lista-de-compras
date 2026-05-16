@@ -8,6 +8,7 @@ interface CartEntry { articleId: string; qty: number; }
 interface CheckoutForm { customerName: string; notes: string; }
 
 const LAST_CUSTOMER_KEY = 'plantarte_last_customer_name';
+const CART_KEY = 'plantarte_store_cart';
 const THUMB_COLORS = ['#3b6934', '#7d562d', '#60233e', '#2d5a27', '#42493e', '#7c3a55'];
 
 // ─── Thumb ────────────────────────────────────────────────────────────────────
@@ -26,11 +27,30 @@ const ArticleThumb: React.FC<{ article: Article; className?: string }> = ({ arti
 const StoreCard: React.FC<{
     article: Article; cartQty: number;
     onAdd: (id: string) => void; onIncrement: (id: string) => void; onDecrement: (id: string) => void;
-}> = ({ article, cartQty, onAdd, onIncrement, onDecrement }) => {
+    onSetQty: (id: string, qty: number) => void;
+}> = ({ article, cartQty, onAdd, onIncrement, onDecrement, onSetQty }) => {
     const inCart = cartQty > 0;
+    const [editing, setEditing] = useState(false);
+    const [draft, setDraft] = useState('');
+    const inputRef = useRef<HTMLInputElement>(null);
+
+    const startEdit = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        setDraft(String(cartQty));
+        setEditing(true);
+        setTimeout(() => inputRef.current?.select(), 0);
+    };
+
+    const commitEdit = () => {
+        const n = parseInt(draft, 10);
+        if (!isNaN(n) && n > 0) onSetQty(article.id, n);
+        else if (!isNaN(n) && n === 0) onDecrement(article.id); // quitar
+        setEditing(false);
+    };
+
     return (
         <div
-            onClick={() => !inCart && onAdd(article.id)}
+            onClick={() => inCart ? onIncrement(article.id) : onAdd(article.id)}
             className={`group relative bg-white rounded-xl overflow-hidden flex flex-col transition-all duration-150 cursor-pointer select-none
                 ${inCart ? 'ring-2 ring-primary shadow-md' : 'border border-neutral-200 hover:border-primary/40 hover:shadow-sm'}`}
         >
@@ -41,11 +61,11 @@ const StoreCard: React.FC<{
                         {cartQty}
                     </div>
                 )}
-                {!inCart && (
-                    <div className="absolute inset-0 flex items-end justify-center pb-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <span className="bg-primary text-white text-xs font-bold px-3 py-1 rounded-full shadow">+ Agregar</span>
-                    </div>
-                )}
+                <div className={`absolute inset-0 flex items-end justify-center pb-2 transition-opacity ${inCart ? 'opacity-0 group-hover:opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
+                    <span className="bg-primary text-white text-xs font-bold px-3 py-1 rounded-full shadow">
+                        {inCart ? `+1 (${cartQty + 1})` : '+ Agregar'}
+                    </span>
+                </div>
             </div>
             <div className="p-2 flex flex-col gap-1 flex-1">
                 <p className="text-[11px] font-medium text-neutral-700 line-clamp-2 leading-snug flex-1">{article.name}</p>
@@ -55,7 +75,22 @@ const StoreCard: React.FC<{
                 <div className="px-2 pb-2" onClick={e => e.stopPropagation()}>
                     <div className="flex items-center justify-between bg-primary rounded-lg px-1 py-0.5">
                         <button onClick={() => onDecrement(article.id)} className="w-7 h-7 flex items-center justify-center rounded-md text-white hover:bg-black/10 transition font-bold text-base">−</button>
-                        <span className="text-white font-bold text-sm tabular-nums">{cartQty}</span>
+                        {editing ? (
+                            <input
+                                ref={inputRef}
+                                value={draft}
+                                onChange={e => setDraft(e.target.value)}
+                                onBlur={commitEdit}
+                                onKeyDown={e => { if (e.key === 'Enter') commitEdit(); if (e.key === 'Escape') setEditing(false); }}
+                                className="w-10 text-center text-sm font-bold bg-white/20 text-white rounded outline-none tabular-nums"
+                                type="number"
+                                min={0}
+                            />
+                        ) : (
+                            <button onClick={startEdit} className="text-white font-bold text-sm tabular-nums px-1 hover:bg-black/10 rounded transition min-w-[24px] text-center">
+                                {cartQty}
+                            </button>
+                        )}
                         <button onClick={() => onIncrement(article.id)} className="w-7 h-7 flex items-center justify-center rounded-md text-white hover:bg-black/10 transition font-bold text-base">+</button>
                     </div>
                 </div>
@@ -149,7 +184,9 @@ const StoreView: React.FC<StoreViewProps> = ({ authToken, onAuthError }) => {
     const [articles, setArticles] = useState<Article[]>([]);
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
     const [isLoading, setIsLoading] = useState(true);
-    const [cart, setCart] = useState<CartEntry[]>([]);
+    const [cart, setCart] = useState<CartEntry[]>(() => {
+        try { return JSON.parse(localStorage.getItem(CART_KEY) ?? '[]'); } catch { return []; }
+    });
     const [query, setQuery] = useState('');
     const [supplierFilter, setSupplierFilter] = useState('todos');
     const [checkoutOpen, setCheckoutOpen] = useState(false);
@@ -193,13 +230,17 @@ const StoreView: React.FC<StoreViewProps> = ({ authToken, onAuthError }) => {
     }, 0), [cart, articles]);
     const cartCount = cart.reduce((s, e) => s + e.qty, 0);
 
-    const addToCart = (id: string) => setCart(prev => [...prev, { articleId: id, qty: 1 }]);
-    const increment = (id: string) => setCart(prev => prev.map(e => e.articleId === id ? { ...e, qty: e.qty + 1 } : e));
+    const saveCart = (next: CartEntry[]) => { localStorage.setItem(CART_KEY, JSON.stringify(next)); return next; };
+    const addToCart = (id: string) => setCart(prev => saveCart([...prev, { articleId: id, qty: 1 }]));
+    const increment = (id: string) => setCart(prev => saveCart(prev.map(e => e.articleId === id ? { ...e, qty: e.qty + 1 } : e)));
     const decrement = (id: string) => setCart(prev => {
         const entry = prev.find(e => e.articleId === id);
         if (!entry) return prev;
-        return entry.qty <= 1 ? prev.filter(e => e.articleId !== id) : prev.map(e => e.articleId === id ? { ...e, qty: e.qty - 1 } : e);
+        return saveCart(entry.qty <= 1 ? prev.filter(e => e.articleId !== id) : prev.map(e => e.articleId === id ? { ...e, qty: e.qty - 1 } : e));
     });
+    const setQty = (id: string, qty: number) => setCart(prev => saveCart(
+        qty <= 0 ? prev.filter(e => e.articleId !== id) : prev.map(e => e.articleId === id ? { ...e, qty } : e)
+    ));
 
     const handleConfirm = async (form: CheckoutForm) => {
         const articleMap = Object.fromEntries(articles.map(a => [a.id, a]));
@@ -213,7 +254,7 @@ const StoreView: React.FC<StoreViewProps> = ({ authToken, onAuthError }) => {
         try {
             const order = await createStoreOrder(authToken, { customerName: form.customerName, notes: form.notes, items });
             toast('success', `Pedido ${order.id} creado`);
-            setCart([]);
+            setCart(saveCart([]));
             setCheckoutOpen(false);
         } catch (err) {
             if (err instanceof AuthError) { onAuthError(); return; }
@@ -313,7 +354,7 @@ const StoreView: React.FC<StoreViewProps> = ({ authToken, onAuthError }) => {
                         {!isLoading && filtered.length > 0 && (
                             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-3">
                                 {filtered.map(a => (
-                                    <StoreCard key={a.id} article={a} cartQty={cartMap[a.id] ?? 0} onAdd={addToCart} onIncrement={increment} onDecrement={decrement} />
+                                    <StoreCard key={a.id} article={a} cartQty={cartMap[a.id] ?? 0} onAdd={addToCart} onIncrement={increment} onDecrement={decrement} onSetQty={setQty} />
                                 ))}
                             </div>
                         )}
@@ -381,7 +422,7 @@ const StoreView: React.FC<StoreViewProps> = ({ authToken, onAuthError }) => {
                                 <MIcon name="check_circle" fill />
                                 Confirmar pedido
                             </button>
-                            <button onClick={() => setCart([])} className="w-full text-xs text-neutral-400 hover:text-red-500 transition flex items-center justify-center gap-1 py-0.5">
+                            <button onClick={() => setCart(saveCart([]))} className="w-full text-xs text-neutral-400 hover:text-red-500 transition flex items-center justify-center gap-1 py-0.5">
                                 <MIcon name="delete_sweep" size={13} />
                                 Vaciar carrito
                             </button>
