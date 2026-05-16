@@ -23,6 +23,7 @@ const storeOrderSchema = z.object({
         price: z.number(),
         qty: z.number().int().min(1),
         imageUrl: z.string().nullable().optional(),
+        supplierName: z.string().default('Sin proveedor'),
     })).min(1, 'El pedido necesita al menos un artículo'),
 });
 
@@ -34,7 +35,7 @@ function formatStoreOrder(o: {
     customerPhone: string;
     notes: string;
     total: number;
-    items: { id: number; orderId: number; articleId: string; name: string; price: number; qty: number; isPurchased: boolean; quantityPurchased: number; imageUrl: string | null }[];
+    items: { id: number; orderId: number; articleId: string; name: string; price: number; qty: number; isPurchased: boolean; quantityPurchased: number; imageUrl: string | null; supplierName: string }[];
 }) {
     return { ...o, id: `T-${o.id}`, dateCreated: o.dateCreated.toISOString() };
 }

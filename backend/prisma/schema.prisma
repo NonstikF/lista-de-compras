@@ -150,6 +150,7 @@ model StoreOrderItem {
   isPurchased       Boolean    @default(false)
   quantityPurchased Int        @default(0)
   imageUrl          String?
+  supplierName      String     @default("Sin proveedor")
   order             StoreOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
 }
 

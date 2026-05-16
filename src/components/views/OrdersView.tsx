@@ -461,28 +461,49 @@ const StoreOrderCard: React.FC<{
 
             {isExpanded && (
                 <div className="p-4 space-y-3">
-                    <div className="rounded-xl border border-surface-variant overflow-hidden">
-                        <div className="px-4 py-2 bg-surface-container-low border-b border-surface-variant flex items-center justify-between">
-                            <span className="text-sm font-semibold text-on-surface-variant">Artículos</span>
-                            <button
-                                onClick={() => setTicketModal(true)}
-                                className="flex items-center gap-1.5 px-3 py-1 text-xs font-semibold rounded-full bg-surface-container hover:bg-surface-container-high text-on-surface-variant transition"
-                            >
-                                <span className="material-symbols-outlined text-sm">receipt_long</span>
-                                Tickets{ticketCount > 0 ? ` (${ticketCount})` : ''}
-                            </button>
-                        </div>
-                        <div className="divide-y divide-surface-variant">
-                            {order.items.map(item => (
-                                <StoreItem
-                                    key={item.id}
-                                    item={item}
-                                    onQuantityChange={handleQuantityChange}
-                                    onViewImage={onViewImage}
-                                />
-                            ))}
-                        </div>
+                    <div className="flex justify-end">
+                        <button
+                            onClick={() => setTicketModal(true)}
+                            className="flex items-center gap-1.5 px-3 py-1 text-xs font-semibold rounded-full bg-surface-container hover:bg-surface-container-high text-on-surface-variant transition"
+                        >
+                            <span className="material-symbols-outlined text-sm">receipt_long</span>
+                            Tickets{ticketCount > 0 ? ` (${ticketCount})` : ''}
+                        </button>
                     </div>
+                    {Object.entries(order.items.reduce<Record<string, StoreOrderItem[]>>((acc, item) => {
+                        const key = item.supplierName || 'Sin proveedor';
+                        (acc[key] ||= []).push(item);
+                        return acc;
+                    }, {}))
+                        .sort(([a], [b]) => a.localeCompare(b))
+                        .map(([supplierName, items]) => {
+                            const purchased = items.filter(i => i.isPurchased).length;
+                            const groupTotal = items.reduce((s, i) => s + i.price * i.qty, 0);
+                            const complete = purchased === items.length;
+                            return (
+                                <div key={supplierName} className="rounded-xl border border-surface-variant overflow-hidden">
+                                    <div className={`px-4 py-2 border-b flex items-center justify-between ${complete ? 'bg-primary/8 border-primary/20' : 'bg-surface-container-low border-surface-variant'}`}>
+                                        <h3 className="text-base font-semibold text-on-background">{supplierName}</h3>
+                                        <div className="flex items-center gap-2">
+                                            <span className={`text-sm font-bold ${complete ? 'text-primary' : 'text-on-surface'}`}>{fmt(groupTotal)}</span>
+                                            <span className={`text-xs font-semibold px-2 py-1 rounded-full ${complete ? 'bg-primary/15 text-primary' : 'bg-surface-container-high text-on-surface-variant'}`}>
+                                                {purchased} / {items.length}
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <div className="divide-y divide-surface-variant">
+                                        {items.map(item => (
+                                            <StoreItem
+                                                key={item.id}
+                                                item={item}
+                                                onQuantityChange={handleQuantityChange}
+                                                onViewImage={onViewImage}
+                                            />
+                                        ))}
+                                    </div>
+                                </div>
+                            );
+                        })}
                 </div>
             )}
 

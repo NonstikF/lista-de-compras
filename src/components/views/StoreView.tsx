@@ -322,13 +322,19 @@ const StoreView: React.FC<StoreViewProps> = ({ authToken, onAuthError }) => {
 
     const handleConfirm = async (form: CheckoutForm) => {
         const articleMap = Object.fromEntries(articles.map(a => [a.id, a]));
-        const items = cart.map(e => ({
-            articleId: e.articleId,
-            name: articleMap[e.articleId]?.name ?? e.articleId,
-            price: articleMap[e.articleId]?.price ?? 0,
-            qty: e.qty,
-            imageUrl: articleMap[e.articleId]?.image ?? null,
-        }));
+        const supplierMap = Object.fromEntries(suppliers.map(s => [s.id, s.name]));
+        const items = cart.map(e => {
+            const article = articleMap[e.articleId];
+            const supplierId = article?.supplierIds?.[0];
+            return {
+                articleId: e.articleId,
+                name: article?.name ?? e.articleId,
+                price: article?.price ?? 0,
+                qty: e.qty,
+                imageUrl: article?.image ?? null,
+                supplierName: (supplierId && supplierMap[supplierId]) || 'Sin proveedor',
+            };
+        });
         setSubmitting(true);
         try {
             const order = await createStoreOrder(authToken, {

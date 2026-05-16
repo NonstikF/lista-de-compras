@@ -124,6 +124,7 @@ export interface StoreOrderItem {
   isPurchased: boolean;
   quantityPurchased: number;
   imageUrl?: string | null;
+  supplierName: string;
 }
 
 export interface StoreOrder {
