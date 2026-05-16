@@ -22,6 +22,7 @@ const storeOrderSchema = z.object({
         name: z.string(),
         price: z.number(),
         qty: z.number().int().min(1),
+        imageUrl: z.string().nullable().optional(),
     })).min(1, 'El pedido necesita al menos un artículo'),
 });
 

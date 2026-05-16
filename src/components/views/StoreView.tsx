@@ -327,6 +327,7 @@ const StoreView: React.FC<StoreViewProps> = ({ authToken, onAuthError }) => {
             name: articleMap[e.articleId]?.name ?? e.articleId,
             price: articleMap[e.articleId]?.price ?? 0,
             qty: e.qty,
+            imageUrl: articleMap[e.articleId]?.image ?? null,
         }));
         setSubmitting(true);
         try {
