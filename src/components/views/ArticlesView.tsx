@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import type { Article, Supplier } from '../../types';
 import { AuthError, getArticles, createArticle, updateArticle, deleteArticle, getSuppliers, importWooCommerceArticles } from '../../services/api';
 import { Modal, Button, Field, Input, MIcon, fmt, useToast } from '../ui';
@@ -96,6 +96,22 @@ interface ArticleForm {
     name: string;
     sku: string;
     barcode: string;
+    price: string;
+    image: string | null;
+    supplierIds: string[];
+    supplierZones: Record<string, string>;
+}
+
+const ArticleEditModal: React.FC<{
+    article: Article | 'new' | null;
+    suppliers: Supplier[];
+    onClose: () => void;
+    onSave: (data: { name: string; sku: string; barcode: string; price: number; image: string | null; supplierIds: string[]; supplierZones: Record<string, string> }) => Promise<void>;
+}> = ({ article, suppliers, onClose, onSave }) => {
+    const isNew = article === 'new';
+    const initial: ArticleForm = isNew
+        ? { name: '', sku: '', barcode: '', price: '', image: null, supplierIds: [], supplierZones: {} }
+        : { name: (article as Article).name, sku: (article as Article).sku ?? '', barcode: (article as Article).barcode ?? '', price: String((article as Article).price), image: (article as Article).image, supplierIds: (article as Article).supplierIds, supplierZones: (article as Article).supplierZones ?? {} };
 
     const [form, setForm] = useState<ArticleForm>(initial);
     const [errors, setErrors] = useState<Partial<Record<keyof ArticleForm, string>>>({});
@@ -161,6 +177,87 @@ interface ArticleForm {
                 name: form.name.trim(),
                 sku: form.sku.trim(),
                 barcode: form.barcode.trim(),
+                price: parseFloat(form.price),
+                image: form.image,
+                supplierIds: form.supplierIds,
+                supplierZones: form.supplierZones,
+            });
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    return (
+        <Modal
+            open
+            onClose={onClose}
+            title={isNew ? 'Nuevo artículo' : 'Editar artículo'}
+            footer={
+                <>
+                    <Button variant="neutral" onClick={onClose} disabled={saving}>Cancelar</Button>
+                    <Button variant="filled" onClick={handleSubmit} icon="save" disabled={saving}>
+                        {saving ? 'Guardando…' : 'Guardar'}
+                    </Button>
+                </>
+            }
+        >
+            <form onSubmit={handleSubmit} className="p-6 grid grid-cols-1 md:grid-cols-3 gap-6">
+                {/* Imagen */}
+                <div className="md:col-span-1">
+                    <span className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant block mb-2">Imagen</span>
+                    <div
+                        className="w-full aspect-square rounded-2xl overflow-hidden border-2 border-dashed border-outline-variant hover:border-primary cursor-pointer transition flex items-center justify-center bg-surface-container-low"
+                        onClick={() => fileRef.current?.click()}
+                    >
+                        {form.image
+                            ? <img src={form.image} alt="preview" className="w-full h-full object-cover" />
+                            : (
+                                <div className="flex flex-col items-center gap-2 text-on-surface-variant">
+                                    <MIcon name="add_photo_alternate" size={40} />
+                                    <span className="text-xs text-center px-2">Haz clic para subir<br />(se comprime automáticamente)</span>
+                                </div>
+                            )
+                        }
+                    </div>
+                    {errors.image && <p className="text-xs text-error mt-1">{errors.image}</p>}
+                    {form.image && (
+                        <button
+                            type="button"
+                            className="text-xs text-error mt-1 hover:underline"
+                            onClick={() => update('image', null)}
+                        >
+                            Quitar imagen
+                        </button>
+                    )}
+                    <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleFile} />
+                </div>
+
+                {/* Campos */}
+                <div className="md:col-span-2 flex flex-col gap-4">
+                    <Field label="Nombre" required error={errors.name}>
+                        <Input
+                            value={form.name}
+                            onChange={e => update('name', e.target.value)}
+                            placeholder="Ej. Café de olla"
+                        />
+                    </Field>
+
+                    <Field label="SKU">
+                        <Input
+                            value={form.sku}
+                            onChange={e => update('sku', e.target.value)}
+                            placeholder="Ej. CAF-001"
+                        />
+                    </Field>
+
+                    <Field label="Código de barras">
+                        <Input
+                            value={form.barcode}
+                            onChange={e => update('barcode', e.target.value)}
+                            placeholder="Ej. 7501234567890"
+                        />
+                    </Field>
+
                     <Field label="Precio" required error={errors.price}>
                         <Input
                             type="number"
