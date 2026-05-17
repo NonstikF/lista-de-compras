@@ -13,10 +13,12 @@ const articleSchema = z.object({
     image: z.string().nullable().default(null),
     price: z.number().min(0, 'Precio inválido'),
     sku: z.string().default(''),
+    barcode: z.string().default(''),
     category: z.string().default(''),
     description: z.string().default(''),
     stockStatus: z.string().default(''),
     supplierIds: z.array(z.string()).default([]),
+    supplierZones: z.record(z.string(), z.string()).default({}),
 });
 
 function formatArticle(a: {
@@ -26,12 +28,13 @@ function formatArticle(a: {
     image: string | null;
     price: number;
     sku: string;
+    barcode: string;
     category: string;
     description: string;
     stockStatus: string;
     createdAt: Date;
     updatedAt: Date;
-    suppliers: { supplierId: string }[];
+    suppliers: { supplierId: string; zone: string }[];
 }) {
     return {
         id: a.id,
@@ -40,10 +43,12 @@ function formatArticle(a: {
         image: a.image,
         price: a.price,
         sku: a.sku,
+        barcode: a.barcode,
         category: a.category,
         description: a.description,
         stockStatus: a.stockStatus,
-        supplierIds: a.suppliers.map((s: { supplierId: string }) => s.supplierId),
+        supplierIds: a.suppliers.map((s) => s.supplierId),
+        supplierZones: Object.fromEntries(a.suppliers.map((s) => [s.supplierId, s.zone])),
         createdAt: a.createdAt,
     };
 }
@@ -106,7 +111,7 @@ async function fetchWooProducts(): Promise<WooCommerceProduct[]> {
 router.get('/', async (_req: Request, res: Response) => {
     try {
         const articles = await prisma.article.findMany({
-            include: { suppliers: { select: { supplierId: true } } },
+            include: { suppliers: { select: { supplierId: true, zone: true } } },
             orderBy: { createdAt: 'asc' },
         });
         res.json(articles.map(formatArticle));
@@ -119,15 +124,15 @@ router.get('/', async (_req: Request, res: Response) => {
 router.post('/', async (req: Request, res: Response) => {
     const parsed = articleSchema.safeParse(req.body);
     if (!parsed.success) { res.status(400).json({ error: parsed.error.issues[0].message }); return; }
-    const { wooProductId, name, image, price, sku, category, description, stockStatus, supplierIds } = parsed.data;
+    const { wooProductId, name, image, price, sku, barcode, category, description, stockStatus, supplierIds, supplierZones } = parsed.data;
     try {
         const article = await prisma.article.create({
             data: {
-                wooProductId, name, image, price, sku, category, description, stockStatus,
-                suppliers: { create: supplierIds.map((sid: string) => ({ supplierId: sid })) },
+                wooProductId, name, image, price, sku, barcode, category, description, stockStatus,
+                suppliers: { create: supplierIds.map((sid: string) => ({ supplierId: sid, zone: supplierZones[sid] ?? '' })) },
                 inventory: { create: {} },
             },
-            include: { suppliers: { select: { supplierId: true } } },
+            include: { suppliers: { select: { supplierId: true, zone: true } } },
         });
         res.status(201).json(formatArticle(article));
     } catch (err) {
@@ -139,15 +144,15 @@ router.post('/', async (req: Request, res: Response) => {
 router.put('/:id', async (req: Request, res: Response) => {
     const parsed = articleSchema.safeParse(req.body);
     if (!parsed.success) { res.status(400).json({ error: parsed.error.issues[0].message }); return; }
-    const { wooProductId, name, image, price, sku, category, description, stockStatus, supplierIds } = parsed.data;
+    const { wooProductId, name, image, price, sku, barcode, category, description, stockStatus, supplierIds, supplierZones } = parsed.data;
     try {
         const article = await prisma.article.update({
             where: { id: req.params.id },
             data: {
-                wooProductId, name, image, price, sku, category, description, stockStatus,
-                suppliers: { deleteMany: {}, create: supplierIds.map((sid: string) => ({ supplierId: sid })) },
+                wooProductId, name, image, price, sku, barcode, category, description, stockStatus,
+                suppliers: { deleteMany: {}, create: supplierIds.map((sid: string) => ({ supplierId: sid, zone: supplierZones[sid] ?? '' })) },
             },
-            include: { suppliers: { select: { supplierId: true } } },
+            include: { suppliers: { select: { supplierId: true, zone: true } } },
         });
         res.json(formatArticle(article));
     } catch (err) {
@@ -171,9 +176,28 @@ router.post('/import-woocommerce', async (_req: Request, res: Response) => {
         const products = await fetchWooProducts();
         let created = 0, updated = 0, skipped = 0;
 
+        // Cache supplier IDs by category name to avoid repeated lookups/creates
+        const supplierCache = new Map<string, string>();
+        const getOrCreateSupplierByCategory = async (categoryName: string): Promise<string | null> => {
+            const name = categoryName.trim();
+            if (!name) return null;
+            const cached = supplierCache.get(name);
+            if (cached) return cached;
+            const existing = await prisma.supplier.findFirst({ where: { name }, select: { id: true } });
+            if (existing) {
+                supplierCache.set(name, existing.id);
+                return existing.id;
+            }
+            const newSupplier = await prisma.supplier.create({ data: { name }, select: { id: true } });
+            supplierCache.set(name, newSupplier.id);
+            return newSupplier.id;
+        };
+
         for (const product of products) {
             const data = mapWooProductToArticle(product);
             if (!data.name) { skipped += 1; continue; }
+
+            const supplierId = await getOrCreateSupplierByCategory(data.category);
 
             const existing = await prisma.article.findFirst({
                 where: { OR: [{ wooProductId: data.wooProductId }, { name: data.name }] },
@@ -182,9 +206,22 @@ router.post('/import-woocommerce', async (_req: Request, res: Response) => {
 
             if (existing) {
                 await prisma.article.update({ where: { id: existing.id }, data });
+                if (supplierId) {
+                    await prisma.articleSupplier.upsert({
+                        where: { articleId_supplierId: { articleId: existing.id, supplierId } },
+                        create: { articleId: existing.id, supplierId },
+                        update: {},
+                    });
+                }
                 updated += 1;
             } else {
-                await prisma.article.create({ data: { ...data, inventory: { create: {} } } });
+                await prisma.article.create({
+                    data: {
+                        ...data,
+                        inventory: { create: {} },
+                        ...(supplierId ? { suppliers: { create: { supplierId } } } : {}),
+                    },
+                });
                 created += 1;
             }
         }
@@ -192,7 +229,7 @@ router.post('/import-woocommerce', async (_req: Request, res: Response) => {
         await ensureInventoryForAllArticles();
 
         const articles = await prisma.article.findMany({
-            include: { suppliers: { select: { supplierId: true } } },
+            include: { suppliers: { select: { supplierId: true, zone: true } } },
             orderBy: { createdAt: 'asc' },
         });
 

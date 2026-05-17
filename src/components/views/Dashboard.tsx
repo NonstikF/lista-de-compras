@@ -82,7 +82,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigateToOrders, onNavigateToR
                     <button
                         key={card.label}
                         onClick={card.onClick}
-                        className="group relative overflow-hidden rounded-2xl bg-white hover:shadow-lg transition-all border border-surface-variant p-5 flex flex-col text-left aspect-square"
+                        className="group relative overflow-hidden rounded-2xl bg-white hover:shadow-lg transition-all border border-surface-variant p-5 flex flex-col justify-between text-left min-h-[160px]"
                     >
                         {card.badge && (
                             <span className="absolute top-3 right-3 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-secondary text-on-secondary">

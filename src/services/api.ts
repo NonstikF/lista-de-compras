@@ -51,7 +51,7 @@ export const getOrders = async (status: OrderStatusType, token: string): Promise
 
 export const saveItemStatus = async (
   token: string,
-  data: { lineItemId: number; orderId: number; isPurchased: boolean; quantityPurchased: number }
+  data: { lineItemId: number; orderId: number; isPurchased: boolean; quantityPurchased: number; supplierId?: string; totalQuantity?: number }
 ): Promise<{ success: boolean }> => {
   return handleResponse(await fetch(`${BASE}/api/item-status`, {
     method: 'POST',
@@ -151,6 +151,12 @@ export async function deleteOrderTicket(token: string, orderId: number, ticketId
   }));
 }
 
+export async function updateOrderTicketInvoiced(token: string, orderId: number, ticketId: string, invoiced: boolean): Promise<OrderTicket> {
+  return handleResponse(await fetch(`${BASE}/api/orders/${orderId}/tickets/${ticketId}`, {
+    method: 'PATCH', headers: authHeaders(token), body: JSON.stringify({ invoiced }),
+  }));
+}
+
 // ---- Tickets de proveedor ----
 
 export async function getSupplierTickets(token: string, supplierId: string): Promise<SupplierTicket[]> {
@@ -174,6 +180,18 @@ export async function createSupplierTicket(token: string, supplierId: string, da
 export async function deleteSupplierTicket(token: string, supplierId: string, ticketId: string): Promise<void> {
   await handleResponse(await fetch(`${BASE}/api/suppliers/${supplierId}/tickets/${ticketId}`, {
     method: 'DELETE', headers: authHeaders(token),
+  }));
+}
+
+export async function getSupplierOrderTickets(token: string, supplierId: string): Promise<OrderTicket[]> {
+  return handleResponse(await fetch(`${BASE}/api/suppliers/${supplierId}/order-tickets`, {
+    headers: authHeaders(token),
+  }));
+}
+
+export async function updateSupplierTicketInvoiced(token: string, supplierId: string, ticketId: string, invoiced: boolean): Promise<SupplierTicket> {
+  return handleResponse(await fetch(`${BASE}/api/suppliers/${supplierId}/tickets/${ticketId}`, {
+    method: 'PATCH', headers: authHeaders(token), body: JSON.stringify({ invoiced }),
   }));
 }
 
@@ -247,7 +265,7 @@ export async function getStoreOrders(token: string): Promise<StoreOrder[]> {
 
 export async function createStoreOrder(
   token: string,
-  data: { customerName: string; customerPhone?: string; notes: string; items: StoreOrderItem[] },
+  data: { customerName: string; customerPhone?: string; notes: string; items: Pick<StoreOrderItem, 'articleId' | 'name' | 'price' | 'qty' | 'imageUrl' | 'supplierName'>[] },
 ): Promise<StoreOrder> {
   return handleResponse(await fetch(`${BASE}/api/store-orders`, {
     method: 'POST', headers: authHeaders(token), body: JSON.stringify(data),
@@ -257,6 +275,37 @@ export async function createStoreOrder(
 export async function completeStoreOrder(token: string, id: string): Promise<StoreOrder> {
   return handleResponse(await fetch(`${BASE}/api/store-orders/${id}/complete`, {
     method: 'PATCH', headers: authHeaders(token),
+  }));
+}
+
+export async function updateStoreItemStatus(
+  token: string,
+  orderId: string,
+  itemId: number,
+  data: { isPurchased?: boolean; quantityPurchased?: number },
+): Promise<StoreOrderItem> {
+  return handleResponse(await fetch(`${BASE}/api/store-orders/${orderId}/items/${itemId}`, {
+    method: 'PATCH', headers: authHeaders(token), body: JSON.stringify(data),
+  }));
+}
+
+export async function getStoreOrderTickets(token: string, orderId: string): Promise<OrderTicket[]> {
+  return handleResponse(await fetch(`${BASE}/api/store-orders/${orderId}/tickets`, { headers: authHeaders(token) }));
+}
+
+export async function getStoreOrderTicketContent(token: string, orderId: string, ticketId: string): Promise<OrderTicket> {
+  return handleResponse(await fetch(`${BASE}/api/store-orders/${orderId}/tickets/${ticketId}`, { headers: authHeaders(token) }));
+}
+
+export async function createStoreOrderTicket(token: string, orderId: string, data: { filename: string; mimeType: string; size: number; content: string }): Promise<OrderTicket> {
+  return handleResponse(await fetch(`${BASE}/api/store-orders/${orderId}/tickets`, {
+    method: 'POST', headers: authHeaders(token), body: JSON.stringify(data),
+  }));
+}
+
+export async function deleteStoreOrderTicket(token: string, orderId: string, ticketId: string): Promise<void> {
+  await handleResponse(await fetch(`${BASE}/api/store-orders/${orderId}/tickets/${ticketId}`, {
+    method: 'DELETE', headers: authHeaders(token),
   }));
 }
 

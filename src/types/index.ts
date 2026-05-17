@@ -9,6 +9,8 @@ export interface LineItem {
   quantityPurchased: number;
   category: string;
   imageUrl: string | null;
+  suppliers: { id: string; name: string }[];
+  quantityBySupplier: Record<string, number>;
 }
 
 export interface Customer {
@@ -49,6 +51,7 @@ export interface Supplier {
   name: string;
   contact: string;
   phone: string;
+  zones: string[];
   createdAt: string;
 }
 
@@ -57,6 +60,7 @@ export interface OrderTicket {
   id: string;
   orderId: number;
   supplierName: string;
+  invoiced: boolean;
   filename: string;
   mimeType: string;
   size: number;
@@ -76,6 +80,8 @@ export interface OrderTicketUpload {
 export interface SupplierTicket {
   id: string;
   supplierId: string;
+  orderRef: string;
+  invoiced: boolean;
   filename: string;
   mimeType: string;
   size: number;
@@ -88,6 +94,7 @@ export interface SupplierTicketUpload {
   mimeType: string;
   size: number;
   content: string;
+  orderRef?: string;
 }
 
 // ---------- Artículos ----------
@@ -98,18 +105,26 @@ export interface Article {
   image: string | null;
   price: number;
   sku?: string;
+  barcode?: string;
   category?: string;
   description?: string;
   stockStatus?: string;
   supplierIds: string[];
+  supplierZones: Record<string, string>;
 }
 
 // ---------- Pedidos de Tienda ----------
 export interface StoreOrderItem {
+  id: number;
+  orderId: number;
   articleId: string;
   name: string;
   price: number;
   qty: number;
+  isPurchased: boolean;
+  quantityPurchased: number;
+  imageUrl?: string | null;
+  supplierName: string;
 }
 
 export interface StoreOrder {
@@ -145,19 +160,39 @@ export interface InventoryMovement {
 }
 
 // ---------- Recetas ----------
+export type RecipeType = 'alimento' | 'bebida' | 'otros';
+export type DrinkTemp = 'fria' | 'caliente';
+export type DrinkSize = '10oz' | '12oz' | '16oz';
+
 export interface RecipeIngredient {
   name: string;
   quantity: string;
   unit: string;
 }
 
+export interface RecipeSizeIngredient {
+  name: string;
+  quantity: string;
+  unit: string;
+}
+
+export interface RecipeSizeVariant {
+  id?: number;
+  temp: DrinkTemp;
+  size: DrinkSize;
+  ingredients: RecipeSizeIngredient[];
+}
+
 export interface Recipe {
   id: string;
   name: string;
   description: string;
+  recipeType: RecipeType;
   category: 'caliente' | 'fria' | 'especial';
+  drinkTemps: DrinkTemp[];
   image: string | null;
   ingredients: RecipeIngredient[];
+  sizeVariants: RecipeSizeVariant[];
   instructions: string;
   servings: number;
 }
