@@ -96,7 +96,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigateToOrders, onNavigateToR
                             <h2 className="font-epilogue text-xl font-bold text-on-background">{card.label}</h2>
                             <p className="text-sm text-on-surface-variant mt-0.5">{card.desc}</p>
                         </div>
-                        <div className="flex items-center gap-1 text-primary font-semibold group-hover:translate-x-1 transition-transform text-sm mt-3">
+                        <div className="flex items-center gap-1 text-primary font-semibold group-hover:translate-x-1 transition-transform text-sm mt-auto pt-3">
                             Abrir <span className="material-symbols-outlined text-sm">arrow_forward</span>
                         </div>
                     </button>

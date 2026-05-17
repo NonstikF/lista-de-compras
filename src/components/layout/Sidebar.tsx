@@ -14,7 +14,6 @@ export const navItems: { view: AppView; label: string; icon: string }[] = [
 ];
 
 const PRIMARY_NAV: AppView[] = ['dashboard', 'orders', 'articles', 'store'];
-
 interface SidebarProps {
   onLogout: () => void;
   setView: (view: AppView) => void;
