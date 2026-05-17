@@ -191,6 +191,7 @@ const StoreView: React.FC<StoreViewProps> = ({ authToken, onAuthError }) => {
     const [supplierFilter, setSupplierFilter] = useState('todos');
     const [checkoutOpen, setCheckoutOpen] = useState(false);
     const [submitting, setSubmitting] = useState(false);
+    const [cartOpen, setCartOpen] = useState(false);
     const toast = useToast();
     const searchRef = useRef<HTMLInputElement>(null);
 
@@ -268,14 +269,90 @@ const StoreView: React.FC<StoreViewProps> = ({ authToken, onAuthError }) => {
     const cartItems = cart.map(e => ({ ...e, article: articleMap[e.articleId] })).filter(e => e.article);
     const subtotal = cartItems.reduce((s, e) => s + e.article.price * e.qty, 0);
 
+    // Carrito como panel lateral (contenido reutilizable)
+    const CartPanel = (
+        <>
+            {/* header sidebar */}
+            <div className="flex-shrink-0 px-5 py-4 border-b border-neutral-100">
+                <div className="flex items-center justify-between">
+                    <h2 className="font-epilogue text-base font-bold text-neutral-900">Pedido actual</h2>
+                    <div className="flex items-center gap-2">
+                        {cartCount > 0 && (
+                            <span className="bg-primary/10 text-primary text-xs font-bold rounded-full px-2.5 py-0.5">{cartCount} art.</span>
+                        )}
+                        {/* botón cerrar — solo en móvil */}
+                        <button onClick={() => setCartOpen(false)} className="md:hidden w-8 h-8 flex items-center justify-center rounded-lg hover:bg-neutral-100 transition text-neutral-500">
+                            <MIcon name="close" size={20} />
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            {/* lista items */}
+            <div className="flex-1 overflow-y-auto">
+                {cartItems.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center h-full text-center px-6 gap-3">
+                        <div className="w-16 h-16 rounded-2xl bg-neutral-100 flex items-center justify-center">
+                            <MIcon name="shopping_cart" size={28} className="text-neutral-300" />
+                        </div>
+                        <div>
+                            <p className="text-sm font-semibold text-neutral-500">Carrito vacío</p>
+                            <p className="text-xs text-neutral-400 mt-1">Haz clic en un artículo para agregarlo</p>
+                        </div>
+                    </div>
+                ) : (
+                    <div className="divide-y divide-neutral-100">
+                        {cartItems.map(e => (
+                            <div key={e.articleId} className="flex items-center gap-3 px-4 py-3 hover:bg-neutral-50 transition-colors">
+                                <div className="w-11 h-11 rounded-lg overflow-hidden flex-shrink-0 bg-neutral-100">
+                                    <ArticleThumb article={e.article} className="w-full h-full" />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                    <p className="text-xs font-semibold text-neutral-800 line-clamp-2 leading-snug">{e.article.name}</p>
+                                    <p className="text-xs text-primary font-bold mt-0.5">{fmt(e.article.price * e.qty)}</p>
+                                </div>
+                                <div className="flex items-center gap-1 flex-shrink-0">
+                                    <button onClick={() => decrement(e.articleId)} className="w-7 h-7 rounded-lg bg-neutral-100 hover:bg-neutral-200 flex items-center justify-center text-neutral-600 font-bold text-sm transition">−</button>
+                                    <span className="w-6 text-center text-sm font-bold text-neutral-800 tabular-nums">{e.qty}</span>
+                                    <button onClick={() => increment(e.articleId)} className="w-7 h-7 rounded-lg bg-neutral-100 hover:bg-neutral-200 flex items-center justify-center text-neutral-600 font-bold text-sm transition">+</button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
+
+            {/* footer carrito */}
+            {cartItems.length > 0 && (
+                <div className="flex-shrink-0 border-t border-neutral-200 p-4 space-y-3 bg-white">
+                    <div className="flex justify-between items-center border-t border-neutral-100 pt-2">
+                        <span className="text-sm font-semibold text-neutral-700">Total</span>
+                        <span className="text-xl font-bold text-neutral-900 font-epilogue tabular-nums">{fmt(subtotal)}</span>
+                    </div>
+                    <button
+                        onClick={() => setCheckoutOpen(true)}
+                        className="w-full bg-primary hover:bg-primary/90 active:scale-[0.98] text-white rounded-xl py-3 font-bold text-sm flex items-center justify-center gap-2 transition-all"
+                    >
+                        <MIcon name="check_circle" fill />
+                        Confirmar pedido
+                    </button>
+                    <button onClick={() => setCart(saveCart([]))} className="w-full text-xs text-neutral-400 hover:text-red-500 transition flex items-center justify-center gap-1 py-0.5">
+                        <MIcon name="delete_sweep" size={13} />
+                        Vaciar carrito
+                    </button>
+                </div>
+            )}
+        </>
+    );
+
     return (
         <>
-            <div className="flex h-screen overflow-hidden bg-neutral-50">
+            <div className="flex h-[100dvh] overflow-hidden bg-neutral-50">
 
                 {/* ── CATÁLOGO ─────────────────────────────────────────── */}
                 <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
 
-                    {/* barra superior: búsqueda + filtros en una sola fila scrollable */}
+                    {/* barra superior: búsqueda + filtros */}
                     <div className="flex-shrink-0 bg-white border-b border-neutral-200 px-4 py-3 flex flex-col gap-2.5">
                         {/* búsqueda */}
                         <div className="relative">
@@ -326,7 +403,7 @@ const StoreView: React.FC<StoreViewProps> = ({ authToken, onAuthError }) => {
                     )}
 
                     {/* grid */}
-                    <div className="flex-1 overflow-y-auto p-4">
+                    <div className="flex-1 overflow-y-auto p-3 md:p-4">
                         {isLoading && (
                             <div className="flex flex-col items-center justify-center h-full gap-3 text-neutral-400">
                                 <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary border-t-transparent" />
@@ -352,7 +429,7 @@ const StoreView: React.FC<StoreViewProps> = ({ authToken, onAuthError }) => {
                             </div>
                         )}
                         {!isLoading && filtered.length > 0 && (
-                            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-3">
+                            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-2.5 md:gap-3 pb-24 md:pb-0">
                                 {filtered.map(a => (
                                     <StoreCard key={a.id} article={a} cartQty={cartMap[a.id] ?? 0} onAdd={addToCart} onIncrement={increment} onDecrement={decrement} onSetQty={setQty} />
                                 ))}
@@ -361,75 +438,36 @@ const StoreView: React.FC<StoreViewProps> = ({ authToken, onAuthError }) => {
                     </div>
                 </div>
 
-                {/* ── SIDEBAR CARRITO ────────────────────────────────────── */}
-                <div className="w-80 flex-shrink-0 flex flex-col bg-white border-l border-neutral-200 overflow-hidden">
-
-                    {/* header sidebar */}
-                    <div className="flex-shrink-0 px-5 py-4 border-b border-neutral-100">
-                        <div className="flex items-center justify-between">
-                            <h2 className="font-epilogue text-base font-bold text-neutral-900">Pedido actual</h2>
-                            {cartCount > 0 && (
-                                <span className="bg-primary/10 text-primary text-xs font-bold rounded-full px-2.5 py-0.5">{cartCount} art.</span>
-                            )}
-                        </div>
-                    </div>
-
-                    {/* lista items */}
-                    <div className="flex-1 overflow-y-auto">
-                        {cartItems.length === 0 ? (
-                            <div className="flex flex-col items-center justify-center h-full text-center px-6 gap-3">
-                                <div className="w-16 h-16 rounded-2xl bg-neutral-100 flex items-center justify-center">
-                                    <MIcon name="shopping_cart" size={28} className="text-neutral-300" />
-                                </div>
-                                <div>
-                                    <p className="text-sm font-semibold text-neutral-500">Carrito vacío</p>
-                                    <p className="text-xs text-neutral-400 mt-1">Haz clic en un artículo para agregarlo</p>
-                                </div>
-                            </div>
-                        ) : (
-                            <div className="divide-y divide-neutral-100">
-                                {cartItems.map(e => (
-                                    <div key={e.articleId} className="flex items-center gap-3 px-4 py-3 hover:bg-neutral-50 transition-colors">
-                                        <div className="w-11 h-11 rounded-lg overflow-hidden flex-shrink-0 bg-neutral-100">
-                                            <ArticleThumb article={e.article} className="w-full h-full" />
-                                        </div>
-                                        <div className="flex-1 min-w-0">
-                                            <p className="text-xs font-semibold text-neutral-800 line-clamp-2 leading-snug">{e.article.name}</p>
-                                            <p className="text-xs text-primary font-bold mt-0.5">{fmt(e.article.price * e.qty)}</p>
-                                        </div>
-                                        <div className="flex items-center gap-1 flex-shrink-0">
-                                            <button onClick={() => decrement(e.articleId)} className="w-7 h-7 rounded-lg bg-neutral-100 hover:bg-neutral-200 flex items-center justify-center text-neutral-600 font-bold text-sm transition">−</button>
-                                            <span className="w-6 text-center text-sm font-bold text-neutral-800 tabular-nums">{e.qty}</span>
-                                            <button onClick={() => increment(e.articleId)} className="w-7 h-7 rounded-lg bg-neutral-100 hover:bg-neutral-200 flex items-center justify-center text-neutral-600 font-bold text-sm transition">+</button>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                    </div>
-
-                    {/* footer carrito */}
-                    {cartItems.length > 0 && (
-                        <div className="flex-shrink-0 border-t border-neutral-200 p-4 space-y-3 bg-white">
-                            <div className="flex justify-between items-center border-t border-neutral-100 pt-2">
-                                <span className="text-sm font-semibold text-neutral-700">Total</span>
-                                <span className="text-xl font-bold text-neutral-900 font-epilogue tabular-nums">{fmt(subtotal)}</span>
-                            </div>
-                            <button
-                                onClick={() => setCheckoutOpen(true)}
-                                className="w-full bg-primary hover:bg-primary/90 active:scale-[0.98] text-white rounded-xl py-3 font-bold text-sm flex items-center justify-center gap-2 transition-all"
-                            >
-                                <MIcon name="check_circle" fill />
-                                Confirmar pedido
-                            </button>
-                            <button onClick={() => setCart(saveCart([]))} className="w-full text-xs text-neutral-400 hover:text-red-500 transition flex items-center justify-center gap-1 py-0.5">
-                                <MIcon name="delete_sweep" size={13} />
-                                Vaciar carrito
-                            </button>
-                        </div>
-                    )}
+                {/* ── SIDEBAR CARRITO — desktop (md+) ───────────────────── */}
+                <div className="hidden md:flex w-80 flex-shrink-0 flex-col bg-white border-l border-neutral-200 overflow-hidden">
+                    {CartPanel}
                 </div>
+
+                {/* ── DRAWER CARRITO — móvil (<md) ──────────────────────── */}
+                {cartOpen && (
+                    <div className="md:hidden fixed inset-0 z-40 flex">
+                        {/* backdrop */}
+                        <div className="absolute inset-0 bg-black/40" onClick={() => setCartOpen(false)} />
+                        {/* panel */}
+                        <div className="relative ml-auto w-[85vw] max-w-sm h-full flex flex-col bg-white shadow-2xl overflow-hidden">
+                            {CartPanel}
+                        </div>
+                    </div>
+                )}
             </div>
+
+            {/* ── FAB carrito — solo móvil ─────────────────────────────── */}
+            <button
+                onClick={() => setCartOpen(true)}
+                className="md:hidden fixed bottom-5 right-5 z-30 w-14 h-14 bg-primary text-white rounded-full shadow-lg flex items-center justify-center transition-all active:scale-95"
+            >
+                <MIcon name="shopping_cart" size={26} fill />
+                {cartCount > 0 && (
+                    <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[11px] font-bold rounded-full min-w-[20px] h-5 flex items-center justify-center px-1 shadow">
+                        {cartCount}
+                    </span>
+                )}
+            </button>
 
             <CheckoutModal
                 open={checkoutOpen}
