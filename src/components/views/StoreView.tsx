@@ -6,10 +6,14 @@ import { Modal, Button, Field, Input, Textarea, MIcon, fmt, useToast } from '../
 interface StoreViewProps { authToken: string; onAuthError: () => void; }
 interface CartEntry { articleId: string; qty: number; }
 interface CheckoutForm { customerName: string; notes: string; }
+interface StoreSection { id: string; category: string; supplierName: string; title: string; articles: Article[]; }
 
 const LAST_CUSTOMER_KEY = 'plantarte_last_customer_name';
 const CART_KEY = 'plantarte_store_cart';
 const THUMB_COLORS = ['#3b6934', '#7d562d', '#60233e', '#2d5a27', '#42493e', '#7c3a55'];
+
+const sectionIdFrom = (category: string, supplierName: string) =>
+    `${category}::${supplierName}`.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
 // ─── Thumb ────────────────────────────────────────────────────────────────────
 const ArticleThumb: React.FC<{ article: Article; className?: string }> = ({ article, className = '' }) => {
@@ -192,8 +196,11 @@ const StoreView: React.FC<StoreViewProps> = ({ authToken, onAuthError }) => {
     const [checkoutOpen, setCheckoutOpen] = useState(false);
     const [submitting, setSubmitting] = useState(false);
     const [cartOpen, setCartOpen] = useState(false);
+    const [activeSectionId, setActiveSectionId] = useState('');
     const toast = useToast();
     const searchRef = useRef<HTMLInputElement>(null);
+    const catalogScrollRef = useRef<HTMLDivElement>(null);
+    const sectionRefs = useRef<Record<string, HTMLElement | null>>({});
 
     useEffect(() => {
         let cancelled = false;
@@ -223,6 +230,80 @@ const StoreView: React.FC<StoreViewProps> = ({ authToken, onAuthError }) => {
         if (query.trim()) { const q = query.toLowerCase(); list = list.filter(a => a.name.toLowerCase().includes(q)); }
         return list;
     }, [articles, supplierFilter, query]);
+
+    const supplierNameMap = useMemo(() => Object.fromEntries(suppliers.map(s => [s.id, s.name])), [suppliers]);
+    const sections = useMemo<StoreSection[]>(() => {
+        const map = new Map<string, StoreSection>();
+        filtered
+            .slice()
+            .sort((a, b) => {
+                const cat = (a.category || 'Sin categoría').localeCompare(b.category || 'Sin categoría', 'es');
+                if (cat !== 0) return cat;
+                const aSupplier = supplierNameMap[a.supplierIds?.[0] ?? ''] || 'Sin proveedor';
+                const bSupplier = supplierNameMap[b.supplierIds?.[0] ?? ''] || 'Sin proveedor';
+                const supplier = aSupplier.localeCompare(bSupplier, 'es');
+                return supplier || a.name.localeCompare(b.name, 'es');
+            })
+            .forEach(article => {
+                const category = article.category?.trim() || 'Sin categoría';
+                const supplierName = supplierNameMap[article.supplierIds?.[0] ?? ''] || 'Sin proveedor';
+                const id = sectionIdFrom(category, supplierName);
+                const title = `${category} · ${supplierName}`;
+                const existing = map.get(id);
+                if (existing) existing.articles.push(article);
+                else map.set(id, { id, category, supplierName, title, articles: [article] });
+            });
+        return Array.from(map.values());
+    }, [filtered, supplierNameMap]);
+
+    const activeSection = sections.find(s => s.id === activeSectionId) ?? sections[0];
+
+    useEffect(() => {
+        setActiveSectionId(prev => sections.some(s => s.id === prev) ? prev : (sections[0]?.id ?? ''));
+    }, [sections]);
+
+    useEffect(() => {
+        const container = catalogScrollRef.current;
+        if (!container || sections.length === 0) return;
+
+        let rafId = 0;
+        const updateActiveSection = () => {
+            cancelAnimationFrame(rafId);
+            rafId = requestAnimationFrame(() => {
+                const containerTop = container.getBoundingClientRect().top;
+                const threshold = containerTop + 96;
+                let nextId = sections[0].id;
+
+                for (const section of sections) {
+                    const el = sectionRefs.current[section.id];
+                    if (!el) continue;
+                    if (el.getBoundingClientRect().top <= threshold) nextId = section.id;
+                    else break;
+                }
+
+                setActiveSectionId(nextId);
+            });
+        };
+
+        updateActiveSection();
+        container.addEventListener('scroll', updateActiveSection, { passive: true });
+        window.addEventListener('resize', updateActiveSection);
+        return () => {
+            cancelAnimationFrame(rafId);
+            container.removeEventListener('scroll', updateActiveSection);
+            window.removeEventListener('resize', updateActiveSection);
+        };
+    }, [sections]);
+
+    const scrollToSection = (id: string) => {
+        const container = catalogScrollRef.current;
+        const section = sectionRefs.current[id];
+        if (!container || !section) return;
+        const containerTop = container.getBoundingClientRect().top;
+        const targetTop = section.getBoundingClientRect().top - containerTop + container.scrollTop - 8;
+        container.scrollTo({ top: targetTop, behavior: 'smooth' });
+        setActiveSectionId(id);
+    };
 
     const cartMap = useMemo(() => Object.fromEntries(cart.map(e => [e.articleId, e.qty])), [cart]);
     const cartTotal = useMemo(() => cart.reduce((s, e) => {
@@ -404,6 +485,34 @@ const StoreView: React.FC<StoreViewProps> = ({ authToken, onAuthError }) => {
                                 })}
                             </div>
                         )}
+
+                        {!isLoading && sections.length > 0 && (
+                            <div className="rounded-xl bg-surface-container-low border border-surface-variant px-2.5 py-2">
+                                <div className="flex items-center gap-2 text-[11px] font-semibold text-on-surface-variant mb-1.5">
+                                    <MIcon name="location_on" size={15} className="text-primary" />
+                                    <span className="truncate">Viendo: {activeSection?.title ?? sections[0].title}</span>
+                                </div>
+                                <div className="flex gap-1.5 overflow-x-auto scrollbar-hide -mx-2.5 px-2.5">
+                                    {sections.map(section => {
+                                        const active = activeSectionId === section.id;
+                                        return (
+                                            <button
+                                                key={section.id}
+                                                onClick={() => scrollToSection(section.id)}
+                                                className={`flex-shrink-0 max-w-[12rem] rounded-full border px-3 py-1 text-xs font-semibold transition truncate ${
+                                                    active
+                                                        ? 'bg-primary text-white border-primary shadow-sm'
+                                                        : 'bg-white text-neutral-600 border-neutral-200 hover:border-primary/40 hover:text-primary'
+                                                }`}
+                                                title={section.title}
+                                            >
+                                                {section.title}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        )}
                     </div>
 
                     {/* conteo */}
@@ -414,7 +523,7 @@ const StoreView: React.FC<StoreViewProps> = ({ authToken, onAuthError }) => {
                     )}
 
                     {/* grid */}
-                    <div className="flex-1 overflow-y-auto p-2.5 sm:p-3 md:p-4">
+                    <div ref={catalogScrollRef} className="flex-1 overflow-y-auto p-2.5 sm:p-3 md:p-4 scroll-smooth">
                         {isLoading && (
                             <div className="flex flex-col items-center justify-center h-full gap-3 text-neutral-400">
                                 <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary border-t-transparent" />
@@ -440,9 +549,33 @@ const StoreView: React.FC<StoreViewProps> = ({ authToken, onAuthError }) => {
                             </div>
                         )}
                         {!isLoading && filtered.length > 0 && (
-                            <div className="grid grid-cols-2 min-[430px]:grid-cols-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-2 sm:gap-2.5 md:gap-3 pb-28 md:pb-0">
-                                {filtered.map(a => (
-                                    <StoreCard key={a.id} article={a} cartQty={cartMap[a.id] ?? 0} onAdd={addToCart} onIncrement={increment} onDecrement={decrement} onSetQty={setQty} />
+                            <div className="space-y-5 pb-28 md:pb-0">
+                                {sections.map(section => (
+                                    <section
+                                        key={section.id}
+                                        ref={el => { sectionRefs.current[section.id] = el; }}
+                                        aria-labelledby={`store-section-${section.id}`}
+                                        className="scroll-mt-4"
+                                    >
+                                        <div className="sticky top-0 z-10 -mx-2.5 sm:-mx-3 md:-mx-4 mb-2.5 border-y border-surface-variant bg-neutral-50/95 px-2.5 sm:px-3 md:px-4 py-2 backdrop-blur">
+                                            <div className="flex items-center justify-between gap-3">
+                                                <div className="min-w-0">
+                                                    <p className="text-[11px] font-semibold uppercase text-on-surface-variant">Categoría · proveedor</p>
+                                                    <h2 id={`store-section-${section.id}`} className="font-epilogue text-sm sm:text-base font-bold text-on-background truncate">
+                                                        {section.title}
+                                                    </h2>
+                                                </div>
+                                                <span className="flex-shrink-0 rounded-full bg-primary/10 px-2.5 py-1 text-xs font-bold text-primary">
+                                                    {section.articles.length}
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <div className="grid grid-cols-2 min-[430px]:grid-cols-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-2 sm:gap-2.5 md:gap-3">
+                                            {section.articles.map(a => (
+                                                <StoreCard key={a.id} article={a} cartQty={cartMap[a.id] ?? 0} onAdd={addToCart} onIncrement={increment} onDecrement={decrement} onSetQty={setQty} />
+                                            ))}
+                                        </div>
+                                    </section>
                                 ))}
                             </div>
                         )}
