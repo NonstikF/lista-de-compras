@@ -438,7 +438,7 @@ const StoreView: React.FC<StoreViewProps> = ({ authToken, onAuthError }) => {
 
                     {/* conteo */}
                     {!isLoading && filtered.length > 0 && (
-                        <div className="flex-shrink-0 px-4 pt-2.5 pb-0">
+                        <div className="px-4 pt-2.5 pb-0">
                             <p className="text-xs text-neutral-400">{filtered.length} artículo{filtered.length !== 1 ? 's' : ''}</p>
                         </div>
                     )}
