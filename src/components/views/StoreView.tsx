@@ -239,6 +239,7 @@ const StoreView: React.FC<StoreViewProps> = ({ authToken, onAuthError }) => {
         if (!entry) return prev;
         return saveCart(entry.qty <= 1 ? prev.filter(e => e.articleId !== id) : prev.map(e => e.articleId === id ? { ...e, qty: e.qty - 1 } : e));
     });
+    const removeFromCart = (id: string) => setCart(prev => saveCart(prev.filter(e => e.articleId !== id)));
     const setQty = (id: string, qty: number) => setCart(prev => saveCart(
         qty <= 0 ? prev.filter(e => e.articleId !== id) : prev.map(e => e.articleId === id ? { ...e, qty } : e)
     ));
@@ -311,10 +312,20 @@ const StoreView: React.FC<StoreViewProps> = ({ authToken, onAuthError }) => {
                                     <p className="text-xs font-semibold text-neutral-800 line-clamp-2 leading-snug">{e.article.name}</p>
                                     <p className="text-xs text-primary font-bold mt-0.5">{fmt(e.article.price * e.qty)}</p>
                                 </div>
-                                <div className="flex items-center gap-1 flex-shrink-0">
-                                    <button onClick={() => decrement(e.articleId)} className="w-7 h-7 rounded-lg bg-neutral-100 hover:bg-neutral-200 flex items-center justify-center text-neutral-600 font-bold text-sm transition">−</button>
-                                    <span className="w-6 text-center text-sm font-bold text-neutral-800 tabular-nums">{e.qty}</span>
-                                    <button onClick={() => increment(e.articleId)} className="w-7 h-7 rounded-lg bg-neutral-100 hover:bg-neutral-200 flex items-center justify-center text-neutral-600 font-bold text-sm transition">+</button>
+                                <div className="flex items-center gap-1.5 flex-shrink-0">
+                                    <div className="flex items-center gap-1">
+                                        <button onClick={() => decrement(e.articleId)} className="w-7 h-7 rounded-lg bg-neutral-100 hover:bg-neutral-200 flex items-center justify-center text-neutral-600 font-bold text-sm transition" aria-label={`Restar ${e.article.name}`}>−</button>
+                                        <span className="w-6 text-center text-sm font-bold text-neutral-800 tabular-nums">{e.qty}</span>
+                                        <button onClick={() => increment(e.articleId)} className="w-7 h-7 rounded-lg bg-neutral-100 hover:bg-neutral-200 flex items-center justify-center text-neutral-600 font-bold text-sm transition" aria-label={`Sumar ${e.article.name}`}>+</button>
+                                    </div>
+                                    <button
+                                        onClick={() => removeFromCart(e.articleId)}
+                                        className="w-8 h-8 rounded-lg bg-error-container/70 hover:bg-error-container flex items-center justify-center text-error transition"
+                                        aria-label={`Eliminar ${e.article.name} del carrito`}
+                                        title="Eliminar"
+                                    >
+                                        <MIcon name="delete" size={18} />
+                                    </button>
                                 </div>
                             </div>
                         ))}
