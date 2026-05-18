@@ -475,8 +475,8 @@ const StoreView: React.FC<StoreViewProps> = ({ authToken, onAuthError }) => {
                                             <div className="flex items-center justify-between gap-3">
                                                 <div className="min-w-0">
                                                     <p className="text-[11px] font-semibold uppercase text-on-surface-variant">Proveedor</p>
-                                                    <h2 id={`store-section`} className="font-epilogue text-sm sm:text-base font-bold text-on-background truncate">
-                                                        {section.title}
+                                                    <h2 id={`store-section-${section.id}`} className="font-epilogue text-sm sm:text-base font-bold text-on-background truncate">
+                                                        {section.supplierName}
                                                     </h2>
                                                 </div>
                                                 <span className="flex-shrink-0 rounded-full bg-primary/10 px-2.5 py-1 text-xs font-bold text-primary">
