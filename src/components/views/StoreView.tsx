@@ -196,11 +196,8 @@ const StoreView: React.FC<StoreViewProps> = ({ authToken, onAuthError }) => {
     const [checkoutOpen, setCheckoutOpen] = useState(false);
     const [submitting, setSubmitting] = useState(false);
     const [cartOpen, setCartOpen] = useState(false);
-    const [activeSectionId, setActiveSectionId] = useState('');
     const toast = useToast();
     const searchRef = useRef<HTMLInputElement>(null);
-    const catalogScrollRef = useRef<HTMLDivElement>(null);
-    const sectionRefs = useRef<Record<string, HTMLElement | null>>({});
 
     useEffect(() => {
         let cancelled = false;
@@ -255,55 +252,6 @@ const StoreView: React.FC<StoreViewProps> = ({ authToken, onAuthError }) => {
             });
         return Array.from(map.values());
     }, [filtered, supplierNameMap]);
-
-    const activeSection = sections.find(s => s.id === activeSectionId) ?? sections[0];
-
-    useEffect(() => {
-        setActiveSectionId(prev => sections.some(s => s.id === prev) ? prev : (sections[0]?.id ?? ''));
-    }, [sections]);
-
-    useEffect(() => {
-        const container = catalogScrollRef.current;
-        if (!container || sections.length === 0) return;
-
-        let rafId = 0;
-        const updateActiveSection = () => {
-            cancelAnimationFrame(rafId);
-            rafId = requestAnimationFrame(() => {
-                const containerTop = container.getBoundingClientRect().top;
-                const threshold = containerTop + 96;
-                let nextId = sections[0].id;
-
-                for (const section of sections) {
-                    const el = sectionRefs.current[section.id];
-                    if (!el) continue;
-                    if (el.getBoundingClientRect().top <= threshold) nextId = section.id;
-                    else break;
-                }
-
-                setActiveSectionId(nextId);
-            });
-        };
-
-        updateActiveSection();
-        container.addEventListener('scroll', updateActiveSection, { passive: true });
-        window.addEventListener('resize', updateActiveSection);
-        return () => {
-            cancelAnimationFrame(rafId);
-            container.removeEventListener('scroll', updateActiveSection);
-            window.removeEventListener('resize', updateActiveSection);
-        };
-    }, [sections]);
-
-    const scrollToSection = (id: string) => {
-        const container = catalogScrollRef.current;
-        const section = sectionRefs.current[id];
-        if (!container || !section) return;
-        const containerTop = container.getBoundingClientRect().top;
-        const targetTop = section.getBoundingClientRect().top - containerTop + container.scrollTop - 8;
-        container.scrollTo({ top: targetTop, behavior: 'smooth' });
-        setActiveSectionId(id);
-    };
 
     const cartMap = useMemo(() => Object.fromEntries(cart.map(e => [e.articleId, e.qty])), [cart]);
     const cartTotal = useMemo(() => cart.reduce((s, e) => {
@@ -486,33 +434,6 @@ const StoreView: React.FC<StoreViewProps> = ({ authToken, onAuthError }) => {
                             </div>
                         )}
 
-                        {!isLoading && sections.length > 0 && (
-                            <div className="rounded-xl bg-surface-container-low border border-surface-variant px-2.5 py-2">
-                                <div className="flex items-center gap-2 text-[11px] font-semibold text-on-surface-variant mb-1.5">
-                                    <MIcon name="location_on" size={15} className="text-primary" />
-                                    <span className="truncate">Viendo: {activeSection?.title ?? sections[0].title}</span>
-                                </div>
-                                <div className="flex gap-1.5 overflow-x-auto scrollbar-hide -mx-2.5 px-2.5">
-                                    {sections.map(section => {
-                                        const active = activeSectionId === section.id;
-                                        return (
-                                            <button
-                                                key={section.id}
-                                                onClick={() => scrollToSection(section.id)}
-                                                className={`flex-shrink-0 max-w-[12rem] rounded-full border px-3 py-1 text-xs font-semibold transition truncate ${
-                                                    active
-                                                        ? 'bg-primary text-white border-primary shadow-sm'
-                                                        : 'bg-white text-neutral-600 border-neutral-200 hover:border-primary/40 hover:text-primary'
-                                                }`}
-                                                title={section.title}
-                                            >
-                                                {section.title}
-                                            </button>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-                        )}
                     </div>
 
                     {/* conteo */}
@@ -523,7 +444,7 @@ const StoreView: React.FC<StoreViewProps> = ({ authToken, onAuthError }) => {
                     )}
 
                     {/* grid */}
-                    <div ref={catalogScrollRef} className="flex-1 overflow-y-auto p-2.5 sm:p-3 md:p-4 scroll-smooth">
+                    <div className="flex-1 overflow-y-auto p-2.5 sm:p-3 md:p-4">
                         {isLoading && (
                             <div className="flex flex-col items-center justify-center h-full gap-3 text-neutral-400">
                                 <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary border-t-transparent" />
@@ -553,7 +474,6 @@ const StoreView: React.FC<StoreViewProps> = ({ authToken, onAuthError }) => {
                                 {sections.map(section => (
                                     <section
                                         key={section.id}
-                                        ref={el => { sectionRefs.current[section.id] = el; }}
                                         aria-labelledby={`store-section-${section.id}`}
                                         className="scroll-mt-4"
                                     >
