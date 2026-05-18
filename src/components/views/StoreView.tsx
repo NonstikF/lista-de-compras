@@ -437,14 +437,8 @@ const StoreView: React.FC<StoreViewProps> = ({ authToken, onAuthError }) => {
                     </div>
 
                     {/* conteo */}
-                    {!isLoading && filtered.length > 0 && (
-                        <div className="px-4 pt-2.5 pb-0">
-                            <p className="text-xs text-neutral-400">{filtered.length} artículo{filtered.length !== 1 ? 's' : ''}</p>
-                        </div>
-                    )}
-
                     {/* grid */}
-                    <div className="flex-1 overflow-y-auto p-2.5 sm:p-3 md:p-4">
+                    <div className="flex-1 overflow-y-auto px-2.5 pb-2.5 pt-0 sm:px-3 sm:pb-3 md:px-4 md:pb-4">
                         {isLoading && (
                             <div className="flex flex-col items-center justify-center h-full gap-3 text-neutral-400">
                                 <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary border-t-transparent" />
@@ -480,7 +474,7 @@ const StoreView: React.FC<StoreViewProps> = ({ authToken, onAuthError }) => {
                                         <div className="sticky top-0 z-10 -mx-2.5 sm:-mx-3 md:-mx-4 mb-2.5 border-y border-surface-variant bg-neutral-50/95 px-2.5 sm:px-3 md:px-4 py-2 backdrop-blur">
                                             <div className="flex items-center justify-between gap-3">
                                                 <div className="min-w-0">
-                                                    <p className="text-[11px] font-semibold uppercase text-on-surface-variant">Categoría · proveedor</p>
+                                                    <p className="text-[11px] font-semibold uppercase text-on-surface-variant">Proveedor</p>
                                                     <h2 id={`store-section-${section.id}`} className="font-epilogue text-sm sm:text-base font-bold text-on-background truncate">
                                                         {section.title}
                                                     </h2>
