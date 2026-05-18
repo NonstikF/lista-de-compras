@@ -6,10 +6,14 @@ import { Modal, Button, Field, Input, Textarea, MIcon, fmt, useToast } from '../
 interface StoreViewProps { authToken: string; onAuthError: () => void; }
 interface CartEntry { articleId: string; qty: number; }
 interface CheckoutForm { customerName: string; notes: string; }
+interface StoreSection { id: string; category: string; supplierName: string; title: string; articles: Article[]; }
 
 const LAST_CUSTOMER_KEY = 'plantarte_last_customer_name';
 const CART_KEY = 'plantarte_store_cart';
 const THUMB_COLORS = ['#3b6934', '#7d562d', '#60233e', '#2d5a27', '#42493e', '#7c3a55'];
+
+const sectionIdFrom = (category: string, supplierName: string) =>
+    `${category}::${supplierName}`.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
 // ─── Thumb ────────────────────────────────────────────────────────────────────
 const ArticleThumb: React.FC<{ article: Article; className?: string }> = ({ article, className = '' }) => {
@@ -125,21 +129,21 @@ const CheckoutModal: React.FC<{
                 ))}
             </div>
             {step === 1 && (
-                <div className="p-6 space-y-4">
+                <div className="p-4 sm:p-6 space-y-4">
                     <Field label="Nombre del cliente" required error={nameError}>
                         <Input value={form.customerName} onChange={e => { setForm(f => ({ ...f, customerName: e.target.value })); setNameError(''); }} placeholder="Ej. María García" autoFocus />
                     </Field>
                     <Field label="Notas">
                         <Textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder="Instrucciones especiales…" />
                     </Field>
-                    <div className="flex justify-end gap-2 pt-2">
-                        <Button variant="neutral" onClick={handleClose}>Cancelar</Button>
-                        <Button variant="filled" icon="arrow_forward" onClick={handleNext}>Continuar</Button>
+                    <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-2">
+                        <Button variant="neutral" onClick={handleClose} className="w-full sm:w-auto">Cancelar</Button>
+                        <Button variant="filled" icon="arrow_forward" onClick={handleNext} className="w-full sm:w-auto">Continuar</Button>
                     </div>
                 </div>
             )}
             {step === 2 && (
-                <div className="p-6 space-y-4">
+                <div className="p-4 sm:p-6 space-y-4">
                     <div className="bg-neutral-50 rounded-xl px-4 py-3 flex items-center gap-3 border border-neutral-200">
                         <MIcon name="person" className="text-primary" />
                         <div>
@@ -167,9 +171,9 @@ const CheckoutModal: React.FC<{
                             <span className="text-lg font-bold text-primary">{fmt(subtotal)}</span>
                         </div>
                     </div>
-                    <div className="flex justify-end gap-2 pt-1">
-                        <Button variant="neutral" onClick={() => setStep(1)} disabled={loading}>Atrás</Button>
-                        <Button variant="filled" icon="check_circle" onClick={handleConfirm} disabled={loading}>
+                    <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-1">
+                        <Button variant="neutral" onClick={() => setStep(1)} disabled={loading} className="w-full sm:w-auto">Atrás</Button>
+                        <Button variant="filled" icon="check_circle" onClick={handleConfirm} disabled={loading} className="w-full sm:w-auto">
                             {loading ? 'Creando pedido…' : 'Confirmar pedido'}
                         </Button>
                     </div>
@@ -191,6 +195,7 @@ const StoreView: React.FC<StoreViewProps> = ({ authToken, onAuthError }) => {
     const [supplierFilter, setSupplierFilter] = useState('todos');
     const [checkoutOpen, setCheckoutOpen] = useState(false);
     const [submitting, setSubmitting] = useState(false);
+    const [cartOpen, setCartOpen] = useState(false);
     const toast = useToast();
     const searchRef = useRef<HTMLInputElement>(null);
 
@@ -223,6 +228,31 @@ const StoreView: React.FC<StoreViewProps> = ({ authToken, onAuthError }) => {
         return list;
     }, [articles, supplierFilter, query]);
 
+    const supplierNameMap = useMemo(() => Object.fromEntries(suppliers.map(s => [s.id, s.name])), [suppliers]);
+    const sections = useMemo<StoreSection[]>(() => {
+        const map = new Map<string, StoreSection>();
+        filtered
+            .slice()
+            .sort((a, b) => {
+                const cat = (a.category || 'Sin categoría').localeCompare(b.category || 'Sin categoría', 'es');
+                if (cat !== 0) return cat;
+                const aSupplier = supplierNameMap[a.supplierIds?.[0] ?? ''] || 'Sin proveedor';
+                const bSupplier = supplierNameMap[b.supplierIds?.[0] ?? ''] || 'Sin proveedor';
+                const supplier = aSupplier.localeCompare(bSupplier, 'es');
+                return supplier || a.name.localeCompare(b.name, 'es');
+            })
+            .forEach(article => {
+                const category = article.category?.trim() || 'Sin categoría';
+                const supplierName = supplierNameMap[article.supplierIds?.[0] ?? ''] || 'Sin proveedor';
+                const id = sectionIdFrom(category, supplierName);
+                const title = `${category} · ${supplierName}`;
+                const existing = map.get(id);
+                if (existing) existing.articles.push(article);
+                else map.set(id, { id, category, supplierName, title, articles: [article] });
+            });
+        return Array.from(map.values());
+    }, [filtered, supplierNameMap]);
+
     const cartMap = useMemo(() => Object.fromEntries(cart.map(e => [e.articleId, e.qty])), [cart]);
     const cartTotal = useMemo(() => cart.reduce((s, e) => {
         const a = articles.find(x => x.id === e.articleId);
@@ -238,6 +268,7 @@ const StoreView: React.FC<StoreViewProps> = ({ authToken, onAuthError }) => {
         if (!entry) return prev;
         return saveCart(entry.qty <= 1 ? prev.filter(e => e.articleId !== id) : prev.map(e => e.articleId === id ? { ...e, qty: e.qty - 1 } : e));
     });
+    const removeFromCart = (id: string) => setCart(prev => saveCart(prev.filter(e => e.articleId !== id)));
     const setQty = (id: string, qty: number) => setCart(prev => saveCart(
         qty <= 0 ? prev.filter(e => e.articleId !== id) : prev.map(e => e.articleId === id ? { ...e, qty } : e)
     ));
@@ -268,15 +299,101 @@ const StoreView: React.FC<StoreViewProps> = ({ authToken, onAuthError }) => {
     const cartItems = cart.map(e => ({ ...e, article: articleMap[e.articleId] })).filter(e => e.article);
     const subtotal = cartItems.reduce((s, e) => s + e.article.price * e.qty, 0);
 
+    // Carrito como panel lateral (contenido reutilizable)
+    const CartPanel = (
+        <>
+            {/* header sidebar */}
+            <div className="flex-shrink-0 px-5 py-4 border-b border-neutral-100">
+                <div className="flex items-center justify-between">
+                    <h2 className="font-epilogue text-base font-bold text-neutral-900">Pedido actual</h2>
+                    <div className="flex items-center gap-2">
+                        {cartCount > 0 && (
+                            <span className="bg-primary/10 text-primary text-xs font-bold rounded-full px-2.5 py-0.5">{cartCount} art.</span>
+                        )}
+                        {/* botón cerrar — solo en móvil */}
+                        <button onClick={() => setCartOpen(false)} className="md:hidden w-8 h-8 flex items-center justify-center rounded-lg hover:bg-neutral-100 transition text-neutral-500">
+                            <MIcon name="close" size={20} />
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            {/* lista items */}
+            <div className="flex-1 overflow-y-auto">
+                {cartItems.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center h-full text-center px-6 gap-3">
+                        <div className="w-16 h-16 rounded-2xl bg-neutral-100 flex items-center justify-center">
+                            <MIcon name="shopping_cart" size={28} className="text-neutral-300" />
+                        </div>
+                        <div>
+                            <p className="text-sm font-semibold text-neutral-500">Carrito vacío</p>
+                            <p className="text-xs text-neutral-400 mt-1">Haz clic en un artículo para agregarlo</p>
+                        </div>
+                    </div>
+                ) : (
+                    <div className="divide-y divide-neutral-100">
+                        {cartItems.map(e => (
+                            <div key={e.articleId} className="flex items-center gap-3 px-4 py-3 hover:bg-neutral-50 transition-colors">
+                                <div className="w-11 h-11 rounded-lg overflow-hidden flex-shrink-0 bg-neutral-100">
+                                    <ArticleThumb article={e.article} className="w-full h-full" />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                    <p className="text-xs font-semibold text-neutral-800 line-clamp-2 leading-snug">{e.article.name}</p>
+                                    <p className="text-xs text-primary font-bold mt-0.5">{fmt(e.article.price * e.qty)}</p>
+                                </div>
+                                <div className="flex items-center gap-1.5 flex-shrink-0">
+                                    <div className="flex items-center gap-1">
+                                        <button onClick={() => decrement(e.articleId)} className="w-7 h-7 rounded-lg bg-neutral-100 hover:bg-neutral-200 flex items-center justify-center text-neutral-600 font-bold text-sm transition" aria-label={`Restar ${e.article.name}`}>−</button>
+                                        <span className="w-6 text-center text-sm font-bold text-neutral-800 tabular-nums">{e.qty}</span>
+                                        <button onClick={() => increment(e.articleId)} className="w-7 h-7 rounded-lg bg-neutral-100 hover:bg-neutral-200 flex items-center justify-center text-neutral-600 font-bold text-sm transition" aria-label={`Sumar ${e.article.name}`}>+</button>
+                                    </div>
+                                    <button
+                                        onClick={() => removeFromCart(e.articleId)}
+                                        className="w-8 h-8 rounded-lg bg-error-container/70 hover:bg-error-container flex items-center justify-center text-error transition"
+                                        aria-label={`Eliminar ${e.article.name} del carrito`}
+                                        title="Eliminar"
+                                    >
+                                        <MIcon name="delete" size={18} />
+                                    </button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
+
+            {/* footer carrito */}
+            {cartItems.length > 0 && (
+                <div className="flex-shrink-0 border-t border-neutral-200 p-4 space-y-3 bg-white">
+                    <div className="flex justify-between items-center border-t border-neutral-100 pt-2">
+                        <span className="text-sm font-semibold text-neutral-700">Total</span>
+                        <span className="text-xl font-bold text-neutral-900 font-epilogue tabular-nums">{fmt(subtotal)}</span>
+                    </div>
+                    <button
+                        onClick={() => setCheckoutOpen(true)}
+                        className="w-full bg-primary hover:bg-primary/90 active:scale-[0.98] text-white rounded-xl py-3 font-bold text-sm flex items-center justify-center gap-2 transition-all"
+                    >
+                        <MIcon name="check_circle" fill />
+                        Confirmar pedido
+                    </button>
+                    <button onClick={() => setCart(saveCart([]))} className="w-full text-xs text-neutral-400 hover:text-red-500 transition flex items-center justify-center gap-1 py-0.5">
+                        <MIcon name="delete_sweep" size={13} />
+                        Vaciar carrito
+                    </button>
+                </div>
+            )}
+        </>
+    );
+
     return (
         <>
-            <div className="flex h-screen overflow-hidden bg-neutral-50">
+            <div className="flex h-[calc(100dvh-5rem)] md:h-[100dvh] overflow-hidden bg-neutral-50">
 
                 {/* ── CATÁLOGO ─────────────────────────────────────────── */}
                 <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
 
-                    {/* barra superior: búsqueda + filtros en una sola fila scrollable */}
-                    <div className="flex-shrink-0 bg-white border-b border-neutral-200 px-4 py-3 flex flex-col gap-2.5">
+                    {/* barra superior: búsqueda + filtros */}
+                    <div className="flex-shrink-0 bg-white border-b border-neutral-200 px-3 sm:px-4 py-3 flex flex-col gap-2.5">
                         {/* búsqueda */}
                         <div className="relative">
                             <MIcon name="search" className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
@@ -286,7 +403,7 @@ const StoreView: React.FC<StoreViewProps> = ({ authToken, onAuthError }) => {
                                 value={query}
                                 onChange={e => setQuery(e.target.value)}
                                 placeholder="Buscar artículo…"
-                                className="w-full pl-10 pr-10 py-2 rounded-xl bg-neutral-100 border border-transparent focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/15 outline-none text-sm transition"
+                                className="w-full pl-10 pr-10 py-2.5 rounded-xl bg-neutral-100 border border-transparent focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/15 outline-none text-sm transition"
                             />
                             {query && (
                                 <button onClick={() => setQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-600 transition">
@@ -297,7 +414,7 @@ const StoreView: React.FC<StoreViewProps> = ({ authToken, onAuthError }) => {
 
                         {/* chips de proveedor — scroll horizontal */}
                         {!isLoading && activeSuppliers.length > 0 && (
-                            <div className="flex gap-1.5 overflow-x-auto scrollbar-hide pb-0.5">
+                            <div className="flex gap-1.5 overflow-x-auto scrollbar-hide pb-0.5 -mx-3 sm:-mx-4 px-3 sm:px-4">
                                 {[{ id: 'todos', name: 'Todos' }, ...activeSuppliers].map(s => {
                                     const active = supplierFilter === s.id;
                                     return (
@@ -316,17 +433,12 @@ const StoreView: React.FC<StoreViewProps> = ({ authToken, onAuthError }) => {
                                 })}
                             </div>
                         )}
+
                     </div>
 
                     {/* conteo */}
-                    {!isLoading && filtered.length > 0 && (
-                        <div className="flex-shrink-0 px-4 pt-2.5 pb-0">
-                            <p className="text-xs text-neutral-400">{filtered.length} artículo{filtered.length !== 1 ? 's' : ''}</p>
-                        </div>
-                    )}
-
                     {/* grid */}
-                    <div className="flex-1 overflow-y-auto p-4">
+                    <div className="flex-1 overflow-y-auto px-2.5 pb-2.5 pt-0 sm:px-3 sm:pb-3 md:px-4 md:pb-4">
                         {isLoading && (
                             <div className="flex flex-col items-center justify-center h-full gap-3 text-neutral-400">
                                 <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary border-t-transparent" />
@@ -352,84 +464,69 @@ const StoreView: React.FC<StoreViewProps> = ({ authToken, onAuthError }) => {
                             </div>
                         )}
                         {!isLoading && filtered.length > 0 && (
-                            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-3">
-                                {filtered.map(a => (
-                                    <StoreCard key={a.id} article={a} cartQty={cartMap[a.id] ?? 0} onAdd={addToCart} onIncrement={increment} onDecrement={decrement} onSetQty={setQty} />
+                            <div className="space-y-5 pb-28 md:pb-0">
+                                {sections.map(section => (
+                                    <section
+                                        key={section.id}
+                                        aria-labelledby={`store-section-${section.id}`}
+                                        className="scroll-mt-4"
+                                    >
+                                        <div className="sticky top-0 z-10 -mx-2.5 sm:-mx-3 md:-mx-4 mb-2.5 border-y border-surface-variant bg-neutral-50/95 px-2.5 sm:px-3 md:px-4 py-2 backdrop-blur">
+                                            <div className="flex items-center justify-between gap-3">
+                                                <div className="min-w-0">
+                                                    <p className="text-[11px] font-semibold uppercase text-on-surface-variant">Proveedor</p>
+                                                    <h2 id={`store-section-${section.id}`} className="font-epilogue text-sm sm:text-base font-bold text-on-background truncate">
+                                                        {section.supplierName}
+                                                    </h2>
+                                                </div>
+                                                <span className="flex-shrink-0 rounded-full bg-primary/10 px-2.5 py-1 text-xs font-bold text-primary">
+                                                    {section.articles.length}
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <div className="grid grid-cols-2 min-[430px]:grid-cols-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-2 sm:gap-2.5 md:gap-3">
+                                            {section.articles.map(a => (
+                                                <StoreCard key={a.id} article={a} cartQty={cartMap[a.id] ?? 0} onAdd={addToCart} onIncrement={increment} onDecrement={decrement} onSetQty={setQty} />
+                                            ))}
+                                        </div>
+                                    </section>
                                 ))}
                             </div>
                         )}
                     </div>
                 </div>
 
-                {/* ── SIDEBAR CARRITO ────────────────────────────────────── */}
-                <div className="w-80 flex-shrink-0 flex flex-col bg-white border-l border-neutral-200 overflow-hidden">
-
-                    {/* header sidebar */}
-                    <div className="flex-shrink-0 px-5 py-4 border-b border-neutral-100">
-                        <div className="flex items-center justify-between">
-                            <h2 className="font-epilogue text-base font-bold text-neutral-900">Pedido actual</h2>
-                            {cartCount > 0 && (
-                                <span className="bg-primary/10 text-primary text-xs font-bold rounded-full px-2.5 py-0.5">{cartCount} art.</span>
-                            )}
-                        </div>
-                    </div>
-
-                    {/* lista items */}
-                    <div className="flex-1 overflow-y-auto">
-                        {cartItems.length === 0 ? (
-                            <div className="flex flex-col items-center justify-center h-full text-center px-6 gap-3">
-                                <div className="w-16 h-16 rounded-2xl bg-neutral-100 flex items-center justify-center">
-                                    <MIcon name="shopping_cart" size={28} className="text-neutral-300" />
-                                </div>
-                                <div>
-                                    <p className="text-sm font-semibold text-neutral-500">Carrito vacío</p>
-                                    <p className="text-xs text-neutral-400 mt-1">Haz clic en un artículo para agregarlo</p>
-                                </div>
-                            </div>
-                        ) : (
-                            <div className="divide-y divide-neutral-100">
-                                {cartItems.map(e => (
-                                    <div key={e.articleId} className="flex items-center gap-3 px-4 py-3 hover:bg-neutral-50 transition-colors">
-                                        <div className="w-11 h-11 rounded-lg overflow-hidden flex-shrink-0 bg-neutral-100">
-                                            <ArticleThumb article={e.article} className="w-full h-full" />
-                                        </div>
-                                        <div className="flex-1 min-w-0">
-                                            <p className="text-xs font-semibold text-neutral-800 line-clamp-2 leading-snug">{e.article.name}</p>
-                                            <p className="text-xs text-primary font-bold mt-0.5">{fmt(e.article.price * e.qty)}</p>
-                                        </div>
-                                        <div className="flex items-center gap-1 flex-shrink-0">
-                                            <button onClick={() => decrement(e.articleId)} className="w-7 h-7 rounded-lg bg-neutral-100 hover:bg-neutral-200 flex items-center justify-center text-neutral-600 font-bold text-sm transition">−</button>
-                                            <span className="w-6 text-center text-sm font-bold text-neutral-800 tabular-nums">{e.qty}</span>
-                                            <button onClick={() => increment(e.articleId)} className="w-7 h-7 rounded-lg bg-neutral-100 hover:bg-neutral-200 flex items-center justify-center text-neutral-600 font-bold text-sm transition">+</button>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                    </div>
-
-                    {/* footer carrito */}
-                    {cartItems.length > 0 && (
-                        <div className="flex-shrink-0 border-t border-neutral-200 p-4 space-y-3 bg-white">
-                            <div className="flex justify-between items-center border-t border-neutral-100 pt-2">
-                                <span className="text-sm font-semibold text-neutral-700">Total</span>
-                                <span className="text-xl font-bold text-neutral-900 font-epilogue tabular-nums">{fmt(subtotal)}</span>
-                            </div>
-                            <button
-                                onClick={() => setCheckoutOpen(true)}
-                                className="w-full bg-primary hover:bg-primary/90 active:scale-[0.98] text-white rounded-xl py-3 font-bold text-sm flex items-center justify-center gap-2 transition-all"
-                            >
-                                <MIcon name="check_circle" fill />
-                                Confirmar pedido
-                            </button>
-                            <button onClick={() => setCart(saveCart([]))} className="w-full text-xs text-neutral-400 hover:text-red-500 transition flex items-center justify-center gap-1 py-0.5">
-                                <MIcon name="delete_sweep" size={13} />
-                                Vaciar carrito
-                            </button>
-                        </div>
-                    )}
+                {/* ── SIDEBAR CARRITO — desktop (md+) ───────────────────── */}
+                <div className="hidden md:flex w-80 flex-shrink-0 flex-col bg-white border-l border-neutral-200 overflow-hidden">
+                    {CartPanel}
                 </div>
+
+                {/* ── DRAWER CARRITO — móvil (<md) ──────────────────────── */}
+                {cartOpen && (
+                    <div className="md:hidden fixed inset-0 z-[70] flex">
+                        {/* backdrop */}
+                        <div className="absolute inset-0 bg-black/40" onClick={() => setCartOpen(false)} />
+                        {/* panel */}
+                        <div className="relative ml-auto w-full min-[420px]:w-[92vw] max-w-md h-full flex flex-col bg-white shadow-2xl overflow-hidden">
+                            {CartPanel}
+                        </div>
+                    </div>
+                )}
             </div>
+
+            {/* ── FAB carrito — solo móvil ─────────────────────────────── */}
+            <button
+                onClick={() => setCartOpen(true)}
+                aria-label="Abrir carrito"
+                className="md:hidden fixed bottom-24 right-4 z-30 w-14 h-14 bg-primary text-white rounded-full shadow-lg flex items-center justify-center transition-all active:scale-95"
+            >
+                <MIcon name="shopping_cart" size={26} fill />
+                {cartCount > 0 && (
+                    <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[11px] font-bold rounded-full min-w-[20px] h-5 flex items-center justify-center px-1 shadow">
+                        {cartCount}
+                    </span>
+                )}
+            </button>
 
             <CheckoutModal
                 open={checkoutOpen}

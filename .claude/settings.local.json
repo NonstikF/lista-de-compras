@@ -24,7 +24,8 @@
       "Bash(Select-Object FullName)",
       "PowerShell(npx prisma generate --schema=backend/prisma/schema.prisma 2>&1)",
       "PowerShell($PWD.Path)",
-      "PowerShell(npx prisma generate 2>&1)"
+      "PowerShell(npx prisma generate 2>&1)",
+      "Bash(git hash-object *)"
     ]
   }
 }
