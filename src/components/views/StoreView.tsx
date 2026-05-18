@@ -125,21 +125,21 @@ const CheckoutModal: React.FC<{
                 ))}
             </div>
             {step === 1 && (
-                <div className="p-6 space-y-4">
+                <div className="p-4 sm:p-6 space-y-4">
                     <Field label="Nombre del cliente" required error={nameError}>
                         <Input value={form.customerName} onChange={e => { setForm(f => ({ ...f, customerName: e.target.value })); setNameError(''); }} placeholder="Ej. María García" autoFocus />
                     </Field>
                     <Field label="Notas">
                         <Textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder="Instrucciones especiales…" />
                     </Field>
-                    <div className="flex justify-end gap-2 pt-2">
-                        <Button variant="neutral" onClick={handleClose}>Cancelar</Button>
-                        <Button variant="filled" icon="arrow_forward" onClick={handleNext}>Continuar</Button>
+                    <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-2">
+                        <Button variant="neutral" onClick={handleClose} className="w-full sm:w-auto">Cancelar</Button>
+                        <Button variant="filled" icon="arrow_forward" onClick={handleNext} className="w-full sm:w-auto">Continuar</Button>
                     </div>
                 </div>
             )}
             {step === 2 && (
-                <div className="p-6 space-y-4">
+                <div className="p-4 sm:p-6 space-y-4">
                     <div className="bg-neutral-50 rounded-xl px-4 py-3 flex items-center gap-3 border border-neutral-200">
                         <MIcon name="person" className="text-primary" />
                         <div>
@@ -167,9 +167,9 @@ const CheckoutModal: React.FC<{
                             <span className="text-lg font-bold text-primary">{fmt(subtotal)}</span>
                         </div>
                     </div>
-                    <div className="flex justify-end gap-2 pt-1">
-                        <Button variant="neutral" onClick={() => setStep(1)} disabled={loading}>Atrás</Button>
-                        <Button variant="filled" icon="check_circle" onClick={handleConfirm} disabled={loading}>
+                    <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-1">
+                        <Button variant="neutral" onClick={() => setStep(1)} disabled={loading} className="w-full sm:w-auto">Atrás</Button>
+                        <Button variant="filled" icon="check_circle" onClick={handleConfirm} disabled={loading} className="w-full sm:w-auto">
                             {loading ? 'Creando pedido…' : 'Confirmar pedido'}
                         </Button>
                     </div>
@@ -347,13 +347,13 @@ const StoreView: React.FC<StoreViewProps> = ({ authToken, onAuthError }) => {
 
     return (
         <>
-            <div className="flex h-[100dvh] overflow-hidden bg-neutral-50">
+            <div className="flex h-[calc(100dvh-5rem)] md:h-[100dvh] overflow-hidden bg-neutral-50">
 
                 {/* ── CATÁLOGO ─────────────────────────────────────────── */}
                 <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
 
                     {/* barra superior: búsqueda + filtros */}
-                    <div className="flex-shrink-0 bg-white border-b border-neutral-200 px-4 py-3 flex flex-col gap-2.5">
+                    <div className="flex-shrink-0 bg-white border-b border-neutral-200 px-3 sm:px-4 py-3 flex flex-col gap-2.5">
                         {/* búsqueda */}
                         <div className="relative">
                             <MIcon name="search" className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
@@ -363,7 +363,7 @@ const StoreView: React.FC<StoreViewProps> = ({ authToken, onAuthError }) => {
                                 value={query}
                                 onChange={e => setQuery(e.target.value)}
                                 placeholder="Buscar artículo…"
-                                className="w-full pl-10 pr-10 py-2 rounded-xl bg-neutral-100 border border-transparent focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/15 outline-none text-sm transition"
+                                className="w-full pl-10 pr-10 py-2.5 rounded-xl bg-neutral-100 border border-transparent focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/15 outline-none text-sm transition"
                             />
                             {query && (
                                 <button onClick={() => setQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-600 transition">
@@ -374,7 +374,7 @@ const StoreView: React.FC<StoreViewProps> = ({ authToken, onAuthError }) => {
 
                         {/* chips de proveedor — scroll horizontal */}
                         {!isLoading && activeSuppliers.length > 0 && (
-                            <div className="flex gap-1.5 overflow-x-auto scrollbar-hide pb-0.5">
+                            <div className="flex gap-1.5 overflow-x-auto scrollbar-hide pb-0.5 -mx-3 sm:-mx-4 px-3 sm:px-4">
                                 {[{ id: 'todos', name: 'Todos' }, ...activeSuppliers].map(s => {
                                     const active = supplierFilter === s.id;
                                     return (
@@ -403,7 +403,7 @@ const StoreView: React.FC<StoreViewProps> = ({ authToken, onAuthError }) => {
                     )}
 
                     {/* grid */}
-                    <div className="flex-1 overflow-y-auto p-3 md:p-4">
+                    <div className="flex-1 overflow-y-auto p-2.5 sm:p-3 md:p-4">
                         {isLoading && (
                             <div className="flex flex-col items-center justify-center h-full gap-3 text-neutral-400">
                                 <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary border-t-transparent" />
@@ -429,7 +429,7 @@ const StoreView: React.FC<StoreViewProps> = ({ authToken, onAuthError }) => {
                             </div>
                         )}
                         {!isLoading && filtered.length > 0 && (
-                            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-2.5 md:gap-3 pb-24 md:pb-0">
+                            <div className="grid grid-cols-2 min-[430px]:grid-cols-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-2 sm:gap-2.5 md:gap-3 pb-28 md:pb-0">
                                 {filtered.map(a => (
                                     <StoreCard key={a.id} article={a} cartQty={cartMap[a.id] ?? 0} onAdd={addToCart} onIncrement={increment} onDecrement={decrement} onSetQty={setQty} />
                                 ))}
@@ -445,11 +445,11 @@ const StoreView: React.FC<StoreViewProps> = ({ authToken, onAuthError }) => {
 
                 {/* ── DRAWER CARRITO — móvil (<md) ──────────────────────── */}
                 {cartOpen && (
-                    <div className="md:hidden fixed inset-0 z-40 flex">
+                    <div className="md:hidden fixed inset-0 z-[70] flex">
                         {/* backdrop */}
                         <div className="absolute inset-0 bg-black/40" onClick={() => setCartOpen(false)} />
                         {/* panel */}
-                        <div className="relative ml-auto w-[85vw] max-w-sm h-full flex flex-col bg-white shadow-2xl overflow-hidden">
+                        <div className="relative ml-auto w-full min-[420px]:w-[92vw] max-w-md h-full flex flex-col bg-white shadow-2xl overflow-hidden">
                             {CartPanel}
                         </div>
                     </div>
@@ -459,7 +459,8 @@ const StoreView: React.FC<StoreViewProps> = ({ authToken, onAuthError }) => {
             {/* ── FAB carrito — solo móvil ─────────────────────────────── */}
             <button
                 onClick={() => setCartOpen(true)}
-                className="md:hidden fixed bottom-5 right-5 z-30 w-14 h-14 bg-primary text-white rounded-full shadow-lg flex items-center justify-center transition-all active:scale-95"
+                aria-label="Abrir carrito"
+                className="md:hidden fixed bottom-24 right-4 z-30 w-14 h-14 bg-primary text-white rounded-full shadow-lg flex items-center justify-center transition-all active:scale-95"
             >
                 <MIcon name="shopping_cart" size={26} fill />
                 {cartCount > 0 && (
