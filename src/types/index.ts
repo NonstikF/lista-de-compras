@@ -52,6 +52,9 @@ export interface Supplier {
   contact: string;
   phone: string;
   zones: string[];
+  website: string;
+  notes: string;
+  locations: string[];
   createdAt: string;
 }
 

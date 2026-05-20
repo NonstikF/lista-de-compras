@@ -18,6 +18,9 @@ interface SupplierForm {
     contact: string;
     phone: string;
     zones: string[];
+    website: string;
+    notes: string;
+    locations: string[];
 }
 
 const SupplierEditModal: React.FC<{
@@ -26,15 +29,18 @@ const SupplierEditModal: React.FC<{
     onSave: (data: SupplierForm) => Promise<void>;
 }> = ({ supplier, onClose, onSave }) => {
     const isNew = supplier === 'new';
+    const s = supplier as Supplier;
     const initial: SupplierForm = isNew
-        ? { name: '', contact: '', phone: '', zones: [] }
-        : { name: (supplier as Supplier).name, contact: (supplier as Supplier).contact, phone: (supplier as Supplier).phone, zones: (supplier as Supplier).zones ?? [] };
+        ? { name: '', contact: '', phone: '', zones: [], website: '', notes: '', locations: [] }
+        : { name: s.name, contact: s.contact, phone: s.phone, zones: s.zones ?? [], website: s.website ?? '', notes: s.notes ?? '', locations: s.locations ?? [] };
 
     const [form, setForm] = useState<SupplierForm>(initial);
     const [nameError, setNameError] = useState('');
     const [saving, setSaving] = useState(false);
     const [newZone, setNewZone] = useState('');
     const [zoneError, setZoneError] = useState('');
+    const [newLocation, setNewLocation] = useState('');
+    const [locationError, setLocationError] = useState('');
 
     const update = (k: keyof SupplierForm, v: string) => setForm(f => ({ ...f, [k]: v }));
 
@@ -50,12 +56,23 @@ const SupplierEditModal: React.FC<{
 
     const removeZone = (z: string) => setForm(f => ({ ...f, zones: f.zones.filter(x => x !== z) }));
 
+    const addLocation = () => {
+        const loc = newLocation.trim();
+        if (!loc) return;
+        if (form.locations.length >= 10) { setLocationError('Máximo 10 ubicaciones'); return; }
+        setForm(f => ({ ...f, locations: [...f.locations, loc] }));
+        setNewLocation('');
+        setLocationError('');
+    };
+
+    const removeLocation = (loc: string) => setForm(f => ({ ...f, locations: f.locations.filter(x => x !== loc) }));
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!form.name.trim()) { setNameError('El nombre es requerido'); return; }
         setSaving(true);
         try {
-            await onSave({ name: form.name.trim(), contact: form.contact.trim(), phone: form.phone.trim(), zones: form.zones });
+            await onSave({ name: form.name.trim(), contact: form.contact.trim(), phone: form.phone.trim(), zones: form.zones, website: form.website.trim(), notes: form.notes.trim(), locations: form.locations });
         } finally {
             setSaving(false);
         }
@@ -66,7 +83,7 @@ const SupplierEditModal: React.FC<{
             open
             onClose={onClose}
             title={isNew ? 'Nuevo proveedor' : 'Editar proveedor'}
-            maxWidth="max-w-md"
+            maxWidth="max-w-lg"
             footer={
                 <>
                     <Button variant="neutral" onClick={onClose} disabled={saving}>Cancelar</Button>
@@ -100,7 +117,55 @@ const SupplierEditModal: React.FC<{
                         placeholder="55 1234 5678"
                     />
                 </Field>
+                <Field label="Sitio web">
+                    <Input
+                        type="url"
+                        value={form.website}
+                        onChange={e => update('website', e.target.value)}
+                        placeholder="https://ejemplo.com"
+                    />
+                </Field>
 
+                {/* Ubicaciones */}
+                <div>
+                    <span className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant block mb-2">
+                        Ubicaciones <span className="font-normal normal-case">({form.locations.length}/10)</span>
+                    </span>
+                    {form.locations.length > 0 && (
+                        <div className="space-y-1.5 mb-2">
+                            {form.locations.map((loc, i) => (
+                                <div key={i} className="flex items-center gap-2 text-sm bg-surface-container-low rounded-lg px-3 py-1.5">
+                                    <MIcon name="location_on" className="text-sm text-error flex-shrink-0" />
+                                    <span className="flex-1 truncate text-on-background">{loc}</span>
+                                    <button
+                                        type="button"
+                                        onClick={() => removeLocation(loc)}
+                                        className="hover:text-error transition text-on-surface-variant"
+                                        aria-label="Quitar ubicación"
+                                    >
+                                        <MIcon name="close" size={14} />
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                    {form.locations.length < 10 && (
+                        <div className="flex gap-2">
+                            <Input
+                                value={newLocation}
+                                onChange={e => { setNewLocation(e.target.value); setLocationError(''); }}
+                                placeholder="Link de Google Maps o descripción"
+                                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addLocation(); } }}
+                            />
+                            <Button type="button" variant="tonal" icon="add" onClick={addLocation}>
+                                Agregar
+                            </Button>
+                        </div>
+                    )}
+                    {locationError && <p className="text-xs text-error mt-1">{locationError}</p>}
+                </div>
+
+                {/* Zonas */}
                 <div>
                     <span className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant block mb-2">
                         Zonas <span className="font-normal normal-case">({form.zones.length}/10)</span>
@@ -137,6 +202,17 @@ const SupplierEditModal: React.FC<{
                     )}
                     {zoneError && <p className="text-xs text-error mt-1">{zoneError}</p>}
                 </div>
+
+                {/* Notas / credenciales */}
+                <Field label="Notas">
+                    <textarea
+                        value={form.notes}
+                        onChange={e => update('notes', e.target.value)}
+                        placeholder="Credenciales, contraseñas, notas internas…"
+                        rows={3}
+                        className="w-full rounded-xl border border-surface-variant bg-surface-container-low px-4 py-2.5 text-sm text-on-background placeholder:text-on-surface-variant/50 focus:outline-none focus:ring-2 focus:ring-primary/40 resize-none"
+                    />
+                </Field>
             </form>
         </Modal>
     );
@@ -832,7 +908,28 @@ const SupplierRow: React.FC<{
             <MIcon name="local_shipping" className="text-primary" fill />
         </div>
         <div className="flex-1 min-w-0">
-            <p className="font-epilogue font-semibold text-on-background truncate">{supplier.name}</p>
+            <div className="flex items-center gap-2 flex-wrap">
+                <p className="font-epilogue font-semibold text-on-background truncate">{supplier.name}</p>
+                {supplier.website && (
+                    <a
+                        href={supplier.website}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={e => e.stopPropagation()}
+                        className="flex items-center gap-1 text-xs text-primary hover:underline"
+                        title={supplier.website}
+                    >
+                        <MIcon name="language" className="text-sm" />
+                        Sitio web
+                    </a>
+                )}
+                {supplier.notes && (
+                    <span title={supplier.notes} className="flex items-center gap-1 text-xs text-on-surface-variant">
+                        <MIcon name="sticky_note_2" className="text-sm" />
+                        Notas
+                    </span>
+                )}
+            </div>
             <div className="flex gap-3 text-sm text-on-surface-variant mt-0.5 flex-wrap">
                 {supplier.contact && (
                     <span className="flex items-center gap-1">
@@ -846,6 +943,28 @@ const SupplierRow: React.FC<{
                         {supplier.phone}
                     </span>
                 )}
+                {supplier.locations?.map((loc, i) => {
+                    const isUrl = loc.startsWith('http');
+                    return isUrl ? (
+                        <a
+                            key={i}
+                            href={loc}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={e => e.stopPropagation()}
+                            className="flex items-center gap-1 text-error hover:underline"
+                            title={loc}
+                        >
+                            <MIcon name="location_on" className="text-sm" />
+                            {supplier.locations.length > 1 ? `Ubicación ${i + 1}` : 'Ubicación'}
+                        </a>
+                    ) : (
+                        <span key={i} className="flex items-center gap-1">
+                            <MIcon name="location_on" className="text-sm text-error" />
+                            {loc}
+                        </span>
+                    );
+                })}
             </div>
         </div>
         <div className="flex gap-1 flex-shrink-0">
@@ -898,7 +1017,7 @@ const SuppliersView: React.FC<SuppliersViewProps> = ({ authToken, onAuthError })
         return () => { cancelled = true; };
     }, [authToken]);
 
-    const handleSave = async (data: { name: string; contact: string; phone: string; zones: string[] }) => {
+    const handleSave = async (data: { name: string; contact: string; phone: string; zones: string[]; website: string; notes: string; locations: string[] }) => {
         const isNew = editing === 'new';
         try {
             if (isNew) {
