@@ -59,32 +59,31 @@ const EmptyStoreOrders: React.FC = () => (
 // --- StoreItem ---
 const StoreItem = React.memo<{
     item: StoreOrderItem;
-    onQuantityChange: (itemId: number, newQty: number, isPurchased: boolean) => void;
+    // isToggle=true only when the toggle button is used (full complete/uncomplete)
+    onQuantityChange: (itemId: number, newQty: number, isPurchased: boolean, isToggle: boolean) => void;
     onViewImage: (url: string, name: string) => void;
 }>(({ item, onQuantityChange, onViewImage }) => {
     const isPurchased = item.isPurchased;
     const displayQty = item.quantityPurchased;
-    // Pending = total qty minus what THIS supplier has bought minus what OTHER suppliers already bought
     const purchasedByOthers = item.quantityPurchasedByOthers ?? 0;
     const pendingQty = Math.max(0, item.qty - displayQty - purchasedByOthers);
-    const hasOtherSuppliers = purchasedByOthers > 0 || item.qty > 0; // show badge when multi-supplier
     const maxPurchasable = item.qty - purchasedByOthers;
     const isInProgress = displayQty > 0 && !isPurchased;
 
     const handleToggle = () => {
         const newQty = isPurchased ? 0 : maxPurchasable;
-        onQuantityChange(item.id, newQty, !isPurchased);
+        onQuantityChange(item.id, newQty, !isPurchased, true);
     };
     const handleIncrement = () => {
         if (displayQty < maxPurchasable) {
             const newQty = displayQty + 1;
-            onQuantityChange(item.id, newQty, newQty >= maxPurchasable);
+            onQuantityChange(item.id, newQty, newQty >= maxPurchasable, false);
         }
     };
     const handleDecrement = () => {
         if (displayQty > 0) {
             const newQty = displayQty - 1;
-            onQuantityChange(item.id, newQty, false);
+            onQuantityChange(item.id, newQty, false, false);
         }
     };
 
@@ -432,9 +431,13 @@ const StoreOrderCard: React.FC<{
     const statusColor = isPending ? 'bg-secondary-container/60 text-on-secondary-container' : 'bg-success-purchased/15 text-success-purchased';
     const statusLabel = isPending ? 'Pendiente' : 'Completado';
 
-    const handleQuantityChange = useCallback((itemId: number, newQty: number, isPurchased: boolean) => {
+    const handleQuantityChange = useCallback((itemId: number, newQty: number, isPurchased: boolean, isToggle: boolean) => {
         onItemUpdate(order.id, itemId, isPurchased, newQty);
-        updateStoreItemStatus(authToken, order.id, itemId, { isPurchased, quantityPurchased: newQty })
+        // Only send isPurchased when it's a full toggle — not during partial increments
+        const patch = isToggle
+            ? { isPurchased, quantityPurchased: newQty }
+            : { quantityPurchased: newQty };
+        updateStoreItemStatus(authToken, order.id, itemId, patch)
             .then(({ item: updated, siblingUpdates }) => {
                 onItemUpdate(order.id, itemId, updated.isPurchased, updated.quantityPurchased, updated.quantityPurchasedByOthers);
                 for (const sibling of siblingUpdates) {

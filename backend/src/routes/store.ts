@@ -151,9 +151,10 @@ router.patch('/:id/items/:itemId', async (req: Request, res: Response) => {
             where: { id: itemId },
             data: parsed.data,
         });
-        // When marking as purchased/unpurchased, auto-sync siblings (same articleId+orderId)
+        // Auto-sync siblings only when fully toggling (isPurchased true→false or false→true),
+        // NOT when incrementing/decrementing quantity mid-way.
         let siblingUpdates: typeof item[] = [];
-        if (parsed.data.isPurchased !== undefined) {
+        if (parsed.data.isPurchased === true || parsed.data.isPurchased === false) {
             const siblings = await prisma.storeOrderItem.findMany({
                 where: { orderId: item.orderId, articleId: item.articleId, id: { not: itemId } },
             });
