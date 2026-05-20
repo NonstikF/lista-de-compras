@@ -53,9 +53,8 @@ const ArticleCard: React.FC<{
                 {article.description && (
                     <p className="text-[11px] leading-snug text-on-surface-variant line-clamp-2">{article.description}</p>
                 )}
-                {(article.category || article.sku || article.stockStatus) && (
+                {(article.sku || article.stockStatus === 'instock' || article.stockStatus === 'outofstock') && (
                     <div className="flex flex-col gap-0.5 text-[11px] text-on-surface-variant">
-                        {article.category && article.category !== 'Sin categorizar' && <span className="truncate">{article.category}</span>}
                         {article.sku && <span className="truncate">SKU: {article.sku}</span>}
                         {(article.stockStatus === 'instock' || article.stockStatus === 'outofstock') && (
                             <span className="truncate">
