@@ -28,22 +28,15 @@ const storeOrderSchema = z.object({
     })).min(1, 'El pedido necesita al menos un artículo'),
 });
 
-type ArticleInfo = { image: string | null; supplierName: string };
+type ArticleInfo = { image: string | null };
 
 async function getArticleInfoMap(articleIds: string[]): Promise<Record<string, ArticleInfo>> {
     if (articleIds.length === 0) return {};
     const articles = await prisma.article.findMany({
         where: { id: { in: articleIds } },
-        select: {
-            id: true,
-            image: true,
-            suppliers: { include: { supplier: { select: { name: true } } }, take: 1 },
-        },
+        select: { id: true, image: true },
     });
-    return Object.fromEntries(articles.map(a => [
-        a.id,
-        { image: a.image, supplierName: a.suppliers[0]?.supplier?.name ?? '' },
-    ]));
+    return Object.fromEntries(articles.map(a => [a.id, { image: a.image }]));
 }
 
 // For each item, compute how many units were purchased by other suppliers of the same article in the same order.
@@ -79,7 +72,7 @@ function formatStoreOrder(o: RawOrder, articleMap: Record<string, ArticleInfo> =
             return {
                 ...item,
                 imageUrl: info?.image ?? item.imageUrl,
-                supplierName: info?.supplierName || item.supplierName || 'Sin proveedor',
+                supplierName: item.supplierName || 'Sin proveedor',
             };
         }),
     };
