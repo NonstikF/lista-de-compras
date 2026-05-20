@@ -55,11 +55,11 @@ const ArticleCard: React.FC<{
                 )}
                 {(article.category || article.sku || article.stockStatus) && (
                     <div className="flex flex-col gap-0.5 text-[11px] text-on-surface-variant">
-                        {article.category && <span className="truncate">{article.category}</span>}
+                        {article.category && article.category !== 'Sin categorizar' && <span className="truncate">{article.category}</span>}
                         {article.sku && <span className="truncate">SKU: {article.sku}</span>}
-                        {article.stockStatus && (
+                        {(article.stockStatus === 'instock' || article.stockStatus === 'outofstock') && (
                             <span className="truncate">
-                                {article.stockStatus === 'instock' ? 'En stock' : article.stockStatus === 'outofstock' ? 'Sin stock' : article.stockStatus}
+                                {article.stockStatus === 'instock' ? 'En stock' : 'Sin stock'}
                             </span>
                         )}
                     </div>
@@ -347,7 +347,7 @@ const ArticlesView: React.FC<ArticlesViewProps> = ({ authToken, onAuthError }) =
     const [categoryFilter, setCategoryFilter] = useState('');
     const toast = useToast();
 
-    const categories = Array.from(new Set(articles.map(a => a.category ?? '').filter(Boolean))).sort();
+    const categories = Array.from(new Set(articles.map(a => a.category ?? '').filter(c => c && c !== 'Sin categorizar'))).sort();
 
     const filtered = articles.filter(a => {
         const q = search.toLowerCase();
