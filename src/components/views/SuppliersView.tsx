@@ -77,8 +77,7 @@ const SupplierEditModal: React.FC<{
 
     const removeLocation = (loc: string) => setForm(f => ({ ...f, locations: f.locations.filter(x => x !== loc) }));
 
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
+    const handleSubmit = async () => {
         if (!form.name.trim()) { setNameError('El nombre es requerido'); return; }
         setSaving(true);
         try {
@@ -103,7 +102,7 @@ const SupplierEditModal: React.FC<{
                 </>
             }
         >
-            <form onSubmit={handleSubmit} className="p-6 space-y-4">
+            <form onSubmit={e => { e.preventDefault(); handleSubmit(); }} className="p-6 space-y-4">
                 <Field label="Nombre" required error={nameError}>
                     <Input
                         value={form.name}
@@ -129,7 +128,6 @@ const SupplierEditModal: React.FC<{
                 </Field>
                 <Field label="Sitio web">
                     <Input
-                        type="url"
                         value={form.website}
                         onChange={e => update('website', e.target.value)}
                         placeholder="https://ejemplo.com"
