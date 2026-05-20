@@ -5,9 +5,12 @@
   "private": true,
   "type": "module",
   "dependencies": {
+    "@types/leaflet": "^1.9.21",
+    "leaflet": "^1.9.4",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
-    "react-easy-crop": "^5.5.7"
+    "react-easy-crop": "^5.5.7",
+    "react-leaflet": "^5.0.0"
   },
   "devDependencies": {
     "@types/node": "^20.14.9",

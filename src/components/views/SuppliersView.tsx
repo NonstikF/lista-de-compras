@@ -1,5 +1,16 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
 import type { Supplier, SupplierTicket, OrderTicket } from '../../types';
+
+// Fix leaflet default marker icons when bundled with Vite
+delete (L.Icon.Default.prototype as unknown as Record<string, unknown>)._getIconUrl;
+L.Icon.Default.mergeOptions({
+    iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+    iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+    shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+});
 import {
     AuthError, getSuppliers, createSupplier, updateSupplier, deleteSupplier,
     getSupplierTickets, getSupplierTicketContent, createSupplierTicket, deleteSupplierTicket,
@@ -18,6 +29,7 @@ interface SupplierForm {
     contact: string;
     phone: string;
     zones: string[];
+    address: string;
 }
 
 const SupplierEditModal: React.FC<{
@@ -27,8 +39,8 @@ const SupplierEditModal: React.FC<{
 }> = ({ supplier, onClose, onSave }) => {
     const isNew = supplier === 'new';
     const initial: SupplierForm = isNew
-        ? { name: '', contact: '', phone: '', zones: [] }
-        : { name: (supplier as Supplier).name, contact: (supplier as Supplier).contact, phone: (supplier as Supplier).phone, zones: (supplier as Supplier).zones ?? [] };
+        ? { name: '', contact: '', phone: '', zones: [], address: '' }
+        : { name: (supplier as Supplier).name, contact: (supplier as Supplier).contact, phone: (supplier as Supplier).phone, zones: (supplier as Supplier).zones ?? [], address: (supplier as Supplier).address ?? '' };
 
     const [form, setForm] = useState<SupplierForm>(initial);
     const [nameError, setNameError] = useState('');
@@ -55,7 +67,7 @@ const SupplierEditModal: React.FC<{
         if (!form.name.trim()) { setNameError('El nombre es requerido'); return; }
         setSaving(true);
         try {
-            await onSave({ name: form.name.trim(), contact: form.contact.trim(), phone: form.phone.trim(), zones: form.zones });
+            await onSave({ name: form.name.trim(), contact: form.contact.trim(), phone: form.phone.trim(), zones: form.zones, address: form.address.trim() });
         } finally {
             setSaving(false);
         }
@@ -100,6 +112,13 @@ const SupplierEditModal: React.FC<{
                         placeholder="55 1234 5678"
                     />
                 </Field>
+                <Field label="Dirección">
+                    <Input
+                        value={form.address}
+                        onChange={e => update('address', e.target.value)}
+                        placeholder="Ej. Av. Insurgentes 123, CDMX"
+                    />
+                </Field>
 
                 <div>
                     <span className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant block mb-2">
@@ -139,6 +158,110 @@ const SupplierEditModal: React.FC<{
                 </div>
             </form>
         </Modal>
+    );
+};
+
+// ---------- Modal de mapa ----------
+function MapRecenter({ lat, lng }: { lat: number; lng: number }) {
+    const map = useMap();
+    useEffect(() => { map.setView([lat, lng], 15); }, [lat, lng]);
+    return null;
+}
+
+const SupplierMapModal: React.FC<{
+    supplier: Supplier;
+    onClose: () => void;
+}> = ({ supplier, onClose }) => {
+    const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
+    const [status, setStatus] = useState<'idle' | 'loading' | 'error'>('idle');
+
+    useEffect(() => {
+        if (!supplier.address.trim()) return;
+        setStatus('loading');
+        fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(supplier.address)}`, {
+            headers: { 'Accept-Language': 'es' },
+        })
+            .then(r => r.json())
+            .then((data: { lat: string; lon: string }[]) => {
+                if (data.length > 0) {
+                    setCoords({ lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) });
+                    setStatus('idle');
+                } else {
+                    setStatus('error');
+                }
+            })
+            .catch(() => setStatus('error'));
+    }, [supplier.address]);
+
+    return (
+        <div
+            className="fixed inset-0 z-[150] bg-black/60 flex items-center justify-center p-4"
+            onClick={onClose}
+        >
+            <div
+                className="bg-white rounded-2xl shadow-2xl w-full max-w-xl overflow-hidden"
+                onClick={e => e.stopPropagation()}
+            >
+                {/* Header */}
+                <div className="flex items-center justify-between px-5 py-4 border-b border-surface-variant">
+                    <div>
+                        <p className="font-epilogue font-bold text-on-background">{supplier.name}</p>
+                        {supplier.address && (
+                            <p className="text-xs text-on-surface-variant mt-0.5 flex items-center gap-1">
+                                <MIcon name="location_on" size={13} className="text-primary" />
+                                {supplier.address}
+                            </p>
+                        )}
+                    </div>
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        className="p-1.5 rounded-lg hover:bg-surface-container transition-colors text-on-surface-variant"
+                    >
+                        <MIcon name="close" />
+                    </button>
+                </div>
+
+                {/* Mapa */}
+                <div className="h-72 relative">
+                    {!supplier.address.trim() && (
+                        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-on-surface-variant bg-surface-container-low">
+                            <MIcon name="location_off" size={36} className="opacity-40" />
+                            <p className="text-sm">Este proveedor no tiene dirección registrada.</p>
+                        </div>
+                    )}
+                    {supplier.address.trim() && status === 'loading' && (
+                        <div className="absolute inset-0 flex items-center justify-center bg-surface-container-low z-10">
+                            <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-primary" />
+                        </div>
+                    )}
+                    {supplier.address.trim() && status === 'error' && (
+                        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-on-surface-variant bg-surface-container-low">
+                            <MIcon name="location_searching" size={36} className="opacity-40" />
+                            <p className="text-sm">No se encontró la dirección.</p>
+                            <p className="text-xs opacity-60">Verificá que la dirección sea correcta.</p>
+                        </div>
+                    )}
+                    {coords && (
+                        <MapContainer
+                            center={[coords.lat, coords.lng]}
+                            zoom={15}
+                            style={{ height: '100%', width: '100%' }}
+                            zoomControl
+                        >
+                            <TileLayer
+                                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                            />
+                            <MapRecenter lat={coords.lat} lng={coords.lng} />
+                            <Marker position={[coords.lat, coords.lng]}>
+                                <Popup>{supplier.name}</Popup>
+                            </Marker>
+                        </MapContainer>
+                    )}
+                </div>
+            </div>
+        </div>
     );
 };
 
@@ -826,7 +949,8 @@ const SupplierRow: React.FC<{
     onEdit: (s: Supplier) => void;
     onDelete: (s: Supplier) => void;
     onTickets: (s: Supplier) => void;
-}> = ({ supplier, onEdit, onDelete, onTickets }) => (
+    onMap: (s: Supplier) => void;
+}> = ({ supplier, onEdit, onDelete, onTickets, onMap }) => (
     <div className="bg-white rounded-xl border border-surface-variant shadow-sm p-4 flex items-center gap-4 hover:shadow-md transition-shadow">
         <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
             <MIcon name="local_shipping" className="text-primary" fill />
@@ -846,12 +970,21 @@ const SupplierRow: React.FC<{
                         {supplier.phone}
                     </span>
                 )}
+                {supplier.address && (
+                    <span className="flex items-center gap-1 truncate max-w-[200px]">
+                        <MIcon name="location_on" className="text-sm flex-shrink-0" />
+                        {supplier.address}
+                    </span>
+                )}
             </div>
         </div>
         <div className="flex gap-1 flex-shrink-0">
             <Button variant="tonal" size="sm" icon="receipt_long" onClick={() => onTickets(supplier)}>
                 Tickets
             </Button>
+            {supplier.address && (
+                <Button variant="tonal" size="sm" icon="location_on" onClick={() => onMap(supplier)} />
+            )}
             {supplier.name !== 'Sin Proveedor' && (
                 <>
                     <Button variant="tonal" size="sm" icon="edit" onClick={() => onEdit(supplier)}>
@@ -878,6 +1011,7 @@ const SuppliersView: React.FC<SuppliersViewProps> = ({ authToken, onAuthError })
     const [confirmDelete, setConfirmDelete] = useState<Supplier | null>(null);
     const [deleting, setDeleting] = useState(false);
     const [ticketsSupplier, setTicketsSupplier] = useState<Supplier | null>(null);
+    const [mapSupplier, setMapSupplier] = useState<Supplier | null>(null);
     const toast = useToast();
 
     useEffect(() => {
@@ -977,6 +1111,7 @@ const SuppliersView: React.FC<SuppliersViewProps> = ({ authToken, onAuthError })
                             onEdit={setEditing}
                             onDelete={setConfirmDelete}
                             onTickets={setTicketsSupplier}
+                            onMap={setMapSupplier}
                         />
                     ))}
                 </div>
@@ -1017,6 +1152,13 @@ const SuppliersView: React.FC<SuppliersViewProps> = ({ authToken, onAuthError })
                     authToken={authToken}
                     onClose={() => setTicketsSupplier(null)}
                     onAuthError={onAuthError}
+                />
+            )}
+
+            {mapSupplier && (
+                <SupplierMapModal
+                    supplier={mapSupplier}
+                    onClose={() => setMapSupplier(null)}
                 />
             )}
         </main>

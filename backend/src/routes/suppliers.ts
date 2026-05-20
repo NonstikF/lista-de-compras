@@ -9,6 +9,7 @@ const supplierSchema = z.object({
     contact: z.string().default(''),
     phone: z.string().default(''),
     zones: z.array(z.string().min(1)).max(10, 'Máximo 10 zonas').default([]),
+    address: z.string().default(''),
 });
 
 const ticketSchema = z.object({
@@ -24,13 +25,14 @@ const ticketSchema = z.object({
 
 // ---- Suppliers CRUD ----
 
-function formatSupplier(s: { id: string; name: string; contact: string; phone: string; zones: string; createdAt: Date }) {
+function formatSupplier(s: { id: string; name: string; contact: string; phone: string; zones: string; address: string; createdAt: Date }) {
     return {
         id: s.id,
         name: s.name,
         contact: s.contact,
         phone: s.phone,
         zones: (() => { try { return JSON.parse(s.zones); } catch { return []; } })(),
+        address: s.address,
         createdAt: s.createdAt,
     };
 }
