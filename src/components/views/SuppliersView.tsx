@@ -243,13 +243,35 @@ const SupplierMapModal: React.FC<{
     const [status, setStatus] = useState<'idle' | 'loading' | 'error'>('idle');
 
     const activeLocation = mapLocations[activeIdx] ?? '';
-    const isGoogleMapsUrl = activeLocation.startsWith('http') && (activeLocation.includes('google') || activeLocation.includes('goo.gl'));
+    const isGoogleMapsUrl = activeLocation.startsWith('http') && (activeLocation.includes('google') || activeLocation.includes('goo.gl') || activeLocation.includes('maps.app'));
+
+    function extractGoogleCoords(url: string): { lat: number; lng: number } | null {
+        // @lat,lng,zoom format (most common)
+        const atMatch = url.match(/@(-?\d+\.?\d*),(-?\d+\.?\d*)/);
+        if (atMatch) return { lat: parseFloat(atMatch[1]), lng: parseFloat(atMatch[2]) };
+        // ?q=lat,lng
+        const qMatch = url.match(/[?&]q=(-?\d+\.?\d*),(-?\d+\.?\d*)/);
+        if (qMatch) return { lat: parseFloat(qMatch[1]), lng: parseFloat(qMatch[2]) };
+        // ll=lat,lng
+        const llMatch = url.match(/[?&]ll=(-?\d+\.?\d*),(-?\d+\.?\d*)/);
+        if (llMatch) return { lat: parseFloat(llMatch[1]), lng: parseFloat(llMatch[2]) };
+        return null;
+    }
 
     useEffect(() => {
         setCoords(null);
         setStatus('idle');
         if (!activeLocation.trim()) return;
-        if (isGoogleMapsUrl) return;
+        if (isGoogleMapsUrl) {
+            const extracted = extractGoogleCoords(activeLocation);
+            if (extracted) {
+                setCoords(extracted);
+            } else {
+                // Short URL (goo.gl/maps.app) — can't extract coords without following redirect
+                setStatus('error');
+            }
+            return;
+        }
         setStatus('loading');
         fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(activeLocation)}`, {
             headers: { 'Accept-Language': 'es' },
@@ -320,8 +342,8 @@ const SupplierMapModal: React.FC<{
                         </div>
                     )}
 
-                    {/* Google Maps URL → abrir en app (Google bloquea embedding) */}
-                    {isGoogleMapsUrl && (
+                    {/* Google Maps URL sin coords extraíbles → botón */}
+                    {isGoogleMapsUrl && !coords && status === 'error' && (
                         <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-surface-container-low">
                             <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center">
                                 <MIcon name="location_on" size={36} className="text-primary" fill />
@@ -342,7 +364,7 @@ const SupplierMapModal: React.FC<{
                         </div>
                     )}
 
-                    {/* Texto/dirección → Leaflet + Nominatim */}
+                    {/* Cargando coords por Nominatim */}
                     {!isGoogleMapsUrl && mapLocations.length > 0 && status === 'loading' && (
                         <div className="absolute inset-0 flex items-center justify-center bg-surface-container-low z-10">
                             <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-primary" />
@@ -355,7 +377,7 @@ const SupplierMapModal: React.FC<{
                             <p className="text-xs opacity-60">Usá un link de Google Maps para mayor precisión.</p>
                         </div>
                     )}
-                    {!isGoogleMapsUrl && coords && (
+                    {coords && (
                         <MapContainer
                             center={[coords.lat, coords.lng]}
                             zoom={15}
