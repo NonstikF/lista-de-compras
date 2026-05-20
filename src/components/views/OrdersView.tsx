@@ -64,16 +64,21 @@ const StoreItem = React.memo<{
 }>(({ item, onQuantityChange, onViewImage }) => {
     const isPurchased = item.isPurchased;
     const displayQty = item.quantityPurchased;
+    // Pending = total qty minus what THIS supplier has bought minus what OTHER suppliers already bought
+    const purchasedByOthers = item.quantityPurchasedByOthers ?? 0;
+    const pendingQty = Math.max(0, item.qty - displayQty - purchasedByOthers);
+    const hasOtherSuppliers = purchasedByOthers > 0 || item.qty > 0; // show badge when multi-supplier
+    const maxPurchasable = item.qty - purchasedByOthers;
     const isInProgress = displayQty > 0 && !isPurchased;
 
     const handleToggle = () => {
-        const newQty = isPurchased ? 0 : item.qty;
+        const newQty = isPurchased ? 0 : maxPurchasable;
         onQuantityChange(item.id, newQty, !isPurchased);
     };
     const handleIncrement = () => {
-        if (displayQty < item.qty) {
+        if (displayQty < maxPurchasable) {
             const newQty = displayQty + 1;
-            onQuantityChange(item.id, newQty, newQty >= item.qty);
+            onQuantityChange(item.id, newQty, newQty >= maxPurchasable);
         }
     };
     const handleDecrement = () => {
@@ -98,14 +103,19 @@ const StoreItem = React.memo<{
                         {item.name}
                     </p>
                     <p className="text-xs text-on-surface-variant">{fmt(item.price)} c/u</p>
+                    {purchasedByOthers > 0 && !isPurchased && (
+                        <p className="text-xs text-amber-600 font-medium mt-0.5">
+                            {purchasedByOthers} surtido por otro proveedor · pendiente: {pendingQty}
+                        </p>
+                    )}
                 </div>
             </div>
             <div className="flex items-center gap-3">
-                {item.qty > 1 && (
+                {maxPurchasable > 1 && (
                     <div className="flex items-center gap-2">
                         <button onClick={handleDecrement} disabled={displayQty === 0} className="w-7 h-7 flex items-center justify-center rounded-full bg-surface-container text-on-surface hover:bg-surface-container-high disabled:opacity-40 transition">-</button>
                         <span className="font-mono text-base font-semibold text-on-background w-8 text-center">{displayQty}</span>
-                        <button onClick={handleIncrement} disabled={displayQty >= item.qty} className="w-7 h-7 flex items-center justify-center rounded-full bg-surface-container text-on-surface hover:bg-surface-container-high disabled:opacity-40 transition">+</button>
+                        <button onClick={handleIncrement} disabled={displayQty >= maxPurchasable} className="w-7 h-7 flex items-center justify-center rounded-full bg-surface-container text-on-surface hover:bg-surface-container-high disabled:opacity-40 transition">+</button>
                     </div>
                 )}
                 {item.imageUrl && (
@@ -119,8 +129,9 @@ const StoreItem = React.memo<{
                 )}
                 <button
                     onClick={handleToggle}
+                    disabled={maxPurchasable === 0}
                     aria-label={isPurchased ? 'Marcar como pendiente' : 'Marcar como comprado'}
-                    className={`relative w-14 h-8 rounded-full flex items-center transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 ${isPurchased ? 'bg-success-purchased focus:ring-success-purchased' : 'bg-surface-container-high focus:ring-primary'}`}
+                    className={`relative w-14 h-8 rounded-full flex items-center transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-40 ${isPurchased ? 'bg-success-purchased focus:ring-success-purchased' : 'bg-surface-container-high focus:ring-primary'}`}
                 >
                     <span className={`inline-block w-6 h-6 bg-white rounded-full shadow transform transition-transform duration-300 ${isPurchased ? 'translate-x-7' : 'translate-x-1'}`} />
                 </button>
@@ -395,7 +406,7 @@ const StoreOrderCard: React.FC<{
     authToken: string;
     onAuthError: () => void;
     onComplete: (id: string) => void;
-    onItemUpdate: (orderId: string, itemId: number, isPurchased: boolean, quantityPurchased: number) => void;
+    onItemUpdate: (orderId: string, itemId: number, isPurchased: boolean, quantityPurchased: number, quantityPurchasedByOthers?: number) => void;
     onViewImage: (url: string, name: string) => void;
 }> = ({ order, authToken, onAuthError, onComplete, onItemUpdate, onViewImage }) => {
     const [isExpanded, setIsExpanded] = useState(false);
@@ -412,6 +423,9 @@ const StoreOrderCard: React.FC<{
     const handleQuantityChange = useCallback((itemId: number, newQty: number, isPurchased: boolean) => {
         onItemUpdate(order.id, itemId, isPurchased, newQty);
         updateStoreItemStatus(authToken, order.id, itemId, { isPurchased, quantityPurchased: newQty })
+            .then(updated => {
+                onItemUpdate(order.id, itemId, updated.isPurchased, updated.quantityPurchased, updated.quantityPurchasedByOthers);
+            })
             .catch(err => {
                 if (err instanceof AuthError) onAuthError();
                 else showToast('error', 'Error al guardar progreso');
@@ -1196,10 +1210,25 @@ const OrdersView: React.FC<OrdersViewProps> = ({ authToken, onAuthError }) => {
         }
     }, [authToken, onAuthError]);
 
-    const handleStoreItemUpdate = useCallback((orderId: string, itemId: number, isPurchased: boolean, quantityPurchased: number) => {
+    const handleStoreItemUpdate = useCallback((orderId: string, itemId: number, isPurchased: boolean, quantityPurchased: number, quantityPurchasedByOthers?: number) => {
         setStoreOrders(prev => prev.map(o => {
             if (o.id !== orderId) return o;
-            return { ...o, items: o.items.map(i => i.id === itemId ? { ...i, isPurchased, quantityPurchased } : i) };
+            // Update the changed item; also refresh siblings' quantityPurchasedByOthers
+            const updatedItems = o.items.map(i => {
+                if (i.id === itemId) return { ...i, isPurchased, quantityPurchased, quantityPurchasedByOthers: quantityPurchasedByOthers ?? i.quantityPurchasedByOthers };
+                // sibling: recalc its quantityPurchasedByOthers if we have the updated value
+                if (quantityPurchasedByOthers !== undefined) {
+                    const changedItem = o.items.find(x => x.id === itemId);
+                    if (changedItem && i.articleId === changedItem.articleId && i.orderId === changedItem.orderId) {
+                        // sibling's others = total purchased by all - sibling's own
+                        const ownQty = i.quantityPurchased;
+                        const totalByGroup = quantityPurchased + quantityPurchasedByOthers;
+                        return { ...i, quantityPurchasedByOthers: totalByGroup - ownQty };
+                    }
+                }
+                return i;
+            });
+            return { ...o, items: updatedItems };
         }));
     }, []);
 

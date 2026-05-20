@@ -126,8 +126,10 @@ export interface StoreOrderItem {
   qty: number;
   isPurchased: boolean;
   quantityPurchased: number;
+  quantityPurchasedByOthers: number; // sum of quantityPurchased of sibling items for same articleId in this order
   imageUrl?: string | null;
   supplierName: string;
+  supplierId?: string | null;
 }
 
 export interface StoreOrder {

@@ -24,6 +24,7 @@ const storeOrderSchema = z.object({
         qty: z.number().int().min(1),
         imageUrl: z.string().nullable().optional(),
         supplierName: z.string().default('Sin proveedor'),
+        supplierId: z.string().optional(),
     })).min(1, 'El pedido necesita al menos un artículo'),
 });
 
@@ -45,18 +46,35 @@ async function getArticleInfoMap(articleIds: string[]): Promise<Record<string, A
     ]));
 }
 
+// For each item, compute how many units were purchased by other suppliers of the same article in the same order.
+function addCrossSupplierInfo(items: RawOrder['items']): (RawOrder['items'][number] & { quantityPurchasedByOthers: number })[] {
+    // Group by orderId+articleId, sum quantityPurchased per group
+    const groupSum: Record<string, number> = {};
+    for (const item of items) {
+        const key = `${item.orderId}::${item.articleId}`;
+        groupSum[key] = (groupSum[key] ?? 0) + item.quantityPurchased;
+    }
+    return items.map(item => {
+        const key = `${item.orderId}::${item.articleId}`;
+        const totalByGroup = groupSum[key] ?? 0;
+        return { ...item, quantityPurchasedByOthers: totalByGroup - item.quantityPurchased };
+    });
+}
+
+type RawOrderItem = { id: number; orderId: number; articleId: string; name: string; price: number; qty: number; isPurchased: boolean; quantityPurchased: number; imageUrl: string | null; supplierName: string; supplierId: string | null };
 type RawOrder = {
     id: number; dateCreated: Date; status: string; customerName: string;
     customerPhone: string; notes: string; total: number;
-    items: { id: number; orderId: number; articleId: string; name: string; price: number; qty: number; isPurchased: boolean; quantityPurchased: number; imageUrl: string | null; supplierName: string }[];
+    items: RawOrderItem[];
 };
 
 function formatStoreOrder(o: RawOrder, articleMap: Record<string, ArticleInfo> = {}) {
+    const itemsWithCross = addCrossSupplierInfo(o.items);
     return {
         ...o,
         id: `T-${o.id}`,
         dateCreated: o.dateCreated.toISOString(),
-        items: o.items.map(item => {
+        items: itemsWithCross.map(item => {
             const info = articleMap[item.articleId];
             return {
                 ...item,
@@ -133,7 +151,13 @@ router.patch('/:id/items/:itemId', async (req: Request, res: Response) => {
             where: { id: itemId },
             data: parsed.data,
         });
-        res.json(item);
+        // Compute quantityPurchasedByOthers: sum of quantityPurchased of sibling items (same articleId+orderId)
+        const siblings = await prisma.storeOrderItem.findMany({
+            where: { orderId: item.orderId, articleId: item.articleId, id: { not: itemId } },
+            select: { quantityPurchased: true },
+        });
+        const quantityPurchasedByOthers = siblings.reduce((s, r) => s + r.quantityPurchased, 0);
+        res.json({ ...item, quantityPurchasedByOthers });
     } catch (err) {
         console.error('Error al actualizar item de tienda:', err);
         res.status(500).json({ error: 'Error al actualizar item' });

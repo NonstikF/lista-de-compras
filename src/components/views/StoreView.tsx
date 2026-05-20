@@ -6,7 +6,7 @@ import { Modal, Button, Field, Input, Textarea, MIcon, fmt, useToast } from '../
 interface StoreViewProps { authToken: string; onAuthError: () => void; }
 interface CartEntry { articleId: string; qty: number; }
 interface CheckoutForm { customerName: string; notes: string; }
-interface StoreSection { id: string; category: string; supplierName: string; title: string; articles: Article[]; }
+interface StoreSection { id: string; category: string; supplierId: string; supplierName: string; title: string; articles: Article[]; }
 
 const LAST_CUSTOMER_KEY = 'plantarte_last_customer_name';
 const CART_KEY = 'plantarte_store_cart';
@@ -243,12 +243,17 @@ const StoreView: React.FC<StoreViewProps> = ({ authToken, onAuthError }) => {
             })
             .forEach(article => {
                 const category = article.category?.trim() || 'Sin categoría';
-                const supplierName = supplierNameMap[article.supplierIds?.[0] ?? ''] || 'Sin proveedor';
-                const id = sectionIdFrom(category, supplierName);
-                const title = `${category} · ${supplierName}`;
-                const existing = map.get(id);
-                if (existing) existing.articles.push(article);
-                else map.set(id, { id, category, supplierName, title, articles: [article] });
+                // Appear in a section for EACH supplier (multi-supplier articles show in both)
+                const supplierEntries = article.supplierIds?.length
+                    ? article.supplierIds.map(sid => ({ supplierId: sid, supplierName: supplierNameMap[sid] || 'Sin proveedor' }))
+                    : [{ supplierId: '', supplierName: 'Sin proveedor' }];
+                for (const { supplierId, supplierName } of supplierEntries) {
+                    const id = sectionIdFrom(category, supplierName);
+                    const title = `${category} · ${supplierName}`;
+                    const existing = map.get(id);
+                    if (existing) existing.articles.push(article);
+                    else map.set(id, { id, category, supplierId, supplierName, title, articles: [article] });
+                }
             });
         return Array.from(map.values());
     }, [filtered, supplierNameMap]);
@@ -276,11 +281,21 @@ const StoreView: React.FC<StoreViewProps> = ({ authToken, onAuthError }) => {
     const handleConfirm = async (form: CheckoutForm) => {
         const articleMap = Object.fromEntries(articles.map(a => [a.id, a]));
         const supplierMap = Object.fromEntries(suppliers.map(s => [s.id, s.name]));
-        const items = cart.map(e => {
+        // Multi-supplier articles generate one item per supplier, each with the full qty.
+        // quantityPurchased is tracked independently per item; the UI shows pending = qty - sum(others).
+        const items: { articleId: string; name: string; price: number; qty: number; imageUrl: string | null; supplierName: string; supplierId?: string }[] = [];
+        for (const e of cart) {
             const article = articleMap[e.articleId];
-            const supplierId = article?.supplierIds?.[0];
-            return { articleId: e.articleId, name: article?.name ?? e.articleId, price: article?.price ?? 0, qty: e.qty, imageUrl: article?.image ?? null, supplierName: (supplierId && supplierMap[supplierId]) || 'Sin proveedor' };
-        });
+            const sids = article?.supplierIds ?? [];
+            if (sids.length > 1) {
+                for (const sid of sids) {
+                    items.push({ articleId: e.articleId, name: article?.name ?? e.articleId, price: article?.price ?? 0, qty: e.qty, imageUrl: article?.image ?? null, supplierName: supplierMap[sid] || 'Sin proveedor', supplierId: sid });
+                }
+            } else {
+                const supplierId = sids[0];
+                items.push({ articleId: e.articleId, name: article?.name ?? e.articleId, price: article?.price ?? 0, qty: e.qty, imageUrl: article?.image ?? null, supplierName: (supplierId && supplierMap[supplierId]) || 'Sin proveedor', supplierId });
+            }
+        }
         setSubmitting(true);
         try {
             const order = await createStoreOrder(authToken, { customerName: form.customerName, notes: form.notes, items });
