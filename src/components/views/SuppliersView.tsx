@@ -1032,7 +1032,7 @@ const SuppliersView: React.FC<SuppliersViewProps> = ({ authToken, onAuthError })
         return () => { cancelled = true; };
     }, [authToken]);
 
-    const handleSave = async (data: { name: string; contact: string; phone: string; zones: string[] }) => {
+    const handleSave = async (data: { name: string; contact: string; phone: string; zones: string[]; address: string }) => {
         const isNew = editing === 'new';
         try {
             if (isNew) {
