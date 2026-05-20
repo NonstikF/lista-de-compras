@@ -137,6 +137,7 @@ router.patch('/:id/complete', async (req: Request, res: Response) => {
 });
 
 // PATCH /api/store-orders/:id/items/:itemId — toggle purchased / set quantity
+// Returns { item, siblingUpdates } where siblingUpdates contains any sibling items that were auto-updated
 router.patch('/:id/items/:itemId', async (req: Request, res: Response) => {
     const itemId = parseInt(req.params.itemId, 10);
     if (!Number.isFinite(itemId)) { res.status(400).json({ error: 'itemId inválido' }); return; }
@@ -150,13 +151,31 @@ router.patch('/:id/items/:itemId', async (req: Request, res: Response) => {
             where: { id: itemId },
             data: parsed.data,
         });
-        // Compute quantityPurchasedByOthers: sum of quantityPurchased of sibling items (same articleId+orderId)
-        const siblings = await prisma.storeOrderItem.findMany({
-            where: { orderId: item.orderId, articleId: item.articleId, id: { not: itemId } },
-            select: { quantityPurchased: true },
-        });
-        const quantityPurchasedByOthers = siblings.reduce((s, r) => s + r.quantityPurchased, 0);
-        res.json({ ...item, quantityPurchasedByOthers });
+        // When marking as purchased/unpurchased, auto-sync siblings (same articleId+orderId)
+        let siblingUpdates: typeof item[] = [];
+        if (parsed.data.isPurchased !== undefined) {
+            const siblings = await prisma.storeOrderItem.findMany({
+                where: { orderId: item.orderId, articleId: item.articleId, id: { not: itemId } },
+            });
+            if (siblings.length > 0) {
+                await prisma.storeOrderItem.updateMany({
+                    where: { orderId: item.orderId, articleId: item.articleId, id: { not: itemId } },
+                    data: { isPurchased: parsed.data.isPurchased, quantityPurchased: parsed.data.isPurchased ? item.qty : 0 },
+                });
+                siblingUpdates = siblings.map(s => ({
+                    ...s,
+                    isPurchased: parsed.data.isPurchased!,
+                    quantityPurchased: parsed.data.isPurchased ? s.qty : 0,
+                }));
+            }
+        }
+        const totalByOthers = siblingUpdates.length > 0
+            ? siblingUpdates.reduce((s, r) => s + r.quantityPurchased, 0)
+            : (await prisma.storeOrderItem.findMany({
+                where: { orderId: item.orderId, articleId: item.articleId, id: { not: itemId } },
+                select: { quantityPurchased: true },
+            })).reduce((s, r) => s + r.quantityPurchased, 0);
+        res.json({ item: { ...item, quantityPurchasedByOthers: totalByOthers }, siblingUpdates: siblingUpdates.map(s => ({ ...s, quantityPurchasedByOthers: item.quantityPurchased })) });
     } catch (err) {
         console.error('Error al actualizar item de tienda:', err);
         res.status(500).json({ error: 'Error al actualizar item' });

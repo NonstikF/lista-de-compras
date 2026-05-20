@@ -283,7 +283,7 @@ export async function updateStoreItemStatus(
   orderId: string,
   itemId: number,
   data: { isPurchased?: boolean; quantityPurchased?: number },
-): Promise<StoreOrderItem> {
+): Promise<{ item: StoreOrderItem; siblingUpdates: StoreOrderItem[] }> {
   return handleResponse(await fetch(`${BASE}/api/store-orders/${orderId}/items/${itemId}`, {
     method: 'PATCH', headers: authHeaders(token), body: JSON.stringify(data),
   }));

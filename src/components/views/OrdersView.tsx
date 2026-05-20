@@ -414,8 +414,11 @@ const StoreOrderCard: React.FC<{
     const [ticketCount, setTicketCount] = useState(0);
     const isPending = order.status === 'pending';
     const date = new Date(order.dateCreated).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' });
-    const purchasedCount = order.items.filter(i => i.isPurchased).length;
-    const allPurchased = purchasedCount === order.items.length;
+    // Deduplicate by articleId — multi-supplier items count as one article
+    const uniqueArticleIds = new Set(order.items.map(i => i.articleId));
+    const purchasedArticleIds = new Set(order.items.filter(i => i.isPurchased).map(i => i.articleId));
+    const purchasedCount = purchasedArticleIds.size;
+    const allPurchased = purchasedCount === uniqueArticleIds.size;
 
     const statusColor = isPending ? 'bg-secondary-container/60 text-on-secondary-container' : 'bg-success-purchased/15 text-success-purchased';
     const statusLabel = isPending ? 'Pendiente' : 'Completado';
@@ -423,8 +426,11 @@ const StoreOrderCard: React.FC<{
     const handleQuantityChange = useCallback((itemId: number, newQty: number, isPurchased: boolean) => {
         onItemUpdate(order.id, itemId, isPurchased, newQty);
         updateStoreItemStatus(authToken, order.id, itemId, { isPurchased, quantityPurchased: newQty })
-            .then(updated => {
+            .then(({ item: updated, siblingUpdates }) => {
                 onItemUpdate(order.id, itemId, updated.isPurchased, updated.quantityPurchased, updated.quantityPurchasedByOthers);
+                for (const sibling of siblingUpdates) {
+                    onItemUpdate(order.id, sibling.id, sibling.isPurchased, sibling.quantityPurchased, sibling.quantityPurchasedByOthers);
+                }
             })
             .catch(err => {
                 if (err instanceof AuthError) onAuthError();
@@ -456,7 +462,7 @@ const StoreOrderCard: React.FC<{
                 <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-lg font-bold text-on-background">{fmt(order.total)}</span>
                     <span className={`px-2 py-0.5 text-xs font-semibold rounded-full bg-surface-container-high text-on-surface-variant`}>
-                        {purchasedCount}/{order.items.length}
+                        {purchasedCount}/{uniqueArticleIds.size}
                     </span>
                     <span className={`px-3 py-1 text-xs font-semibold rounded-full ${statusColor}`}>
                         {statusLabel}
