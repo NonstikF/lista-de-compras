@@ -1,6 +1,6 @@
 ﻿import React, { useState, useEffect, useCallback, useRef } from 'react';
-import type { Order, LineItem, StoreOrder, StoreOrderItem, OrderTicket } from '../../types';
-import { getOrders, saveItemStatus, completeOrder, AuthError, type OrderStatusType } from '../../services/api';
+import type { Order, LineItem, StoreOrder, StoreOrderItem, OrderTicket, Supplier } from '../../types';
+import { getOrders, saveItemStatus, completeOrder, AuthError, type OrderStatusType, getSuppliers } from '../../services/api';
 import { getStoreOrders, completeStoreOrder, getOrderTickets, getOrderTicketContent, createOrderTicket, deleteOrderTicket, getOrderTicketCounts, updateStoreItemStatus, getStoreOrderTickets, getStoreOrderTicketContent, createStoreOrderTicket, deleteStoreOrderTicket } from '../../services/api';
 import { CheckCircleIcon, ChevronDownIcon, XMarkIcon, EyeIcon } from '../ui/icons';
 import { showToast } from '../ui/Toast';
@@ -933,6 +933,7 @@ const OrderTicketModal: React.FC<{
 const CategorySection = React.memo<{
     category: string;
     supplierId: string | null;
+    locations: string[];
     items: LineItem[];
     orderId: number;
     ticketCount: number;
@@ -942,7 +943,7 @@ const CategorySection = React.memo<{
     onQuantityChange: (itemId: number, newQuantity: number, supplierId: string | null) => void;
     onViewImage: (imageUrl: string, productName: string) => void;
     onDelete: (itemId: number) => void;
-}>(({ category, supplierId, items, orderId, ticketCount, authToken, onAuthError, onTicketUploaded, onQuantityChange, onViewImage, onDelete }) => {
+}>(({ category, supplierId, locations, items, orderId, ticketCount, authToken, onAuthError, onTicketUploaded, onQuantityChange, onViewImage, onDelete }) => {
     const [isExpanded, setIsExpanded] = useState(false);
     const [showTickets, setShowTickets] = useState(false);
 
@@ -959,6 +960,18 @@ const CategorySection = React.memo<{
                         <button type="button" onClick={() => setIsExpanded(!isExpanded)} className="flex items-center gap-2 flex-1 text-left">
                             <ChevronDownIcon className={`w-5 h-5 text-on-surface-variant transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
                             <h3 id={`category-heading-${category}`} className="text-base font-semibold text-on-background">{category}</h3>
+                            {locations.length > 0 && locations[0].startsWith('http') && (
+                                <a
+                                    href={locations[0]}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    onClick={e => e.stopPropagation()}
+                                    title="Ver ubicación"
+                                    className="ml-1 text-on-surface-variant hover:text-primary transition-colors"
+                                >
+                                    <span className="material-symbols-outlined text-[18px] leading-none">location_on</span>
+                                </a>
+                            )}
                         </button>
 
                         <div className="flex items-center gap-2">
@@ -1026,7 +1039,8 @@ const OrderCard = React.memo<{
     onCompleteOrder: (orderId: number) => void;
     onViewImage: (imageUrl: string, productName: string) => void;
     onDelete: (itemId: number) => void;
-}>(({ order, viewMode, completingOrderId, authToken, onAuthError, onQuantityChange, onCompleteOrder, onViewImage, onDelete }) => {
+    supplierLocations: Record<string, string[]>;
+}>(({ order, viewMode, completingOrderId, authToken, onAuthError, onQuantityChange, onCompleteOrder, onViewImage, onDelete, supplierLocations }) => {
     const [isExpanded, setIsExpanded] = useState(false);
     const [ticketCounts, setTicketCounts] = useState<Record<string, number>>({});
 
@@ -1122,6 +1136,7 @@ const OrderCard = React.memo<{
                                 key={`${group.supplierId ?? 'cat'}:${group.name}`}
                                 category={group.name}
                                 supplierId={group.supplierId}
+                                locations={group.supplierId ? (supplierLocations[group.supplierId] ?? []) : []}
                                 items={sortedItems}
                                 orderId={order.id}
                                 ticketCount={ticketCounts[group.name] ?? 0}
@@ -1152,12 +1167,23 @@ const OrdersView: React.FC<OrdersViewProps> = ({ authToken, onAuthError }) => {
     const [completingOrderId, setCompletingOrderId] = useState<number | null>(null);
     const [modalImageUrl, setModalImageUrl] = useState<string | null>(null);
     const [modalProductName, setModalProductName] = useState<string | null>(null);
+    const [supplierLocations, setSupplierLocations] = useState<Record<string, string[]>>({});
 
     const handleViewImage = useCallback((imageUrl: string, productName: string) => {
         setModalImageUrl(imageUrl);
         setModalProductName(productName);
     }, []);
     const handleCloseModal = () => { setModalImageUrl(null); setModalProductName(null); };
+
+    useEffect(() => {
+        getSuppliers(authToken)
+            .then((suppliers: Supplier[]) => {
+                const map: Record<string, string[]> = {};
+                for (const s of suppliers) map[s.id] = s.locations ?? [];
+                setSupplierLocations(map);
+            })
+            .catch(() => {});
+    }, [authToken]);
 
     const handleCompleteStoreOrder = useCallback(async (orderId: string) => {
         try {
@@ -1355,6 +1381,7 @@ const OrdersView: React.FC<OrdersViewProps> = ({ authToken, onAuthError }) => {
                                     onCompleteOrder={handleCompleteOrder}
                                     onViewImage={handleViewImage}
                                     onDelete={handleDeleteItem}
+                                    supplierLocations={supplierLocations}
                                   />
                             ))}
                         </div>
