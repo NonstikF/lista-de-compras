@@ -9,7 +9,9 @@ const supplierSchema = z.object({
     contact: z.string().default(''),
     phone: z.string().default(''),
     zones: z.array(z.string().min(1)).max(10, 'Máximo 10 zonas').default([]),
-    address: z.string().default(''),
+    website: z.string().default(''),
+    notes: z.string().default(''),
+    locations: z.array(z.string().min(1)).max(10, 'Máximo 10 ubicaciones').default([]),
 });
 
 const ticketSchema = z.object({
@@ -25,14 +27,16 @@ const ticketSchema = z.object({
 
 // ---- Suppliers CRUD ----
 
-function formatSupplier(s: { id: string; name: string; contact: string; phone: string; zones: string; address: string; createdAt: Date }) {
+function formatSupplier(s: { id: string; name: string; contact: string; phone: string; zones: string; website: string; notes: string; locations: string; createdAt: Date }) {
     return {
         id: s.id,
         name: s.name,
         contact: s.contact,
         phone: s.phone,
         zones: (() => { try { return JSON.parse(s.zones); } catch { return []; } })(),
-        address: s.address,
+        website: s.website,
+        notes: s.notes,
+        locations: (() => { try { return JSON.parse(s.locations); } catch { return []; } })(),
         createdAt: s.createdAt,
     };
 }
@@ -51,8 +55,8 @@ router.post('/', async (req: Request, res: Response) => {
     const parsed = supplierSchema.safeParse(req.body);
     if (!parsed.success) { res.status(400).json({ error: parsed.error.issues[0].message }); return; }
     try {
-        const { zones, ...rest } = parsed.data;
-        const supplier = await prisma.supplier.create({ data: { ...rest, zones: JSON.stringify(zones) } });
+        const { zones, locations, ...rest } = parsed.data;
+        const supplier = await prisma.supplier.create({ data: { ...rest, zones: JSON.stringify(zones), locations: JSON.stringify(locations) } });
         res.status(201).json(formatSupplier(supplier));
     } catch (err) {
         console.error('Error al crear proveedor:', err);
@@ -64,8 +68,8 @@ router.put('/:id', async (req: Request, res: Response) => {
     const parsed = supplierSchema.safeParse(req.body);
     if (!parsed.success) { res.status(400).json({ error: parsed.error.issues[0].message }); return; }
     try {
-        const { zones, ...rest } = parsed.data;
-        const supplier = await prisma.supplier.update({ where: { id: req.params.id }, data: { ...rest, zones: JSON.stringify(zones) } });
+        const { zones, locations, ...rest } = parsed.data;
+        const supplier = await prisma.supplier.update({ where: { id: req.params.id }, data: { ...rest, zones: JSON.stringify(zones), locations: JSON.stringify(locations) } });
         res.json(formatSupplier(supplier));
     } catch (err) {
         console.error('Error al actualizar proveedor:', err);

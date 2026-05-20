@@ -50,7 +50,9 @@ model Supplier {
   contact   String            @default("")
   phone     String            @default("")
   zones     String            @default("[]")
-  address   String            @default("")
+  website   String            @default("")
+  notes     String            @default("")
+  locations String            @default("[]")
   createdAt DateTime          @default(now())
   updatedAt DateTime          @updatedAt
   articles  ArticleSupplier[]

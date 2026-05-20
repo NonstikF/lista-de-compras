@@ -1,8 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
-import 'leaflet/dist/leaflet.css';
 import type { Supplier, SupplierTicket, OrderTicket } from '../../types';
+import {
+    AuthError, getSuppliers, createSupplier, updateSupplier, deleteSupplier,
+    getSupplierTickets, getSupplierTicketContent, createSupplierTicket, deleteSupplierTicket,
+    updateSupplierTicketInvoiced, getSupplierOrderTickets, getOrderTicketContent, updateOrderTicketInvoiced,
+} from '../../services/api';
+import { Modal, Button, Field, Input, MIcon, useToast } from '../ui';
 
 // Fix leaflet default marker icons when bundled with Vite
 delete (L.Icon.Default.prototype as unknown as Record<string, unknown>)._getIconUrl;
@@ -11,12 +16,6 @@ L.Icon.Default.mergeOptions({
     iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
     shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
 });
-import {
-    AuthError, getSuppliers, createSupplier, updateSupplier, deleteSupplier,
-    getSupplierTickets, getSupplierTicketContent, createSupplierTicket, deleteSupplierTicket,
-    updateSupplierTicketInvoiced, getSupplierOrderTickets, getOrderTicketContent, updateOrderTicketInvoiced,
-} from '../../services/api';
-import { Modal, Button, Field, Input, MIcon, useToast } from '../ui';
 
 interface SuppliersViewProps {
     authToken: string;
@@ -29,7 +28,9 @@ interface SupplierForm {
     contact: string;
     phone: string;
     zones: string[];
-    address: string;
+    website: string;
+    notes: string;
+    locations: string[];
 }
 
 const SupplierEditModal: React.FC<{
@@ -38,15 +39,18 @@ const SupplierEditModal: React.FC<{
     onSave: (data: SupplierForm) => Promise<void>;
 }> = ({ supplier, onClose, onSave }) => {
     const isNew = supplier === 'new';
+    const s = supplier as Supplier;
     const initial: SupplierForm = isNew
-        ? { name: '', contact: '', phone: '', zones: [], address: '' }
-        : { name: (supplier as Supplier).name, contact: (supplier as Supplier).contact, phone: (supplier as Supplier).phone, zones: (supplier as Supplier).zones ?? [], address: (supplier as Supplier).address ?? '' };
+        ? { name: '', contact: '', phone: '', zones: [], website: '', notes: '', locations: [] }
+        : { name: s.name, contact: s.contact, phone: s.phone, zones: s.zones ?? [], website: s.website ?? '', notes: s.notes ?? '', locations: s.locations ?? [] };
 
     const [form, setForm] = useState<SupplierForm>(initial);
     const [nameError, setNameError] = useState('');
     const [saving, setSaving] = useState(false);
     const [newZone, setNewZone] = useState('');
     const [zoneError, setZoneError] = useState('');
+    const [newLocation, setNewLocation] = useState('');
+    const [locationError, setLocationError] = useState('');
 
     const update = (k: keyof SupplierForm, v: string) => setForm(f => ({ ...f, [k]: v }));
 
@@ -62,12 +66,23 @@ const SupplierEditModal: React.FC<{
 
     const removeZone = (z: string) => setForm(f => ({ ...f, zones: f.zones.filter(x => x !== z) }));
 
+    const addLocation = () => {
+        const loc = newLocation.trim();
+        if (!loc) return;
+        if (form.locations.length >= 10) { setLocationError('Máximo 10 ubicaciones'); return; }
+        setForm(f => ({ ...f, locations: [...f.locations, loc] }));
+        setNewLocation('');
+        setLocationError('');
+    };
+
+    const removeLocation = (loc: string) => setForm(f => ({ ...f, locations: f.locations.filter(x => x !== loc) }));
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!form.name.trim()) { setNameError('El nombre es requerido'); return; }
         setSaving(true);
         try {
-            await onSave({ name: form.name.trim(), contact: form.contact.trim(), phone: form.phone.trim(), zones: form.zones, address: form.address.trim() });
+            await onSave({ name: form.name.trim(), contact: form.contact.trim(), phone: form.phone.trim(), zones: form.zones, website: form.website.trim(), notes: form.notes.trim(), locations: form.locations });
         } finally {
             setSaving(false);
         }
@@ -78,7 +93,7 @@ const SupplierEditModal: React.FC<{
             open
             onClose={onClose}
             title={isNew ? 'Nuevo proveedor' : 'Editar proveedor'}
-            maxWidth="max-w-md"
+            maxWidth="max-w-lg"
             footer={
                 <>
                     <Button variant="neutral" onClick={onClose} disabled={saving}>Cancelar</Button>
@@ -112,14 +127,55 @@ const SupplierEditModal: React.FC<{
                         placeholder="55 1234 5678"
                     />
                 </Field>
-                <Field label="Dirección">
+                <Field label="Sitio web">
                     <Input
-                        value={form.address}
-                        onChange={e => update('address', e.target.value)}
-                        placeholder="Ej. Av. Insurgentes 123, CDMX"
+                        type="url"
+                        value={form.website}
+                        onChange={e => update('website', e.target.value)}
+                        placeholder="https://ejemplo.com"
                     />
                 </Field>
 
+                {/* Ubicaciones */}
+                <div>
+                    <span className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant block mb-2">
+                        Ubicaciones <span className="font-normal normal-case">({form.locations.length}/10)</span>
+                    </span>
+                    {form.locations.length > 0 && (
+                        <div className="space-y-1.5 mb-2">
+                            {form.locations.map((loc, i) => (
+                                <div key={i} className="flex items-center gap-2 text-sm bg-surface-container-low rounded-lg px-3 py-1.5">
+                                    <MIcon name="location_on" className="text-sm text-error flex-shrink-0" />
+                                    <span className="flex-1 truncate text-on-background">{loc}</span>
+                                    <button
+                                        type="button"
+                                        onClick={() => removeLocation(loc)}
+                                        className="hover:text-error transition text-on-surface-variant"
+                                        aria-label="Quitar ubicación"
+                                    >
+                                        <MIcon name="close" size={14} />
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                    {form.locations.length < 10 && (
+                        <div className="flex gap-2">
+                            <Input
+                                value={newLocation}
+                                onChange={e => { setNewLocation(e.target.value); setLocationError(''); }}
+                                placeholder="Link de Google Maps o descripción"
+                                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addLocation(); } }}
+                            />
+                            <Button type="button" variant="tonal" icon="add" onClick={addLocation}>
+                                Agregar
+                            </Button>
+                        </div>
+                    )}
+                    {locationError && <p className="text-xs text-error mt-1">{locationError}</p>}
+                </div>
+
+                {/* Zonas */}
                 <div>
                     <span className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant block mb-2">
                         Zonas <span className="font-normal normal-case">({form.zones.length}/10)</span>
@@ -156,6 +212,17 @@ const SupplierEditModal: React.FC<{
                     )}
                     {zoneError && <p className="text-xs text-error mt-1">{zoneError}</p>}
                 </div>
+
+                {/* Notas / credenciales */}
+                <Field label="Notas">
+                    <textarea
+                        value={form.notes}
+                        onChange={e => update('notes', e.target.value)}
+                        placeholder="Credenciales, contraseñas, notas internas…"
+                        rows={3}
+                        className="w-full rounded-xl border border-surface-variant bg-surface-container-low px-4 py-2.5 text-sm text-on-background placeholder:text-on-surface-variant/50 focus:outline-none focus:ring-2 focus:ring-primary/40 resize-none"
+                    />
+                </Field>
             </form>
         </Modal>
     );
@@ -172,13 +239,21 @@ const SupplierMapModal: React.FC<{
     supplier: Supplier;
     onClose: () => void;
 }> = ({ supplier, onClose }) => {
+    const mapLocations = supplier.locations ?? [];
+    const [activeIdx, setActiveIdx] = useState(0);
     const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
     const [status, setStatus] = useState<'idle' | 'loading' | 'error'>('idle');
 
+    const activeLocation = mapLocations[activeIdx] ?? '';
+    const isGoogleMapsUrl = activeLocation.startsWith('http') && activeLocation.includes('google');
+
     useEffect(() => {
-        if (!supplier.address.trim()) return;
+        setCoords(null);
+        setStatus('idle');
+        if (!activeLocation.trim()) return;
+        if (isGoogleMapsUrl) return;
         setStatus('loading');
-        fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(supplier.address)}`, {
+        fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(activeLocation)}`, {
             headers: { 'Accept-Language': 'es' },
         })
             .then(r => r.json())
@@ -191,7 +266,7 @@ const SupplierMapModal: React.FC<{
                 }
             })
             .catch(() => setStatus('error'));
-    }, [supplier.address]);
+    }, [activeIdx, activeLocation]);
 
     return (
         <div
@@ -206,10 +281,10 @@ const SupplierMapModal: React.FC<{
                 <div className="flex items-center justify-between px-5 py-4 border-b border-surface-variant">
                     <div>
                         <p className="font-epilogue font-bold text-on-background">{supplier.name}</p>
-                        {supplier.address && (
+                        {mapLocations.length > 0 && (
                             <p className="text-xs text-on-surface-variant mt-0.5 flex items-center gap-1">
-                                <MIcon name="location_on" size={13} className="text-primary" />
-                                {supplier.address}
+                                <MIcon name="location_on" size={13} className="text-error" />
+                                <span className="truncate max-w-[280px]">{activeLocation}</span>
                             </p>
                         )}
                     </div>
@@ -222,27 +297,59 @@ const SupplierMapModal: React.FC<{
                     </button>
                 </div>
 
+                {/* Selector de ubicación si hay varias */}
+                {mapLocations.length > 1 && (
+                    <div className="flex gap-1.5 px-4 py-2 overflow-x-auto border-b border-surface-variant bg-surface-container-low">
+                        {mapLocations.map((_, i) => (
+                            <button
+                                key={i}
+                                type="button"
+                                onClick={() => setActiveIdx(i)}
+                                className={`flex-shrink-0 px-3 py-1 rounded-full text-xs font-semibold transition-all ${activeIdx === i ? 'bg-primary text-on-primary' : 'bg-surface-container text-on-surface-variant hover:bg-surface-variant'}`}
+                            >
+                                Ubicación {i + 1}
+                            </button>
+                        ))}
+                    </div>
+                )}
+
                 {/* Mapa */}
                 <div className="h-72 relative">
-                    {!supplier.address.trim() && (
+                    {mapLocations.length === 0 && (
                         <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-on-surface-variant bg-surface-container-low">
                             <MIcon name="location_off" size={36} className="opacity-40" />
-                            <p className="text-sm">Este proveedor no tiene dirección registrada.</p>
+                            <p className="text-sm">Este proveedor no tiene ubicaciones registradas.</p>
                         </div>
                     )}
-                    {supplier.address.trim() && status === 'loading' && (
+
+                    {/* Google Maps URL → iframe */}
+                    {isGoogleMapsUrl && (
+                        <iframe
+                            src={`https://maps.google.com/maps?q=${encodeURIComponent(activeLocation)}&output=embed`}
+                            width="100%"
+                            height="100%"
+                            style={{ border: 0 }}
+                            allowFullScreen
+                            loading="lazy"
+                            referrerPolicy="no-referrer-when-downgrade"
+                            title={`Mapa ${supplier.name}`}
+                        />
+                    )}
+
+                    {/* Texto/dirección → Leaflet + Nominatim */}
+                    {!isGoogleMapsUrl && mapLocations.length > 0 && status === 'loading' && (
                         <div className="absolute inset-0 flex items-center justify-center bg-surface-container-low z-10">
                             <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-primary" />
                         </div>
                     )}
-                    {supplier.address.trim() && status === 'error' && (
+                    {!isGoogleMapsUrl && mapLocations.length > 0 && status === 'error' && (
                         <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-on-surface-variant bg-surface-container-low">
                             <MIcon name="location_searching" size={36} className="opacity-40" />
                             <p className="text-sm">No se encontró la dirección.</p>
-                            <p className="text-xs opacity-60">Verificá que la dirección sea correcta.</p>
+                            <p className="text-xs opacity-60">Usá un link de Google Maps para mayor precisión.</p>
                         </div>
                     )}
-                    {coords && (
+                    {!isGoogleMapsUrl && coords && (
                         <MapContainer
                             center={[coords.lat, coords.lng]}
                             zoom={15}
@@ -260,6 +367,21 @@ const SupplierMapModal: React.FC<{
                         </MapContainer>
                     )}
                 </div>
+
+                {/* Link externo */}
+                {activeLocation.startsWith('http') && (
+                    <div className="px-4 py-2 border-t border-surface-variant bg-surface-container-low flex justify-end">
+                        <a
+                            href={activeLocation}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-1.5 text-xs font-medium text-primary hover:underline"
+                        >
+                            <MIcon name="open_in_new" size={14} />
+                            Abrir en Google Maps
+                        </a>
+                    </div>
+                )}
             </div>
         </div>
     );
@@ -273,7 +395,6 @@ function formatSize(bytes: number): string {
 }
 
 function openPdfInNewTab(dataUrl: string, filename: string) {
-    // Convert base64 dataURL to Blob and open via object URL to avoid document.write
     const base64 = dataUrl.split(',')[1];
     const binary = atob(base64);
     const bytes = new Uint8Array(binary.length);
@@ -282,13 +403,11 @@ function openPdfInNewTab(dataUrl: string, filename: string) {
     const url = URL.createObjectURL(blob);
     const win = window.open(url, '_blank');
     if (!win) {
-        // Fallback: force download
         const a = document.createElement('a');
         a.href = url;
         a.download = filename;
         a.click();
     }
-    // Clean up the object URL after a delay
     setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
@@ -436,7 +555,6 @@ const SupplierTicketsModal: React.FC<{
         }
     };
 
-    // SupplierTickets grouped by orderRef
     const supplierGroups = tickets.reduce<Record<string, SupplierTicket[]>>((acc, t) => {
         const key = t.orderRef?.trim() || '';
         if (!acc[key]) acc[key] = [];
@@ -449,7 +567,6 @@ const SupplierTicketsModal: React.FC<{
         return a.localeCompare(b, 'es', { numeric: true });
     });
 
-    // OrderTickets grouped by orderId — key prefix "order:"
     const orderGroups = orderTickets.reduce<Record<string, OrderTicket[]>>((acc, t) => {
         const key = String(t.orderId);
         if (!acc[key]) acc[key] = [];
@@ -461,7 +578,6 @@ const SupplierTicketsModal: React.FC<{
     const totalCount = tickets.length + orderTickets.length;
     const totalGroups = sortedSupplierKeys.length + sortedOrderKeys.length;
 
-    // Set first group active once data loads
     useEffect(() => {
         if (activeGroup === null) {
             if (sortedOrderKeys.length > 0) setActiveGroup(`order:${sortedOrderKeys[0]}`);
@@ -475,7 +591,6 @@ const SupplierTicketsModal: React.FC<{
     const activeSupplierTickets: SupplierTicket[] = !isOrderGroup && activeGroup !== null ? (supplierGroups[activeKey] ?? []) : [];
     const invoicedCount = activeSupplierTickets.filter(t => t.invoiced).length;
 
-    // Load previews for active group
     useEffect(() => {
         if (!activeGroup) return;
         const toLoad = isOrderGroup
@@ -563,10 +678,7 @@ const SupplierTicketsModal: React.FC<{
 
                 {!isLoading && totalCount > 0 && (
                     <div className="flex flex-col md:flex-row md:h-[420px]">
-                        {/* Sidebar — horizontal scroll en móvil, vertical en desktop */}
                         <div className="md:w-52 md:flex-shrink-0 border-b md:border-b-0 md:border-r border-surface-variant bg-surface-container-low md:flex md:flex-col md:overflow-y-auto">
-
-                            {/* Mobile: tabs horizontales */}
                             <div className="flex md:hidden overflow-x-auto gap-1.5 px-3 py-2 scrollbar-hide">
                                 {sortedOrderKeys.map(orderId => {
                                     const grpKey = `order:${orderId}`;
@@ -601,9 +713,7 @@ const SupplierTicketsModal: React.FC<{
                                 })}
                             </div>
 
-                            {/* Desktop: sidebar vertical */}
                             <div className="hidden md:block">
-                                {/* Sección: Pedidos WooCommerce */}
                                 {sortedOrderKeys.length > 0 && (
                                     <>
                                         <p className="px-4 pt-4 pb-2 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">De lista de compras</p>
@@ -638,7 +748,6 @@ const SupplierTicketsModal: React.FC<{
                                     </>
                                 )}
 
-                                {/* Sección: Tickets propios */}
                                 {sortedSupplierKeys.length > 0 && (
                                     <>
                                         <p className="px-4 pt-4 pb-2 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">Propios</p>
@@ -683,11 +792,9 @@ const SupplierTicketsModal: React.FC<{
                             </div>
                         </div>
 
-                        {/* Panel derecho */}
                         <div className="flex-1 overflow-y-auto">
                             {activeGroup !== null && (
                                 <>
-                                    {/* Header */}
                                     <div className="sticky top-0 z-10 bg-white/95 backdrop-blur-sm border-b border-surface-variant px-4 py-3 flex items-center justify-between">
                                         <div>
                                             <p className="font-semibold text-sm text-on-background">
@@ -714,7 +821,6 @@ const SupplierTicketsModal: React.FC<{
                                         )}
                                     </div>
 
-                                    {/* Cards — OrderTickets */}
                                     {isOrderGroup && (
                                         <div className="p-3 grid grid-cols-2 gap-3">
                                             {activeOrderTickets.map(ticket => {
@@ -722,7 +828,6 @@ const SupplierTicketsModal: React.FC<{
                                                 const isPdf = ticket.mimeType === 'application/pdf';
                                                 return (
                                                     <div key={ticket.id} className={`rounded-2xl border overflow-hidden transition-all ${ticket.invoiced ? 'border-success/40 shadow-sm' : 'border-surface-variant hover:border-blue-200 hover:shadow-sm'}`}>
-                                                        {/* Preview area */}
                                                         <div
                                                             className={`relative w-full h-36 flex items-center justify-center cursor-pointer ${isPdf ? 'bg-red-50' : 'bg-surface-container-low'}`}
                                                             onClick={async () => {
@@ -750,7 +855,6 @@ const SupplierTicketsModal: React.FC<{
                                                                 </div>
                                                             </div>
                                                         </div>
-                                                        {/* Footer */}
                                                         <div className={`px-3 py-2 ${ticket.invoiced ? 'bg-success/5' : 'bg-white'}`}>
                                                             <p className="text-xs text-on-surface-variant">{new Date(ticket.createdAt).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
                                                             <div className="flex items-center justify-between mt-1.5">
@@ -775,7 +879,6 @@ const SupplierTicketsModal: React.FC<{
                                         </div>
                                     )}
 
-                                    {/* Cards — SupplierTickets con preview inline */}
                                     {!isOrderGroup && (
                                         <div className="p-3 grid grid-cols-2 gap-3">
                                             {activeSupplierTickets.map(ticket => {
@@ -783,7 +886,6 @@ const SupplierTicketsModal: React.FC<{
                                                 const isPdf = ticket.mimeType === 'application/pdf';
                                                 return (
                                                     <div key={ticket.id} className={`rounded-2xl border overflow-hidden transition-all ${ticket.invoiced ? 'border-success/40 shadow-sm' : 'border-surface-variant hover:border-primary/30 hover:shadow-sm'}`}>
-                                                        {/* Preview */}
                                                         <div
                                                             className={`relative w-full h-36 flex items-center justify-center cursor-pointer ${isPdf ? 'bg-red-50' : 'bg-surface-container-low'}`}
                                                             onClick={() => handleView(ticket)}
@@ -804,7 +906,6 @@ const SupplierTicketsModal: React.FC<{
                                                                 </div>
                                                             </div>
                                                         </div>
-                                                        {/* Footer */}
                                                         <div className={`px-3 py-2 ${ticket.invoiced ? 'bg-success/5' : 'bg-white'}`}>
                                                             <p className="text-xs text-on-surface-variant">{new Date(ticket.createdAt).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
                                                             <div className="flex items-center justify-between mt-1.5">
@@ -852,7 +953,6 @@ const SupplierTicketsModal: React.FC<{
                 )}
             </Modal>
 
-            {/* Modal: ingresar referencia de pedido antes de subir */}
             {pendingFile && (
                 <Modal
                     open
@@ -895,7 +995,6 @@ const SupplierTicketsModal: React.FC<{
                 </Modal>
             )}
 
-            {/* Confirmar eliminar ticket */}
             {confirmDeleteId && (
                 <Modal
                     open
@@ -917,7 +1016,6 @@ const SupplierTicketsModal: React.FC<{
                 </Modal>
             )}
 
-            {/* Visor de imagen */}
             {viewingContent && (
                 <div
                     className="fixed inset-0 z-[200] bg-black/80 flex items-center justify-center p-4"
@@ -956,7 +1054,28 @@ const SupplierRow: React.FC<{
             <MIcon name="local_shipping" className="text-primary" fill />
         </div>
         <div className="flex-1 min-w-0">
-            <p className="font-epilogue font-semibold text-on-background truncate">{supplier.name}</p>
+            <div className="flex items-center gap-2 flex-wrap">
+                <p className="font-epilogue font-semibold text-on-background truncate">{supplier.name}</p>
+                {supplier.website && (
+                    <a
+                        href={supplier.website}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={e => e.stopPropagation()}
+                        className="flex items-center gap-1 text-xs text-primary hover:underline"
+                        title={supplier.website}
+                    >
+                        <MIcon name="language" className="text-sm" />
+                        Sitio web
+                    </a>
+                )}
+                {supplier.notes && (
+                    <span title={supplier.notes} className="flex items-center gap-1 text-xs text-on-surface-variant">
+                        <MIcon name="sticky_note_2" className="text-sm" />
+                        Notas
+                    </span>
+                )}
+            </div>
             <div className="flex gap-3 text-sm text-on-surface-variant mt-0.5 flex-wrap">
                 {supplier.contact && (
                     <span className="flex items-center gap-1">
@@ -970,20 +1089,36 @@ const SupplierRow: React.FC<{
                         {supplier.phone}
                     </span>
                 )}
-                {supplier.address && (
-                    <span className="flex items-center gap-1 truncate max-w-[200px]">
-                        <MIcon name="location_on" className="text-sm flex-shrink-0" />
-                        {supplier.address}
-                    </span>
-                )}
+                {supplier.locations?.map((loc, i) => {
+                    const isUrl = loc.startsWith('http');
+                    return isUrl ? (
+                        <a
+                            key={i}
+                            href={loc}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={e => e.stopPropagation()}
+                            className="flex items-center gap-1 text-error hover:underline"
+                            title={loc}
+                        >
+                            <MIcon name="location_on" className="text-sm" />
+                            {supplier.locations.length > 1 ? `Ubicación ${i + 1}` : 'Ubicación'}
+                        </a>
+                    ) : (
+                        <span key={i} className="flex items-center gap-1">
+                            <MIcon name="location_on" className="text-sm text-error" />
+                            {loc}
+                        </span>
+                    );
+                })}
             </div>
         </div>
         <div className="flex gap-1 flex-shrink-0">
             <Button variant="tonal" size="sm" icon="receipt_long" onClick={() => onTickets(supplier)}>
                 Tickets
             </Button>
-            {supplier.address && (
-                <Button variant="tonal" size="sm" icon="location_on" onClick={() => onMap(supplier)} />
+            {(supplier.locations?.length ?? 0) > 0 && (
+                <Button variant="tonal" size="sm" icon="map" onClick={() => onMap(supplier)} />
             )}
             {supplier.name !== 'Sin Proveedor' && (
                 <>
@@ -1032,7 +1167,7 @@ const SuppliersView: React.FC<SuppliersViewProps> = ({ authToken, onAuthError })
         return () => { cancelled = true; };
     }, [authToken]);
 
-    const handleSave = async (data: { name: string; contact: string; phone: string; zones: string[]; address: string }) => {
+    const handleSave = async (data: { name: string; contact: string; phone: string; zones: string[]; website: string; notes: string; locations: string[] }) => {
         const isNew = editing === 'new';
         try {
             if (isNew) {

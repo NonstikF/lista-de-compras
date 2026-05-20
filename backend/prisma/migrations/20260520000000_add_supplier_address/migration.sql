@@ -1,1 +1,0 @@
-ALTER TABLE "Supplier" ADD COLUMN "address" TEXT NOT NULL DEFAULT '';

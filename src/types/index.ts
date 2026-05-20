@@ -52,7 +52,9 @@ export interface Supplier {
   contact: string;
   phone: string;
   zones: string[];
-  address: string;
+  website: string;
+  notes: string;
+  locations: string[];
   createdAt: string;
 }
 
