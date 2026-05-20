@@ -243,7 +243,7 @@ const SupplierMapModal: React.FC<{
     const [status, setStatus] = useState<'idle' | 'loading' | 'error'>('idle');
 
     const activeLocation = mapLocations[activeIdx] ?? '';
-    const isGoogleMapsUrl = activeLocation.startsWith('http') && activeLocation.includes('google');
+    const isGoogleMapsUrl = activeLocation.startsWith('http') && (activeLocation.includes('google') || activeLocation.includes('goo.gl'));
 
     useEffect(() => {
         setCoords(null);
@@ -320,18 +320,26 @@ const SupplierMapModal: React.FC<{
                         </div>
                     )}
 
-                    {/* Google Maps URL → iframe */}
+                    {/* Google Maps URL → abrir en app (Google bloquea embedding) */}
                     {isGoogleMapsUrl && (
-                        <iframe
-                            src={`https://maps.google.com/maps?q=${encodeURIComponent(activeLocation)}&output=embed`}
-                            width="100%"
-                            height="100%"
-                            style={{ border: 0 }}
-                            allowFullScreen
-                            loading="lazy"
-                            referrerPolicy="no-referrer-when-downgrade"
-                            title={`Mapa ${supplier.name}`}
-                        />
+                        <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-surface-container-low">
+                            <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center">
+                                <MIcon name="location_on" size={36} className="text-primary" fill />
+                            </div>
+                            <div className="text-center px-4">
+                                <p className="font-semibold text-on-background">{supplier.name}</p>
+                                <p className="text-xs text-on-surface-variant mt-1 max-w-[260px] truncate">{activeLocation}</p>
+                            </div>
+                            <a
+                                href={activeLocation}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary text-on-primary text-sm font-semibold hover:opacity-90 transition-opacity"
+                            >
+                                <MIcon name="map" size={18} />
+                                Abrir en Google Maps
+                            </a>
+                        </div>
                     )}
 
                     {/* Texto/dirección → Leaflet + Nominatim */}
