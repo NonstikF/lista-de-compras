@@ -25,7 +25,8 @@
       "PowerShell(npx prisma generate --schema=backend/prisma/schema.prisma 2>&1)",
       "PowerShell($PWD.Path)",
       "PowerShell(npx prisma generate 2>&1)",
-      "Bash(git hash-object *)"
+      "Bash(git hash-object *)",
+      "Bash(xargs grep -l \"context\\\\|Context\\\\|provider\\\\|Provider\\\\|store\\\\|Store\")"
     ]
   }
 }
