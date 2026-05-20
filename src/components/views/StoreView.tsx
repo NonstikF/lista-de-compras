@@ -233,29 +233,19 @@ const StoreView: React.FC<StoreViewProps> = ({ authToken, onAuthError }) => {
         const map = new Map<string, StoreSection>();
         filtered
             .slice()
-            .sort((a, b) => {
-                const cat = (a.category || 'Sin categoría').localeCompare(b.category || 'Sin categoría', 'es');
-                if (cat !== 0) return cat;
-                const aSupplier = supplierNameMap[a.supplierIds?.[0] ?? ''] || 'Sin proveedor';
-                const bSupplier = supplierNameMap[b.supplierIds?.[0] ?? ''] || 'Sin proveedor';
-                const supplier = aSupplier.localeCompare(bSupplier, 'es');
-                return supplier || a.name.localeCompare(b.name, 'es');
-            })
+            .sort((a, b) => a.name.localeCompare(b.name, 'es'))
             .forEach(article => {
-                const category = article.category?.trim() || 'Sin categoría';
-                // Appear in a section for EACH supplier (multi-supplier articles show in both)
+                // One section per supplier — article appears in each supplier's section
                 const supplierEntries = article.supplierIds?.length
                     ? article.supplierIds.map(sid => ({ supplierId: sid, supplierName: supplierNameMap[sid] || 'Sin proveedor' }))
                     : [{ supplierId: '', supplierName: 'Sin proveedor' }];
                 for (const { supplierId, supplierName } of supplierEntries) {
-                    const id = sectionIdFrom(category, supplierName);
-                    const title = `${category} · ${supplierName}`;
-                    const existing = map.get(id);
+                    const existing = map.get(supplierId);
                     if (existing) existing.articles.push(article);
-                    else map.set(id, { id, category, supplierId, supplierName, title, articles: [article] });
+                    else map.set(supplierId, { id: supplierId, category: '', supplierId, supplierName, title: supplierName, articles: [article] });
                 }
             });
-        return Array.from(map.values());
+        return Array.from(map.values()).sort((a, b) => a.supplierName.localeCompare(b.supplierName, 'es'));
     }, [filtered, supplierNameMap]);
 
     const cartMap = useMemo(() => Object.fromEntries(cart.map(e => [e.articleId, e.qty])), [cart]);
