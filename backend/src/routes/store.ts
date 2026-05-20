@@ -147,26 +147,36 @@ router.patch('/:id/items/:itemId', async (req: Request, res: Response) => {
     }).safeParse(req.body);
     if (!parsed.success) { res.status(400).json({ error: parsed.error.issues[0].message }); return; }
     try {
+        // Auto-complete when quantityPurchased reaches qty (even during increments)
+        const dataToWrite = { ...parsed.data };
+        if (parsed.data.isPurchased === undefined && parsed.data.quantityPurchased !== undefined) {
+            // Fetch current item to know qty
+            const current = await prisma.storeOrderItem.findUnique({ where: { id: itemId }, select: { qty: true } });
+            if (current && parsed.data.quantityPurchased >= current.qty) {
+                dataToWrite.isPurchased = true;
+            } else if (current && parsed.data.quantityPurchased < current.qty) {
+                dataToWrite.isPurchased = false;
+            }
+        }
         const item = await prisma.storeOrderItem.update({
             where: { id: itemId },
-            data: parsed.data,
+            data: dataToWrite,
         });
-        // Auto-sync siblings only when fully toggling (isPurchased true→false or false→true),
-        // NOT when incrementing/decrementing quantity mid-way.
+        // Sync siblings when isPurchased changes (explicit toggle OR auto-complete from increment)
         let siblingUpdates: typeof item[] = [];
-        if (parsed.data.isPurchased === true || parsed.data.isPurchased === false) {
+        if (dataToWrite.isPurchased === true || dataToWrite.isPurchased === false) {
             const siblings = await prisma.storeOrderItem.findMany({
                 where: { orderId: item.orderId, articleId: item.articleId, id: { not: itemId } },
             });
             if (siblings.length > 0) {
                 await prisma.storeOrderItem.updateMany({
                     where: { orderId: item.orderId, articleId: item.articleId, id: { not: itemId } },
-                    data: { isPurchased: parsed.data.isPurchased, quantityPurchased: parsed.data.isPurchased ? item.qty : 0 },
+                    data: { isPurchased: dataToWrite.isPurchased, quantityPurchased: dataToWrite.isPurchased ? item.qty : 0 },
                 });
                 siblingUpdates = siblings.map(s => ({
                     ...s,
-                    isPurchased: parsed.data.isPurchased!,
-                    quantityPurchased: parsed.data.isPurchased ? s.qty : 0,
+                    isPurchased: dataToWrite.isPurchased!,
+                    quantityPurchased: dataToWrite.isPurchased ? s.qty : 0,
                 }));
             }
         }
