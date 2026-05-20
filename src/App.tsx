@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
 import Sidebar, { type AppView } from './components/layout/Sidebar';
 import { ToastContainer } from './components/ui/Toast';
@@ -37,6 +37,16 @@ const App: React.FC = () => {
   };
 
   const handleAuthError = () => handleLogout();
+
+  useEffect(() => {
+    if (!authToken) return;
+    const BASE = import.meta.env.VITE_BACKEND_API_URL || 'http://localhost:4000';
+    fetch(`${BASE}/api/users`, {
+      headers: { Authorization: `Bearer ${authToken}` },
+    }).then(r => {
+      if (r.status === 401 || r.status === 403) handleLogout();
+    }).catch(() => {});
+  }, []);
 
   const renderView = () => {
     if (!isAuthenticated) return <Login onLoginSuccess={handleLoginSuccess} />;
