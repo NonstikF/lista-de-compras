@@ -97,7 +97,13 @@ router.post('/', async (req: Request, res: Response) => {
     const parsed = storeOrderSchema.safeParse(req.body);
     if (!parsed.success) { res.status(400).json({ error: parsed.error.issues[0].message }); return; }
     const { items, ...rest } = parsed.data;
-    const total = items.reduce((s, i) => s + i.price * i.qty, 0);
+    // Deduplicate by articleId — multi-supplier items share the same qty, count once
+    const seenArticles = new Set<string>();
+    const total = items.reduce((s, i) => {
+        if (seenArticles.has(i.articleId)) return s;
+        seenArticles.add(i.articleId);
+        return s + i.price * i.qty;
+    }, 0);
     try {
         const order = await prisma.storeOrder.create({
             data: { ...rest, total, items: { create: items } },
