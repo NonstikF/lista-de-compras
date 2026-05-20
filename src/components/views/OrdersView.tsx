@@ -129,7 +129,7 @@ const StoreItem = React.memo<{
                 )}
                 <button
                     onClick={handleToggle}
-                    disabled={maxPurchasable === 0}
+                    disabled={!isPurchased && maxPurchasable === 0}
                     aria-label={isPurchased ? 'Marcar como pendiente' : 'Marcar como comprado'}
                     className={`relative w-14 h-8 rounded-full flex items-center transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-40 ${isPurchased ? 'bg-success-purchased focus:ring-success-purchased' : 'bg-surface-container-high focus:ring-primary'}`}
                 >
@@ -419,6 +419,15 @@ const StoreOrderCard: React.FC<{
     const purchasedArticleIds = new Set(order.items.filter(i => i.isPurchased).map(i => i.articleId));
     const purchasedCount = purchasedArticleIds.size;
     const allPurchased = purchasedCount === uniqueArticleIds.size;
+    // Recalculate total deduplicating multi-supplier items
+    const displayTotal = (() => {
+        const seen = new Set<string>();
+        return order.items.reduce((s, i) => {
+            if (seen.has(i.articleId)) return s;
+            seen.add(i.articleId);
+            return s + i.price * i.qty;
+        }, 0);
+    })();
 
     const statusColor = isPending ? 'bg-secondary-container/60 text-on-secondary-container' : 'bg-success-purchased/15 text-success-purchased';
     const statusLabel = isPending ? 'Pendiente' : 'Completado';
@@ -460,7 +469,7 @@ const StoreOrderCard: React.FC<{
                     </div>
                 </div>
                 <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-lg font-bold text-on-background">{fmt(order.total)}</span>
+                    <span className="text-lg font-bold text-on-background">{fmt(displayTotal)}</span>
                     <span className={`px-2 py-0.5 text-xs font-semibold rounded-full bg-surface-container-high text-on-surface-variant`}>
                         {purchasedCount}/{uniqueArticleIds.size}
                     </span>
