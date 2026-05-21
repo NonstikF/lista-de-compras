@@ -151,10 +151,10 @@ router.patch('/:id/items/:itemId', async (req: Request, res: Response) => {
             where: { id: itemId },
             data: parsed.data,
         });
-        // Auto-sync siblings only when fully toggling (isPurchased true→false or false→true),
-        // NOT when incrementing/decrementing quantity mid-way.
         let siblingUpdates: typeof item[] = [];
+
         if (parsed.data.isPurchased === true || parsed.data.isPurchased === false) {
+            // Full toggle: sync all siblings to the same isPurchased state
             const siblings = await prisma.storeOrderItem.findMany({
                 where: { orderId: item.orderId, articleId: item.articleId, id: { not: itemId } },
             });
@@ -169,14 +169,48 @@ router.patch('/:id/items/:itemId', async (req: Request, res: Response) => {
                     quantityPurchased: parsed.data.isPurchased ? s.qty : 0,
                 }));
             }
-        }
-        const totalByOthers = siblingUpdates.length > 0
-            ? siblingUpdates.reduce((s, r) => s + r.quantityPurchased, 0)
-            : (await prisma.storeOrderItem.findMany({
+        } else if (parsed.data.quantityPurchased !== undefined) {
+            // Partial increment/decrement: check if total across all siblings covers the required qty
+            const siblings = await prisma.storeOrderItem.findMany({
                 where: { orderId: item.orderId, articleId: item.articleId, id: { not: itemId } },
-                select: { quantityPurchased: true },
-            })).reduce((s, r) => s + r.quantityPurchased, 0);
-        res.json({ item: { ...item, quantityPurchasedByOthers: totalByOthers }, siblingUpdates: siblingUpdates.map(s => ({ ...s, quantityPurchasedByOthers: item.quantityPurchased })) });
+            });
+            const siblingsTotal = siblings.reduce((s, r) => s + r.quantityPurchased, 0);
+            const grandTotal = item.quantityPurchased + siblingsTotal;
+            // item.qty is the total required quantity for this article
+            if (grandTotal >= item.qty && !item.isPurchased) {
+                // All units covered — mark all as purchased
+                await prisma.storeOrderItem.update({ where: { id: itemId }, data: { isPurchased: true } });
+                item.isPurchased = true;
+                if (siblings.length > 0) {
+                    await prisma.storeOrderItem.updateMany({
+                        where: { orderId: item.orderId, articleId: item.articleId, id: { not: itemId } },
+                        data: { isPurchased: true },
+                    });
+                    siblingUpdates = siblings.map(s => ({ ...s, isPurchased: true }));
+                }
+            } else if (grandTotal < item.qty && item.isPurchased) {
+                // Units no longer fully covered — unmark all
+                await prisma.storeOrderItem.update({ where: { id: itemId }, data: { isPurchased: false } });
+                item.isPurchased = false;
+                if (siblings.length > 0) {
+                    await prisma.storeOrderItem.updateMany({
+                        where: { orderId: item.orderId, articleId: item.articleId, id: { not: itemId } },
+                        data: { isPurchased: false },
+                    });
+                    siblingUpdates = siblings.map(s => ({ ...s, isPurchased: false }));
+                }
+            } else {
+                siblingUpdates = siblings;
+            }
+        }
+
+        const siblings = siblingUpdates.length > 0
+            ? siblingUpdates
+            : await prisma.storeOrderItem.findMany({
+                where: { orderId: item.orderId, articleId: item.articleId, id: { not: itemId } },
+            });
+        const totalByOthers = siblings.reduce((s, r) => s + r.quantityPurchased, 0);
+        res.json({ item: { ...item, quantityPurchasedByOthers: totalByOthers }, siblingUpdates: siblings.map(s => ({ ...s, quantityPurchasedByOthers: item.quantityPurchased })) });
     } catch (err) {
         console.error('Error al actualizar item de tienda:', err);
         res.status(500).json({ error: 'Error al actualizar item' });
