@@ -531,18 +531,52 @@ const EditStoreOrderModal: React.FC<{
 
     const handleAddToDraft = () => {
         if (!selected) return;
-        const newDraft: DraftItem = {
-            kind: 'new',
-            tempId: `new-${Date.now()}`,
-            articleId: selected.article.id,
-            name: selected.article.name,
-            price: addForm.price,
-            qty: addForm.qty,
-            imageUrl: selected.article.image,
-            supplierName: selected.supplierName,
-            supplierId: selected.supplierId,
-        };
-        setDrafts(prev => [...prev, newDraft]);
+        const article = selected.article;
+        const sids = article.supplierIds;
+
+        // Multi-supplier: create one draft per supplier (mirrors StoreView order creation)
+        // Skip suppliers that already have a non-deleted draft for this article
+        const existingSupplierIds = new Set(
+            drafts
+                .filter(d => {
+                    if (d.kind === 'existing' && !d.deleted) return d.item.articleId === article.id;
+                    if (d.kind === 'new') return d.articleId === article.id;
+                    return false;
+                })
+                .map(d => d.kind === 'existing' ? (d.item.supplierId ?? '') : d.supplierId)
+        );
+
+        const newDrafts: DraftItem[] = [];
+        if (sids.length > 1) {
+            for (const sid of sids) {
+                if (existingSupplierIds.has(sid)) continue;
+                newDrafts.push({
+                    kind: 'new',
+                    tempId: `new-${Date.now()}-${sid}`,
+                    articleId: article.id,
+                    name: article.name,
+                    price: addForm.price,
+                    qty: addForm.qty,
+                    imageUrl: article.image,
+                    supplierName: supplierNameMap[sid] || sid,
+                    supplierId: sid,
+                });
+            }
+        } else {
+            newDrafts.push({
+                kind: 'new',
+                tempId: `new-${Date.now()}`,
+                articleId: article.id,
+                name: article.name,
+                price: addForm.price,
+                qty: addForm.qty,
+                imageUrl: article.image,
+                supplierName: selected.supplierName,
+                supplierId: selected.supplierId,
+            });
+        }
+
+        if (newDrafts.length > 0) setDrafts(prev => [...prev, ...newDrafts]);
         setSelected(null);
         setAddForm({ qty: 1, price: 0 });
     };
