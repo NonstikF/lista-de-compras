@@ -2,7 +2,7 @@
 import type { Order, LineItem, StoreOrder, StoreOrderItem, OrderTicket, Supplier, Article } from '../../types';
 import { getOrders, saveItemStatus, completeOrder, AuthError, type OrderStatusType, getSuppliers, getArticles } from '../../services/api';
 import { getStoreOrders, completeStoreOrder, getOrderTickets, getOrderTicketContent, createOrderTicket, deleteOrderTicket, getOrderTicketCounts, updateStoreItemStatus, getStoreOrderTickets, getStoreOrderTicketContent, createStoreOrderTicket, deleteStoreOrderTicket, addStoreOrderItem, deleteStoreOrderItem, editStoreOrderItem } from '../../services/api';
-import { Modal, Input, Button } from '../ui';
+import { Modal, Input, Button, Select } from '../ui';
 import { CheckCircleIcon, ChevronDownIcon, XMarkIcon, EyeIcon } from '../ui/icons';
 import { showToast } from '../ui/Toast';
 import { fmt } from '../ui';
@@ -400,6 +400,24 @@ const StoreOrderTicketModal: React.FC<{
     );
 };
 
+// Draft item: existing items can be edited/deleted; new items added but not yet saved
+type DraftItem =
+    | { kind: 'existing'; item: StoreOrderItem; edited?: { qty: number; price: number; supplierName: string }; deleted?: true }
+    | { kind: 'new'; tempId: string; articleId: string; name: string; price: number; qty: number; imageUrl: string | null; supplierName: string; supplierId: string };
+
+function draftTotal(drafts: DraftItem[]): number {
+    const seen = new Set<string>();
+    let total = 0;
+    for (const d of drafts) {
+        if (d.kind === 'existing' && d.deleted) continue;
+        const articleId = d.kind === 'existing' ? d.item.articleId : d.articleId;
+        const price = d.kind === 'existing' ? (d.edited?.price ?? d.item.price) : d.price;
+        const qty = d.kind === 'existing' ? (d.edited?.qty ?? d.item.qty) : d.qty;
+        if (!seen.has(articleId)) { seen.add(articleId); total += price * qty; }
+    }
+    return total;
+}
+
 // --- EditStoreOrderModal ---
 const EditStoreOrderModal: React.FC<{
     order: StoreOrder;
@@ -408,13 +426,14 @@ const EditStoreOrderModal: React.FC<{
     onClose: () => void;
     onOrderChanged: (updated: StoreOrder) => void;
 }> = ({ order, authToken, onAuthError, onClose, onOrderChanged }) => {
-    const [localItems, setLocalItems] = useState<StoreOrderItem[]>(order.items);
-    const [localTotal, setLocalTotal] = useState<number>(order.total);
-    const [editingItemId, setEditingItemId] = useState<number | null>(null);
-    const [editForm, setEditForm] = useState({ qty: 0, price: 0, supplierName: '' });
-    const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
-    const [saving, setSaving] = useState<number | 'add' | null>(null);
-    const [deleting, setDeleting] = useState<number | null>(null);
+    const [drafts, setDrafts] = useState<DraftItem[]>(() =>
+        order.items.map(item => ({ kind: 'existing' as const, item }))
+    );
+    const [editingId, setEditingId] = useState<number | string | null>(null);
+    const [editForm, setEditForm] = useState({ qty: 1, price: 0, supplierName: '' });
+    const [saving, setSaving] = useState(false);
+
+    // Article search
     const [searchQuery, setSearchQuery] = useState('');
     const [articles, setArticles] = useState<Article[]>([]);
     const [articlesLoaded, setArticlesLoaded] = useState(false);
@@ -422,10 +441,14 @@ const EditStoreOrderModal: React.FC<{
     const [selectedArticle, setSelectedArticle] = useState<Article | null>(null);
     const [addForm, setAddForm] = useState({ qty: 1, price: 0, supplierName: '', supplierId: '' });
 
+    const visibleDrafts = drafts.filter(d => !(d.kind === 'existing' && d.deleted));
+    const previewTotal = draftTotal(drafts);
+    const hasChanges = drafts.some(d => d.kind === 'new' || (d.kind === 'existing' && (d.deleted || d.edited)));
+
     const filteredArticles = useMemo(() => {
-        if (!searchQuery.trim()) return articles.slice(0, 24);
+        if (!searchQuery.trim()) return articles.slice(0, 30);
         const q = searchQuery.toLowerCase();
-        return articles.filter(a => a.name.toLowerCase().includes(q) || (a.sku ?? '').toLowerCase().includes(q)).slice(0, 24);
+        return articles.filter(a => a.name.toLowerCase().includes(q) || (a.sku ?? '').toLowerCase().includes(q)).slice(0, 30);
     }, [articles, searchQuery]);
 
     const loadArticles = async () => {
@@ -443,245 +466,328 @@ const EditStoreOrderModal: React.FC<{
         }
     };
 
-    const pushChange = (items: StoreOrderItem[], total: number) => {
-        setLocalItems(items);
-        setLocalTotal(total);
-        onOrderChanged({ ...order, items, total });
-    };
-
-    const handleStartEdit = (item: StoreOrderItem) => {
-        setEditingItemId(item.id);
-        setEditForm({ qty: item.qty, price: item.price, supplierName: item.supplierName });
-    };
-
-    const handleSaveEdit = async () => {
-        if (!editingItemId) return;
-        setSaving(editingItemId);
-        try {
-            const { item: updated, order: updatedOrder } = await editStoreOrderItem(authToken, order.id, editingItemId, editForm);
-            const newItems = localItems.map(i => i.id === updated.id ? { ...i, ...updated } : i);
-            pushChange(newItems, updatedOrder.total);
-            setEditingItemId(null);
-            showToast('success', 'Item actualizado');
-        } catch (err) {
-            if (err instanceof AuthError) { onAuthError(); return; }
-            showToast('error', 'Error al guardar cambios');
-        } finally {
-            setSaving(null);
+    const startEdit = (d: DraftItem) => {
+        if (d.kind === 'existing') {
+            setEditingId(d.item.id);
+            setEditForm({ qty: d.edited?.qty ?? d.item.qty, price: d.edited?.price ?? d.item.price, supplierName: d.edited?.supplierName ?? d.item.supplierName });
+        } else {
+            setEditingId(d.tempId);
+            setEditForm({ qty: d.qty, price: d.price, supplierName: d.supplierName });
         }
     };
 
-    const handleConfirmDelete = async () => {
-        if (!confirmDeleteId) return;
-        setDeleting(confirmDeleteId);
-        try {
-            const { order: updatedOrder } = await deleteStoreOrderItem(authToken, order.id, confirmDeleteId);
-            const newItems = localItems.filter(i => i.id !== confirmDeleteId);
-            pushChange(newItems, updatedOrder.total);
-            setConfirmDeleteId(null);
-            showToast('success', 'Item eliminado');
-        } catch (err) {
-            if (err instanceof AuthError) { onAuthError(); return; }
-            showToast('error', 'Error al eliminar item');
-        } finally {
-            setDeleting(null);
-        }
+    const confirmEdit = () => {
+        setDrafts(prev => prev.map(d => {
+            if (d.kind === 'existing' && d.item.id === editingId) return { ...d, edited: { ...editForm } };
+            if (d.kind === 'new' && d.tempId === editingId) return { ...d, qty: editForm.qty, price: editForm.price, supplierName: editForm.supplierName };
+            return d;
+        }));
+        setEditingId(null);
+    };
+
+    const markDelete = (d: DraftItem) => {
+        if (d.kind === 'existing') setDrafts(prev => prev.map(x => x.kind === 'existing' && x.item.id === d.item.id ? { ...x, deleted: true } : x));
+        else setDrafts(prev => prev.filter(x => !(x.kind === 'new' && x.tempId === d.tempId)));
     };
 
     const handleSelectArticle = (article: Article) => {
         setSelectedArticle(article);
-        const firstSupplier = article.supplierIds[0] ?? '';
-        setAddForm({ qty: 1, price: article.price, supplierName: '', supplierId: firstSupplier });
+        const firstSupplierId = article.supplierIds[0] ?? '';
+        setAddForm({ qty: 1, price: article.price, supplierName: '', supplierId: firstSupplierId });
         setSearchQuery('');
     };
 
-    const handleAddItem = async () => {
+    const handleAddToDraft = () => {
         if (!selectedArticle) return;
-        setSaving('add');
+        const newDraft: DraftItem = {
+            kind: 'new',
+            tempId: `new-${Date.now()}`,
+            articleId: selectedArticle.id,
+            name: selectedArticle.name,
+            price: addForm.price,
+            qty: addForm.qty,
+            imageUrl: selectedArticle.image,
+            supplierName: addForm.supplierName || addForm.supplierId || 'Sin proveedor',
+            supplierId: addForm.supplierId,
+        };
+        setDrafts(prev => [...prev, newDraft]);
+        setSelectedArticle(null);
+        setAddForm({ qty: 1, price: 0, supplierName: '', supplierId: '' });
+    };
+
+    const handleSave = async () => {
+        setSaving(true);
         try {
-            const { item: newItem, order: updatedOrder } = await addStoreOrderItem(authToken, order.id, {
-                articleId: selectedArticle.id,
-                name: selectedArticle.name,
-                price: addForm.price,
-                qty: addForm.qty,
-                imageUrl: selectedArticle.image,
-                supplierName: addForm.supplierName || 'Sin proveedor',
-                supplierId: addForm.supplierId || undefined,
-            });
-            pushChange([...localItems, newItem], updatedOrder.total);
-            setSelectedArticle(null);
-            setAddForm({ qty: 1, price: 0, supplierName: '', supplierId: '' });
-            showToast('success', 'Artículo agregado');
+            const ops: Promise<unknown>[] = [];
+            for (const d of drafts) {
+                if (d.kind === 'existing' && d.deleted) {
+                    ops.push(deleteStoreOrderItem(authToken, order.id, d.item.id));
+                } else if (d.kind === 'existing' && d.edited) {
+                    ops.push(editStoreOrderItem(authToken, order.id, d.item.id, d.edited));
+                } else if (d.kind === 'new') {
+                    ops.push(addStoreOrderItem(authToken, order.id, {
+                        articleId: d.articleId, name: d.name, price: d.price, qty: d.qty,
+                        imageUrl: d.imageUrl, supplierName: d.supplierName, supplierId: d.supplierId || undefined,
+                    }));
+                }
+            }
+            await Promise.all(ops);
+
+            // Refetch the order's real items after all mutations
+            const freshOrders = await (async () => {
+                const { getStoreOrders: fetch } = await import('../../services/api');
+                return fetch(authToken);
+            })();
+            const fresh = freshOrders.find(o => o.id === order.id);
+            if (fresh) onOrderChanged(fresh);
+
+            showToast('success', 'Pedido actualizado');
+            onClose();
         } catch (err) {
             if (err instanceof AuthError) { onAuthError(); return; }
-            showToast('error', 'Error al agregar artículo');
+            showToast('error', 'Error al guardar los cambios');
         } finally {
-            setSaving(null);
+            setSaving(false);
         }
     };
+
+    const getDraftKey = (d: DraftItem) => d.kind === 'existing' ? `e-${d.item.id}` : d.tempId;
+    const getDraftName = (d: DraftItem) => d.kind === 'existing' ? d.item.name : d.name;
+    const getDraftQty = (d: DraftItem) => d.kind === 'existing' ? (d.edited?.qty ?? d.item.qty) : d.qty;
+    const getDraftPrice = (d: DraftItem) => d.kind === 'existing' ? (d.edited?.price ?? d.item.price) : d.price;
+    const getDraftSupplier = (d: DraftItem) => d.kind === 'existing' ? (d.edited?.supplierName ?? d.item.supplierName) : d.supplierName;
+    const getDraftImage = (d: DraftItem) => d.kind === 'existing' ? (d.item.imageUrl ?? null) : d.imageUrl;
+    const isNew = (d: DraftItem) => d.kind === 'new';
+    const isEdited = (d: DraftItem) => d.kind === 'existing' && !!d.edited;
 
     return (
         <Modal
             open
             onClose={onClose}
-            title={`Editar Pedido ${order.id}`}
-            maxWidth="max-w-2xl"
-            footer={
-                <div className="flex justify-end">
-                    <Button variant="neutral" onClick={onClose}>Cerrar</Button>
+            title={
+                <div>
+                    <span className="font-epilogue font-bold text-on-background">Editar Pedido</span>
+                    <span className="ml-2 text-primary font-mono">{order.id}</span>
                 </div>
             }
+            maxWidth="max-w-2xl"
+            footer={
+                <>
+                    <Button variant="neutral" onClick={onClose} disabled={saving}>Cancelar</Button>
+                    <Button
+                        onClick={handleSave}
+                        disabled={!hasChanges || saving}
+                        icon="save"
+                    >
+                        {saving ? 'Guardando…' : 'Guardar cambios'}
+                    </Button>
+                </>
+            }
         >
-            <div className="space-y-6">
-                {/* Artículos actuales */}
-                <div>
-                    <h3 className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant mb-2">Artículos actuales</h3>
-                    <div className="divide-y divide-surface-variant border border-surface-variant rounded-xl overflow-hidden">
-                        {localItems.length === 0 && (
-                            <p className="text-center py-6 text-sm text-on-surface-variant">Sin artículos</p>
-                        )}
-                        {localItems.map(item => (
-                            <div key={item.id} className="p-3">
-                                {editingItemId === item.id ? (
-                                    <div className="space-y-2">
-                                        <p className="text-sm font-semibold text-on-background">{item.name}</p>
-                                        <div className="grid grid-cols-3 gap-2">
-                                            <div>
-                                                <label className="text-xs text-on-surface-variant">Cantidad</label>
-                                                <Input type="number" min={1} value={editForm.qty} onChange={e => setEditForm(f => ({ ...f, qty: parseInt(e.target.value) || 1 }))} />
-                                            </div>
-                                            <div>
-                                                <label className="text-xs text-on-surface-variant">Precio c/u</label>
-                                                <Input type="number" min={0} step="0.01" value={editForm.price} onChange={e => setEditForm(f => ({ ...f, price: parseFloat(e.target.value) || 0 }))} />
-                                            </div>
-                                            <div>
-                                                <label className="text-xs text-on-surface-variant">Proveedor</label>
-                                                <Input value={editForm.supplierName} onChange={e => setEditForm(f => ({ ...f, supplierName: e.target.value }))} placeholder="Sin proveedor" />
-                                            </div>
-                                        </div>
-                                        <div className="flex gap-2">
-                                            <Button size="sm" onClick={handleSaveEdit} disabled={saving === item.id}>{saving === item.id ? 'Guardando…' : 'Guardar'}</Button>
-                                            <Button size="sm" variant="neutral" onClick={() => setEditingItemId(null)}>Cancelar</Button>
-                                        </div>
-                                    </div>
-                                ) : confirmDeleteId === item.id ? (
-                                    <div className="flex items-center justify-between gap-3">
-                                        <p className="text-sm text-on-surface">¿Eliminar <span className="font-semibold">{item.name}</span>?</p>
-                                        <div className="flex gap-2 shrink-0">
-                                            <Button size="sm" variant="danger" onClick={handleConfirmDelete} disabled={deleting === item.id}>{deleting === item.id ? 'Eliminando…' : 'Eliminar'}</Button>
-                                            <Button size="sm" variant="neutral" onClick={() => setConfirmDeleteId(null)}>Cancelar</Button>
-                                        </div>
-                                    </div>
-                                ) : (
-                                    <div className="flex items-center justify-between gap-3">
-                                        <div className="flex-1 min-w-0">
-                                            <p className="text-sm font-semibold text-on-background truncate">{item.qty}x {item.name}</p>
-                                            <p className="text-xs text-on-surface-variant">{fmt(item.price)} c/u · {item.supplierName}</p>
-                                        </div>
-                                        <div className="flex items-center gap-1 shrink-0">
-                                            <button
-                                                onClick={() => handleStartEdit(item)}
-                                                disabled={editingItemId !== null}
-                                                className="p-1.5 rounded-lg text-on-surface-variant hover:text-primary hover:bg-primary/10 transition disabled:opacity-40"
-                                                title="Editar"
-                                            >
-                                                <span className="material-symbols-outlined text-base leading-none">edit</span>
-                                            </button>
-                                            <button
-                                                onClick={() => setConfirmDeleteId(item.id)}
-                                                disabled={editingItemId !== null}
-                                                className="p-1.5 rounded-lg text-on-surface-variant hover:text-error hover:bg-error-container/30 transition disabled:opacity-40"
-                                                title="Eliminar"
-                                            >
-                                                <XMarkIcon className="w-4 h-4" />
-                                            </button>
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        ))}
+            <div className="flex flex-col gap-0">
+                {/* Panel superior: lista de items */}
+                <div className="p-5 border-b border-surface-variant">
+                    <div className="flex items-center justify-between mb-3">
+                        <h3 className="text-xs font-bold uppercase tracking-wider text-on-surface-variant">Artículos del pedido</h3>
+                        <div className="flex items-center gap-2">
+                            {hasChanges && (
+                                <span className="text-xs text-amber-600 font-semibold bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
+                                    Cambios sin guardar
+                                </span>
+                            )}
+                            <span className="text-sm font-bold text-on-background">
+                                Total: <span className={hasChanges ? 'text-primary' : ''}>{fmt(previewTotal)}</span>
+                            </span>
+                        </div>
                     </div>
-                    <p className="text-right text-sm font-semibold text-on-surface mt-2">Total: {fmt(localTotal)}</p>
+
+                    <div className="rounded-xl border border-surface-variant overflow-hidden divide-y divide-surface-variant">
+                        {visibleDrafts.length === 0 && (
+                            <div className="flex flex-col items-center py-8 text-on-surface-variant">
+                                <span className="material-symbols-outlined text-4xl mb-2 opacity-30">shopping_bag</span>
+                                <p className="text-sm">Sin artículos</p>
+                            </div>
+                        )}
+                        {visibleDrafts.map(d => {
+                            const key = getDraftKey(d);
+                            const isEditing = editingId === (d.kind === 'existing' ? d.item.id : (d as { tempId: string }).tempId);
+                            const img = getDraftImage(d);
+                            const name = getDraftName(d);
+                            const qty = getDraftQty(d);
+                            const price = getDraftPrice(d);
+                            const supplier = getDraftSupplier(d);
+
+                            return (
+                                <div key={key} className={`transition-colors ${isNew(d) ? 'bg-primary/5' : isEdited(d) ? 'bg-amber-50/60' : 'bg-white'}`}>
+                                    {isEditing ? (
+                                        <div className="p-3 space-y-3">
+                                            <div className="flex items-center gap-2">
+                                                {img ? <img src={img} alt={name} className="w-8 h-8 rounded-lg object-cover shrink-0" /> : <div className="w-8 h-8 rounded-lg bg-surface-container-high flex items-center justify-center text-xs font-bold text-on-surface-variant">{name.charAt(0)}</div>}
+                                                <p className="text-sm font-semibold text-on-background">{name}</p>
+                                            </div>
+                                            <div className="grid grid-cols-3 gap-2">
+                                                <div className="flex flex-col gap-1">
+                                                    <label className="text-xs font-semibold text-on-surface-variant">Cantidad</label>
+                                                    <Input type="number" min={1} value={editForm.qty} onChange={e => setEditForm(f => ({ ...f, qty: parseInt(e.target.value) || 1 }))} className="w-full" />
+                                                </div>
+                                                <div className="flex flex-col gap-1">
+                                                    <label className="text-xs font-semibold text-on-surface-variant">Precio c/u</label>
+                                                    <Input type="number" min={0} step="0.01" value={editForm.price} onChange={e => setEditForm(f => ({ ...f, price: parseFloat(e.target.value) || 0 }))} className="w-full" />
+                                                </div>
+                                                <div className="flex flex-col gap-1">
+                                                    <label className="text-xs font-semibold text-on-surface-variant">Proveedor</label>
+                                                    <Input value={editForm.supplierName} onChange={e => setEditForm(f => ({ ...f, supplierName: e.target.value }))} placeholder="Sin proveedor" className="w-full" />
+                                                </div>
+                                            </div>
+                                            <div className="flex gap-2">
+                                                <Button size="sm" icon="check" onClick={confirmEdit}>Confirmar</Button>
+                                                <Button size="sm" variant="neutral" onClick={() => setEditingId(null)}>Cancelar</Button>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="flex items-center gap-3 px-3 py-2.5">
+                                            {img ? (
+                                                <img src={img} alt={name} className="w-10 h-10 rounded-xl object-cover shrink-0 shadow-sm" />
+                                            ) : (
+                                                <div className="w-10 h-10 rounded-xl bg-surface-container-high flex items-center justify-center shrink-0 text-sm font-bold text-on-surface-variant">
+                                                    {name.charAt(0)}
+                                                </div>
+                                            )}
+                                            <div className="flex-1 min-w-0">
+                                                <div className="flex items-center gap-2 flex-wrap">
+                                                    <p className="text-sm font-semibold text-on-background truncate">{name}</p>
+                                                    {isNew(d) && <span className="text-[10px] font-bold uppercase bg-primary/15 text-primary px-1.5 py-0.5 rounded-full">Nuevo</span>}
+                                                    {isEdited(d) && <span className="text-[10px] font-bold uppercase bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full">Editado</span>}
+                                                </div>
+                                                <p className="text-xs text-on-surface-variant mt-0.5">
+                                                    <span className="font-semibold text-on-surface">{qty}×</span> {fmt(price)} c/u
+                                                    {supplier && supplier !== 'Sin proveedor' && <span className="ml-1">· {supplier}</span>}
+                                                </p>
+                                            </div>
+                                            <div className="flex items-center gap-0.5 shrink-0">
+                                                <span className="text-sm font-bold text-on-background mr-2">{fmt(qty * price)}</span>
+                                                <button
+                                                    onClick={() => startEdit(d)}
+                                                    disabled={editingId !== null}
+                                                    className="p-1.5 rounded-lg text-on-surface-variant hover:text-primary hover:bg-primary/10 transition disabled:opacity-30"
+                                                    title="Editar"
+                                                >
+                                                    <span className="material-symbols-outlined text-[18px] leading-none">edit</span>
+                                                </button>
+                                                <button
+                                                    onClick={() => markDelete(d)}
+                                                    disabled={editingId !== null}
+                                                    className="p-1.5 rounded-lg text-on-surface-variant hover:text-error hover:bg-error-container/30 transition disabled:opacity-30"
+                                                    title="Eliminar"
+                                                >
+                                                    <XMarkIcon className="w-4 h-4" />
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })}
+                    </div>
                 </div>
 
-                {/* Agregar artículo */}
-                <div>
-                    <h3 className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant mb-2">Agregar artículo</h3>
+                {/* Panel inferior: agregar artículo */}
+                <div className="p-5 bg-surface-container-low">
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-3">Agregar artículo</h3>
+
                     {selectedArticle ? (
-                        <div className="border border-surface-variant rounded-xl p-4 space-y-3">
-                            <div className="flex items-center justify-between">
-                                <p className="text-sm font-semibold text-on-background">{selectedArticle.name}</p>
-                                <button onClick={() => setSelectedArticle(null)} className="text-xs text-on-surface-variant hover:text-error">Cancelar</button>
-                            </div>
-                            <div className="grid grid-cols-2 gap-2">
-                                <div>
-                                    <label className="text-xs text-on-surface-variant">Cantidad</label>
-                                    <Input type="number" min={1} value={addForm.qty} onChange={e => setAddForm(f => ({ ...f, qty: parseInt(e.target.value) || 1 }))} />
-                                </div>
-                                <div>
-                                    <label className="text-xs text-on-surface-variant">Precio c/u</label>
-                                    <Input type="number" min={0} step="0.01" value={addForm.price} onChange={e => setAddForm(f => ({ ...f, price: parseFloat(e.target.value) || 0 }))} />
-                                </div>
-                            </div>
-                            <div>
-                                <label className="text-xs text-on-surface-variant">Proveedor</label>
-                                {selectedArticle.supplierIds.length > 1 ? (
-                                    <select
-                                        value={addForm.supplierId}
-                                        onChange={e => setAddForm(f => ({ ...f, supplierId: e.target.value }))}
-                                        className="w-full mt-1 rounded-lg border border-outline-variant bg-surface px-3 py-2 text-sm text-on-surface focus:outline-none focus:ring-2 focus:ring-primary"
-                                    >
-                                        <option value="">Sin proveedor</option>
-                                        {selectedArticle.supplierIds.map(id => (
-                                            <option key={id} value={id}>{id}</option>
-                                        ))}
-                                    </select>
+                        <div className="bg-white border border-primary/20 rounded-xl p-4 space-y-3 shadow-sm">
+                            <div className="flex items-center gap-3">
+                                {selectedArticle.image ? (
+                                    <img src={selectedArticle.image} alt={selectedArticle.name} className="w-12 h-12 rounded-xl object-cover shrink-0 shadow-sm" />
                                 ) : (
-                                    <Input value={addForm.supplierName} onChange={e => setAddForm(f => ({ ...f, supplierName: e.target.value }))} placeholder="Sin proveedor" />
+                                    <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center shrink-0 text-primary font-bold text-lg">
+                                        {selectedArticle.name.charAt(0)}
+                                    </div>
                                 )}
+                                <div className="flex-1 min-w-0">
+                                    <p className="font-semibold text-on-background truncate">{selectedArticle.name}</p>
+                                    <p className="text-xs text-on-surface-variant">{fmt(selectedArticle.price)} precio base</p>
+                                </div>
+                                <button onClick={() => setSelectedArticle(null)} className="p-1.5 rounded-full text-on-surface-variant hover:text-error hover:bg-error-container/20 transition">
+                                    <XMarkIcon className="w-4 h-4" />
+                                </button>
                             </div>
-                            <Button onClick={handleAddItem} disabled={saving === 'add'} className="w-full">
-                                {saving === 'add' ? 'Agregando…' : 'Agregar al pedido'}
+
+                            <div className="grid grid-cols-3 gap-2">
+                                <div className="flex flex-col gap-1">
+                                    <label className="text-xs font-semibold text-on-surface-variant">Cantidad</label>
+                                    <Input type="number" min={1} value={addForm.qty} onChange={e => setAddForm(f => ({ ...f, qty: parseInt(e.target.value) || 1 }))} className="w-full" />
+                                </div>
+                                <div className="flex flex-col gap-1">
+                                    <label className="text-xs font-semibold text-on-surface-variant">Precio c/u</label>
+                                    <Input type="number" min={0} step="0.01" value={addForm.price} onChange={e => setAddForm(f => ({ ...f, price: parseFloat(e.target.value) || 0 }))} className="w-full" />
+                                </div>
+                                <div className="flex flex-col gap-1">
+                                    <label className="text-xs font-semibold text-on-surface-variant">Proveedor</label>
+                                    {selectedArticle.supplierIds.length > 1 ? (
+                                        <Select value={addForm.supplierId} onChange={e => setAddForm(f => ({ ...f, supplierId: e.target.value }))} className="w-full">
+                                            <option value="">Sin proveedor</option>
+                                            {selectedArticle.supplierIds.map(id => <option key={id} value={id}>{id}</option>)}
+                                        </Select>
+                                    ) : (
+                                        <Input value={addForm.supplierName} onChange={e => setAddForm(f => ({ ...f, supplierName: e.target.value }))} placeholder="Sin proveedor" className="w-full" />
+                                    )}
+                                </div>
+                            </div>
+
+                            <Button icon="add_shopping_cart" onClick={handleAddToDraft} className="w-full">
+                                Agregar al pedido
                             </Button>
                         </div>
                     ) : (
                         <div className="space-y-3">
-                            <Input
-                                placeholder="Buscar artículo por nombre o SKU…"
-                                value={searchQuery}
-                                onChange={e => { setSearchQuery(e.target.value); loadArticles(); }}
-                                onFocus={loadArticles}
-                            />
+                            <div className="relative">
+                                <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-lg pointer-events-none">search</span>
+                                <Input
+                                    placeholder="Buscar artículo por nombre o SKU…"
+                                    value={searchQuery}
+                                    onChange={e => { setSearchQuery(e.target.value); loadArticles(); }}
+                                    onFocus={loadArticles}
+                                    className="w-full pl-10"
+                                />
+                            </div>
                             {articlesLoading && (
-                                <div className="flex justify-center py-4">
-                                    <span className="material-symbols-outlined text-primary text-3xl animate-spin">progress_activity</span>
+                                <div className="flex justify-center py-6">
+                                    <span className="material-symbols-outlined text-primary text-4xl animate-spin">progress_activity</span>
                                 </div>
                             )}
                             {articlesLoaded && filteredArticles.length > 0 && (
-                                <div className="grid grid-cols-2 gap-2 max-h-52 overflow-y-auto">
+                                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-48 overflow-y-auto pr-1">
                                     {filteredArticles.map(article => (
                                         <button
                                             key={article.id}
                                             onClick={() => handleSelectArticle(article)}
-                                            className="flex items-center gap-2 p-2 rounded-lg border border-surface-variant hover:border-primary/40 hover:bg-primary/5 transition text-left"
+                                            className="flex items-center gap-2 p-2 rounded-xl border border-surface-variant bg-white hover:border-primary/40 hover:bg-primary/5 hover:shadow-sm transition-all text-left group"
                                         >
                                             {article.image ? (
-                                                <img src={article.image} alt={article.name} className="w-9 h-9 rounded-lg object-cover shrink-0" />
+                                                <img src={article.image} alt={article.name} className="w-10 h-10 rounded-lg object-cover shrink-0" />
                                             ) : (
-                                                <div className="w-9 h-9 rounded-lg bg-surface-container-high flex items-center justify-center shrink-0 text-on-surface-variant text-xs font-bold">
+                                                <div className="w-10 h-10 rounded-lg bg-surface-container-high flex items-center justify-center shrink-0 text-on-surface-variant text-sm font-bold group-hover:bg-primary/10 group-hover:text-primary transition">
                                                     {article.name.charAt(0)}
                                                 </div>
                                             )}
-                                            <div className="min-w-0">
+                                            <div className="min-w-0 flex-1">
                                                 <p className="text-xs font-semibold text-on-background truncate">{article.name}</p>
-                                                <p className="text-xs text-on-surface-variant">{fmt(article.price)}</p>
+                                                <p className="text-xs text-primary font-semibold">{fmt(article.price)}</p>
                                             </div>
                                         </button>
                                     ))}
                                 </div>
                             )}
                             {articlesLoaded && searchQuery && filteredArticles.length === 0 && (
-                                <p className="text-center text-sm text-on-surface-variant py-3">Sin resultados para "{searchQuery}"</p>
+                                <div className="text-center py-6 text-on-surface-variant">
+                                    <span className="material-symbols-outlined text-3xl mb-1 opacity-30">search_off</span>
+                                    <p className="text-sm">Sin resultados para "{searchQuery}"</p>
+                                </div>
+                            )}
+                            {!articlesLoaded && !articlesLoading && (
+                                <p className="text-center text-sm text-on-surface-variant py-2 opacity-60">Escribe para buscar artículos</p>
                             )}
                         </div>
                     )}
