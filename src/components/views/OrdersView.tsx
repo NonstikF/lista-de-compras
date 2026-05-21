@@ -535,21 +535,9 @@ const EditStoreOrderModal: React.FC<{
         const sids = article.supplierIds;
 
         // Multi-supplier: create one draft per supplier (mirrors StoreView order creation)
-        // Skip suppliers that already have a non-deleted draft for this article
-        const existingSupplierIds = new Set(
-            drafts
-                .filter(d => {
-                    if (d.kind === 'existing' && !d.deleted) return d.item.articleId === article.id;
-                    if (d.kind === 'new') return d.articleId === article.id;
-                    return false;
-                })
-                .map(d => d.kind === 'existing' ? (d.item.supplierId ?? '') : d.supplierId)
-        );
-
         const newDrafts: DraftItem[] = [];
         if (sids.length > 1) {
             for (const sid of sids) {
-                if (existingSupplierIds.has(sid)) continue;
                 newDrafts.push({
                     kind: 'new',
                     tempId: `new-${Date.now()}-${sid}`,
@@ -576,7 +564,7 @@ const EditStoreOrderModal: React.FC<{
             });
         }
 
-        if (newDrafts.length > 0) setDrafts(prev => [...prev, ...newDrafts]);
+        setDrafts(prev => [...prev, ...newDrafts]);
         setSelected(null);
         setAddForm({ qty: 1, price: 0 });
     };
