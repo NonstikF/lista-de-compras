@@ -13,20 +13,31 @@ const storeTicketSchema = z.object({
 
 const router = Router();
 
+const storeOrderItemShape = z.object({
+    articleId: z.string(),
+    name: z.string(),
+    price: z.number(),
+    qty: z.number().int().min(1),
+    imageUrl: z.string().nullable().optional(),
+    supplierName: z.string().default('Sin proveedor'),
+    supplierId: z.string().optional(),
+});
+
 const storeOrderSchema = z.object({
     customerName: z.string().min(1, 'Nombre requerido'),
     customerPhone: z.string().default(''),
     notes: z.string().default(''),
-    items: z.array(z.object({
-        articleId: z.string(),
-        name: z.string(),
-        price: z.number(),
-        qty: z.number().int().min(1),
-        imageUrl: z.string().nullable().optional(),
-        supplierName: z.string().default('Sin proveedor'),
-        supplierId: z.string().optional(),
-    })).min(1, 'El pedido necesita al menos un artículo'),
+    items: z.array(storeOrderItemShape).min(1, 'El pedido necesita al menos un artículo'),
 });
+
+function recalcOrderTotal(items: { articleId: string; price: number; qty: number }[]): number {
+    const seen = new Set<string>();
+    return items.reduce((s, i) => {
+        if (seen.has(i.articleId)) return s;
+        seen.add(i.articleId);
+        return s + i.price * i.qty;
+    }, 0);
+}
 
 type ArticleInfo = { image: string | null };
 
@@ -97,13 +108,7 @@ router.post('/', async (req: Request, res: Response) => {
     const parsed = storeOrderSchema.safeParse(req.body);
     if (!parsed.success) { res.status(400).json({ error: parsed.error.issues[0].message }); return; }
     const { items, ...rest } = parsed.data;
-    // Deduplicate by articleId — multi-supplier items share the same qty, count once
-    const seenArticles = new Set<string>();
-    const total = items.reduce((s, i) => {
-        if (seenArticles.has(i.articleId)) return s;
-        seenArticles.add(i.articleId);
-        return s + i.price * i.qty;
-    }, 0);
+    const total = recalcOrderTotal(items);
     try {
         const order = await prisma.storeOrder.create({
             data: { ...rest, total, items: { create: items } },
@@ -144,12 +149,39 @@ router.patch('/:id/items/:itemId', async (req: Request, res: Response) => {
     const parsed = z.object({
         isPurchased: z.boolean().optional(),
         quantityPurchased: z.number().int().min(0).optional(),
+        qty: z.number().int().min(1).optional(),
+        price: z.number().min(0).optional(),
+        supplierName: z.string().optional(),
     }).safeParse(req.body);
     if (!parsed.success) { res.status(400).json({ error: parsed.error.issues[0].message }); return; }
+
+    const isStructuralEdit = parsed.data.qty !== undefined || parsed.data.price !== undefined || parsed.data.supplierName !== undefined;
+
+    if (isStructuralEdit) {
+        try {
+            const { qty, price, supplierName } = parsed.data;
+            const item = await prisma.storeOrderItem.update({
+                where: { id: itemId },
+                data: { ...(qty !== undefined && { qty }), ...(price !== undefined && { price }), ...(supplierName !== undefined && { supplierName }) },
+            });
+            const allItems = await prisma.storeOrderItem.findMany({ where: { orderId: item.orderId } });
+            const newTotal = recalcOrderTotal(allItems);
+            await prisma.storeOrder.update({ where: { id: item.orderId }, data: { total: newTotal } });
+            const itemsWithCross = addCrossSupplierInfo(allItems);
+            const updatedItem = itemsWithCross.find(i => i.id === itemId)!;
+            const totalByOthers = itemsWithCross.filter(i => i.articleId === item.articleId && i.id !== itemId).reduce((s, i) => s + i.quantityPurchased, 0);
+            res.json({ item: { ...updatedItem, quantityPurchasedByOthers: totalByOthers }, order: { total: newTotal } });
+        } catch (err) {
+            console.error('Error al editar item de tienda:', err);
+            res.status(500).json({ error: 'Error al editar item' });
+        }
+        return;
+    }
+
     try {
         const item = await prisma.storeOrderItem.update({
             where: { id: itemId },
-            data: parsed.data,
+            data: { isPurchased: parsed.data.isPurchased, quantityPurchased: parsed.data.quantityPurchased },
         });
         let siblingUpdates: typeof item[] = [];
 
@@ -214,6 +246,58 @@ router.patch('/:id/items/:itemId', async (req: Request, res: Response) => {
     } catch (err) {
         console.error('Error al actualizar item de tienda:', err);
         res.status(500).json({ error: 'Error al actualizar item' });
+    }
+});
+
+// POST /api/store-orders/:id/items — add a new item to an existing pending order
+router.post('/:id/items', async (req: Request, res: Response) => {
+    const rawId = req.params.id.startsWith('T-') ? parseInt(req.params.id.slice(2), 10) : parseInt(req.params.id, 10);
+    if (!Number.isFinite(rawId)) { res.status(400).json({ error: 'ID inválido' }); return; }
+    const parsed = storeOrderItemShape.safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: parsed.error.issues[0].message }); return; }
+    try {
+        const order = await prisma.storeOrder.findUnique({ where: { id: rawId } });
+        if (!order) { res.status(404).json({ error: 'Pedido no encontrado' }); return; }
+        if (order.status !== 'pending') { res.status(409).json({ error: 'Solo se pueden editar pedidos pendientes' }); return; }
+        const newItem = await prisma.storeOrderItem.create({ data: { orderId: rawId, ...parsed.data } });
+        const allItems = await prisma.storeOrderItem.findMany({ where: { orderId: rawId } });
+        const newTotal = recalcOrderTotal(allItems);
+        await prisma.storeOrder.update({ where: { id: rawId }, data: { total: newTotal } });
+        const itemsWithCross = addCrossSupplierInfo(allItems);
+        const articleMap = await getArticleInfoMap([newItem.articleId]);
+        const crossItem = itemsWithCross.find(i => i.id === newItem.id)!;
+        const totalByOthers = itemsWithCross.filter(i => i.articleId === newItem.articleId && i.id !== newItem.id).reduce((s, i) => s + i.quantityPurchased, 0);
+        res.status(201).json({
+            item: { ...crossItem, imageUrl: articleMap[newItem.articleId]?.image ?? newItem.imageUrl, quantityPurchasedByOthers: totalByOthers },
+            order: { total: newTotal },
+        });
+    } catch (err) {
+        console.error('Error al agregar item a pedido de tienda:', err);
+        res.status(500).json({ error: 'Error al agregar item' });
+    }
+});
+
+// DELETE /api/store-orders/:id/items/:itemId — remove an item from a pending order
+router.delete('/:id/items/:itemId', async (req: Request, res: Response) => {
+    const rawId = req.params.id.startsWith('T-') ? parseInt(req.params.id.slice(2), 10) : parseInt(req.params.id, 10);
+    const itemId = parseInt(req.params.itemId, 10);
+    if (!Number.isFinite(rawId) || !Number.isFinite(itemId)) { res.status(400).json({ error: 'ID inválido' }); return; }
+    try {
+        const item = await prisma.storeOrderItem.findUnique({ where: { id: itemId } });
+        if (!item || item.orderId !== rawId) { res.status(404).json({ error: 'Item no encontrado' }); return; }
+        const order = await prisma.storeOrder.findUnique({ where: { id: rawId } });
+        if (!order || order.status !== 'pending') { res.status(409).json({ error: 'Solo se pueden editar pedidos pendientes' }); return; }
+        await prisma.storeOrderItem.delete({ where: { id: itemId } });
+        const remaining = await prisma.storeOrderItem.findMany({ where: { orderId: rawId } });
+        const newTotal = recalcOrderTotal(remaining);
+        await prisma.storeOrder.update({ where: { id: rawId }, data: { total: newTotal } });
+        res.json({ success: true, order: { total: newTotal } });
+    } catch (err: unknown) {
+        if (err && typeof err === 'object' && 'code' in err && (err as { code: string }).code === 'P2025') {
+            res.status(404).json({ error: 'Item no encontrado' }); return;
+        }
+        console.error('Error al eliminar item de tienda:', err);
+        res.status(500).json({ error: 'Error al eliminar item' });
     }
 });
 

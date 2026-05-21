@@ -309,6 +309,37 @@ export async function deleteStoreOrderTicket(token: string, orderId: string, tic
   }));
 }
 
+export async function addStoreOrderItem(
+  token: string,
+  orderId: string,
+  data: { articleId: string; name: string; price: number; qty: number; imageUrl?: string | null; supplierName?: string; supplierId?: string },
+): Promise<{ item: StoreOrderItem; order: { total: number } }> {
+  return handleResponse(await fetch(`${BASE}/api/store-orders/${orderId}/items`, {
+    method: 'POST', headers: authHeaders(token), body: JSON.stringify(data),
+  }));
+}
+
+export async function deleteStoreOrderItem(
+  token: string,
+  orderId: string,
+  itemId: number,
+): Promise<{ success: boolean; order: { total: number } }> {
+  return handleResponse(await fetch(`${BASE}/api/store-orders/${orderId}/items/${itemId}`, {
+    method: 'DELETE', headers: authHeaders(token),
+  }));
+}
+
+export async function editStoreOrderItem(
+  token: string,
+  orderId: string,
+  itemId: number,
+  data: { qty?: number; price?: number; supplierName?: string },
+): Promise<{ item: StoreOrderItem; order: { total: number } }> {
+  return handleResponse(await fetch(`${BASE}/api/store-orders/${orderId}/items/${itemId}`, {
+    method: 'PATCH', headers: authHeaders(token), body: JSON.stringify(data),
+  }));
+}
+
 // ---- Inventario ----
 
 export async function getInventory(token: string): Promise<InventoryItem[]> {

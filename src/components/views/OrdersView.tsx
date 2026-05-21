@@ -1,7 +1,8 @@
-﻿import React, { useState, useEffect, useCallback, useRef } from 'react';
-import type { Order, LineItem, StoreOrder, StoreOrderItem, OrderTicket, Supplier } from '../../types';
-import { getOrders, saveItemStatus, completeOrder, AuthError, type OrderStatusType, getSuppliers } from '../../services/api';
-import { getStoreOrders, completeStoreOrder, getOrderTickets, getOrderTicketContent, createOrderTicket, deleteOrderTicket, getOrderTicketCounts, updateStoreItemStatus, getStoreOrderTickets, getStoreOrderTicketContent, createStoreOrderTicket, deleteStoreOrderTicket } from '../../services/api';
+﻿import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import type { Order, LineItem, StoreOrder, StoreOrderItem, OrderTicket, Supplier, Article } from '../../types';
+import { getOrders, saveItemStatus, completeOrder, AuthError, type OrderStatusType, getSuppliers, getArticles } from '../../services/api';
+import { getStoreOrders, completeStoreOrder, getOrderTickets, getOrderTicketContent, createOrderTicket, deleteOrderTicket, getOrderTicketCounts, updateStoreItemStatus, getStoreOrderTickets, getStoreOrderTicketContent, createStoreOrderTicket, deleteStoreOrderTicket, addStoreOrderItem, deleteStoreOrderItem, editStoreOrderItem } from '../../services/api';
+import { Modal, Input, Button } from '../ui';
 import { CheckCircleIcon, ChevronDownIcon, XMarkIcon, EyeIcon } from '../ui/icons';
 import { showToast } from '../ui/Toast';
 import { fmt } from '../ui';
@@ -399,6 +400,297 @@ const StoreOrderTicketModal: React.FC<{
     );
 };
 
+// --- EditStoreOrderModal ---
+const EditStoreOrderModal: React.FC<{
+    order: StoreOrder;
+    authToken: string;
+    onAuthError: () => void;
+    onClose: () => void;
+    onOrderChanged: (updated: StoreOrder) => void;
+}> = ({ order, authToken, onAuthError, onClose, onOrderChanged }) => {
+    const [localItems, setLocalItems] = useState<StoreOrderItem[]>(order.items);
+    const [localTotal, setLocalTotal] = useState<number>(order.total);
+    const [editingItemId, setEditingItemId] = useState<number | null>(null);
+    const [editForm, setEditForm] = useState({ qty: 0, price: 0, supplierName: '' });
+    const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
+    const [saving, setSaving] = useState<number | 'add' | null>(null);
+    const [deleting, setDeleting] = useState<number | null>(null);
+    const [searchQuery, setSearchQuery] = useState('');
+    const [articles, setArticles] = useState<Article[]>([]);
+    const [articlesLoaded, setArticlesLoaded] = useState(false);
+    const [articlesLoading, setArticlesLoading] = useState(false);
+    const [selectedArticle, setSelectedArticle] = useState<Article | null>(null);
+    const [addForm, setAddForm] = useState({ qty: 1, price: 0, supplierName: '', supplierId: '' });
+
+    const filteredArticles = useMemo(() => {
+        if (!searchQuery.trim()) return articles.slice(0, 24);
+        const q = searchQuery.toLowerCase();
+        return articles.filter(a => a.name.toLowerCase().includes(q) || (a.sku ?? '').toLowerCase().includes(q)).slice(0, 24);
+    }, [articles, searchQuery]);
+
+    const loadArticles = async () => {
+        if (articlesLoaded || articlesLoading) return;
+        setArticlesLoading(true);
+        try {
+            const data = await getArticles(authToken);
+            setArticles(data);
+            setArticlesLoaded(true);
+        } catch (err) {
+            if (err instanceof AuthError) { onAuthError(); return; }
+            showToast('error', 'Error al cargar artículos');
+        } finally {
+            setArticlesLoading(false);
+        }
+    };
+
+    const pushChange = (items: StoreOrderItem[], total: number) => {
+        setLocalItems(items);
+        setLocalTotal(total);
+        onOrderChanged({ ...order, items, total });
+    };
+
+    const handleStartEdit = (item: StoreOrderItem) => {
+        setEditingItemId(item.id);
+        setEditForm({ qty: item.qty, price: item.price, supplierName: item.supplierName });
+    };
+
+    const handleSaveEdit = async () => {
+        if (!editingItemId) return;
+        setSaving(editingItemId);
+        try {
+            const { item: updated, order: updatedOrder } = await editStoreOrderItem(authToken, order.id, editingItemId, editForm);
+            const newItems = localItems.map(i => i.id === updated.id ? { ...i, ...updated } : i);
+            pushChange(newItems, updatedOrder.total);
+            setEditingItemId(null);
+            showToast('success', 'Item actualizado');
+        } catch (err) {
+            if (err instanceof AuthError) { onAuthError(); return; }
+            showToast('error', 'Error al guardar cambios');
+        } finally {
+            setSaving(null);
+        }
+    };
+
+    const handleConfirmDelete = async () => {
+        if (!confirmDeleteId) return;
+        setDeleting(confirmDeleteId);
+        try {
+            const { order: updatedOrder } = await deleteStoreOrderItem(authToken, order.id, confirmDeleteId);
+            const newItems = localItems.filter(i => i.id !== confirmDeleteId);
+            pushChange(newItems, updatedOrder.total);
+            setConfirmDeleteId(null);
+            showToast('success', 'Item eliminado');
+        } catch (err) {
+            if (err instanceof AuthError) { onAuthError(); return; }
+            showToast('error', 'Error al eliminar item');
+        } finally {
+            setDeleting(null);
+        }
+    };
+
+    const handleSelectArticle = (article: Article) => {
+        setSelectedArticle(article);
+        const firstSupplier = article.supplierIds[0] ?? '';
+        setAddForm({ qty: 1, price: article.price, supplierName: '', supplierId: firstSupplier });
+        setSearchQuery('');
+    };
+
+    const handleAddItem = async () => {
+        if (!selectedArticle) return;
+        setSaving('add');
+        try {
+            const { item: newItem, order: updatedOrder } = await addStoreOrderItem(authToken, order.id, {
+                articleId: selectedArticle.id,
+                name: selectedArticle.name,
+                price: addForm.price,
+                qty: addForm.qty,
+                imageUrl: selectedArticle.image,
+                supplierName: addForm.supplierName || 'Sin proveedor',
+                supplierId: addForm.supplierId || undefined,
+            });
+            pushChange([...localItems, newItem], updatedOrder.total);
+            setSelectedArticle(null);
+            setAddForm({ qty: 1, price: 0, supplierName: '', supplierId: '' });
+            showToast('success', 'Artículo agregado');
+        } catch (err) {
+            if (err instanceof AuthError) { onAuthError(); return; }
+            showToast('error', 'Error al agregar artículo');
+        } finally {
+            setSaving(null);
+        }
+    };
+
+    return (
+        <Modal
+            open
+            onClose={onClose}
+            title={`Editar Pedido ${order.id}`}
+            maxWidth="max-w-2xl"
+            footer={
+                <div className="flex justify-end">
+                    <Button variant="neutral" onClick={onClose}>Cerrar</Button>
+                </div>
+            }
+        >
+            <div className="space-y-6">
+                {/* Artículos actuales */}
+                <div>
+                    <h3 className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant mb-2">Artículos actuales</h3>
+                    <div className="divide-y divide-surface-variant border border-surface-variant rounded-xl overflow-hidden">
+                        {localItems.length === 0 && (
+                            <p className="text-center py-6 text-sm text-on-surface-variant">Sin artículos</p>
+                        )}
+                        {localItems.map(item => (
+                            <div key={item.id} className="p-3">
+                                {editingItemId === item.id ? (
+                                    <div className="space-y-2">
+                                        <p className="text-sm font-semibold text-on-background">{item.name}</p>
+                                        <div className="grid grid-cols-3 gap-2">
+                                            <div>
+                                                <label className="text-xs text-on-surface-variant">Cantidad</label>
+                                                <Input type="number" min={1} value={editForm.qty} onChange={e => setEditForm(f => ({ ...f, qty: parseInt(e.target.value) || 1 }))} />
+                                            </div>
+                                            <div>
+                                                <label className="text-xs text-on-surface-variant">Precio c/u</label>
+                                                <Input type="number" min={0} step="0.01" value={editForm.price} onChange={e => setEditForm(f => ({ ...f, price: parseFloat(e.target.value) || 0 }))} />
+                                            </div>
+                                            <div>
+                                                <label className="text-xs text-on-surface-variant">Proveedor</label>
+                                                <Input value={editForm.supplierName} onChange={e => setEditForm(f => ({ ...f, supplierName: e.target.value }))} placeholder="Sin proveedor" />
+                                            </div>
+                                        </div>
+                                        <div className="flex gap-2">
+                                            <Button size="sm" onClick={handleSaveEdit} disabled={saving === item.id}>{saving === item.id ? 'Guardando…' : 'Guardar'}</Button>
+                                            <Button size="sm" variant="neutral" onClick={() => setEditingItemId(null)}>Cancelar</Button>
+                                        </div>
+                                    </div>
+                                ) : confirmDeleteId === item.id ? (
+                                    <div className="flex items-center justify-between gap-3">
+                                        <p className="text-sm text-on-surface">¿Eliminar <span className="font-semibold">{item.name}</span>?</p>
+                                        <div className="flex gap-2 shrink-0">
+                                            <Button size="sm" variant="danger" onClick={handleConfirmDelete} disabled={deleting === item.id}>{deleting === item.id ? 'Eliminando…' : 'Eliminar'}</Button>
+                                            <Button size="sm" variant="neutral" onClick={() => setConfirmDeleteId(null)}>Cancelar</Button>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="flex items-center justify-between gap-3">
+                                        <div className="flex-1 min-w-0">
+                                            <p className="text-sm font-semibold text-on-background truncate">{item.qty}x {item.name}</p>
+                                            <p className="text-xs text-on-surface-variant">{fmt(item.price)} c/u · {item.supplierName}</p>
+                                        </div>
+                                        <div className="flex items-center gap-1 shrink-0">
+                                            <button
+                                                onClick={() => handleStartEdit(item)}
+                                                disabled={editingItemId !== null}
+                                                className="p-1.5 rounded-lg text-on-surface-variant hover:text-primary hover:bg-primary/10 transition disabled:opacity-40"
+                                                title="Editar"
+                                            >
+                                                <span className="material-symbols-outlined text-base leading-none">edit</span>
+                                            </button>
+                                            <button
+                                                onClick={() => setConfirmDeleteId(item.id)}
+                                                disabled={editingItemId !== null}
+                                                className="p-1.5 rounded-lg text-on-surface-variant hover:text-error hover:bg-error-container/30 transition disabled:opacity-40"
+                                                title="Eliminar"
+                                            >
+                                                <XMarkIcon className="w-4 h-4" />
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                    <p className="text-right text-sm font-semibold text-on-surface mt-2">Total: {fmt(localTotal)}</p>
+                </div>
+
+                {/* Agregar artículo */}
+                <div>
+                    <h3 className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant mb-2">Agregar artículo</h3>
+                    {selectedArticle ? (
+                        <div className="border border-surface-variant rounded-xl p-4 space-y-3">
+                            <div className="flex items-center justify-between">
+                                <p className="text-sm font-semibold text-on-background">{selectedArticle.name}</p>
+                                <button onClick={() => setSelectedArticle(null)} className="text-xs text-on-surface-variant hover:text-error">Cancelar</button>
+                            </div>
+                            <div className="grid grid-cols-2 gap-2">
+                                <div>
+                                    <label className="text-xs text-on-surface-variant">Cantidad</label>
+                                    <Input type="number" min={1} value={addForm.qty} onChange={e => setAddForm(f => ({ ...f, qty: parseInt(e.target.value) || 1 }))} />
+                                </div>
+                                <div>
+                                    <label className="text-xs text-on-surface-variant">Precio c/u</label>
+                                    <Input type="number" min={0} step="0.01" value={addForm.price} onChange={e => setAddForm(f => ({ ...f, price: parseFloat(e.target.value) || 0 }))} />
+                                </div>
+                            </div>
+                            <div>
+                                <label className="text-xs text-on-surface-variant">Proveedor</label>
+                                {selectedArticle.supplierIds.length > 1 ? (
+                                    <select
+                                        value={addForm.supplierId}
+                                        onChange={e => setAddForm(f => ({ ...f, supplierId: e.target.value }))}
+                                        className="w-full mt-1 rounded-lg border border-outline-variant bg-surface px-3 py-2 text-sm text-on-surface focus:outline-none focus:ring-2 focus:ring-primary"
+                                    >
+                                        <option value="">Sin proveedor</option>
+                                        {selectedArticle.supplierIds.map(id => (
+                                            <option key={id} value={id}>{id}</option>
+                                        ))}
+                                    </select>
+                                ) : (
+                                    <Input value={addForm.supplierName} onChange={e => setAddForm(f => ({ ...f, supplierName: e.target.value }))} placeholder="Sin proveedor" />
+                                )}
+                            </div>
+                            <Button onClick={handleAddItem} disabled={saving === 'add'} className="w-full">
+                                {saving === 'add' ? 'Agregando…' : 'Agregar al pedido'}
+                            </Button>
+                        </div>
+                    ) : (
+                        <div className="space-y-3">
+                            <Input
+                                placeholder="Buscar artículo por nombre o SKU…"
+                                value={searchQuery}
+                                onChange={e => { setSearchQuery(e.target.value); loadArticles(); }}
+                                onFocus={loadArticles}
+                            />
+                            {articlesLoading && (
+                                <div className="flex justify-center py-4">
+                                    <span className="material-symbols-outlined text-primary text-3xl animate-spin">progress_activity</span>
+                                </div>
+                            )}
+                            {articlesLoaded && filteredArticles.length > 0 && (
+                                <div className="grid grid-cols-2 gap-2 max-h-52 overflow-y-auto">
+                                    {filteredArticles.map(article => (
+                                        <button
+                                            key={article.id}
+                                            onClick={() => handleSelectArticle(article)}
+                                            className="flex items-center gap-2 p-2 rounded-lg border border-surface-variant hover:border-primary/40 hover:bg-primary/5 transition text-left"
+                                        >
+                                            {article.image ? (
+                                                <img src={article.image} alt={article.name} className="w-9 h-9 rounded-lg object-cover shrink-0" />
+                                            ) : (
+                                                <div className="w-9 h-9 rounded-lg bg-surface-container-high flex items-center justify-center shrink-0 text-on-surface-variant text-xs font-bold">
+                                                    {article.name.charAt(0)}
+                                                </div>
+                                            )}
+                                            <div className="min-w-0">
+                                                <p className="text-xs font-semibold text-on-background truncate">{article.name}</p>
+                                                <p className="text-xs text-on-surface-variant">{fmt(article.price)}</p>
+                                            </div>
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                            {articlesLoaded && searchQuery && filteredArticles.length === 0 && (
+                                <p className="text-center text-sm text-on-surface-variant py-3">Sin resultados para "{searchQuery}"</p>
+                            )}
+                        </div>
+                    )}
+                </div>
+            </div>
+        </Modal>
+    );
+};
+
 // --- StoreOrderCard ---
 const StoreOrderCard: React.FC<{
     order: StoreOrder;
@@ -407,9 +699,11 @@ const StoreOrderCard: React.FC<{
     onComplete: (id: string) => void;
     onItemUpdate: (orderId: string, itemId: number, isPurchased: boolean, quantityPurchased: number, quantityPurchasedByOthers?: number) => void;
     onViewImage: (url: string, name: string) => void;
-}> = ({ order, authToken, onAuthError, onComplete, onItemUpdate, onViewImage }) => {
+    onOrderEdited: (updated: StoreOrder) => void;
+}> = ({ order, authToken, onAuthError, onComplete, onItemUpdate, onViewImage, onOrderEdited }) => {
     const [isExpanded, setIsExpanded] = useState(false);
     const [ticketModal, setTicketModal] = useState(false);
+    const [editModal, setEditModal] = useState(false);
     const [ticketCount, setTicketCount] = useState(0);
     const isPending = order.status === 'pending';
     const date = new Date(order.dateCreated).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' });
@@ -493,7 +787,16 @@ const StoreOrderCard: React.FC<{
 
             {isExpanded && (
                 <div className="p-4 space-y-3">
-                    <div className="flex justify-end">
+                    <div className="flex justify-end gap-2">
+                        {isPending && (
+                            <button
+                                onClick={() => setEditModal(true)}
+                                className="flex items-center gap-1.5 px-3 py-1 text-xs font-semibold rounded-full bg-surface-container hover:bg-surface-container-high text-on-surface-variant transition"
+                            >
+                                <span className="material-symbols-outlined text-sm">edit</span>
+                                Editar
+                            </button>
+                        )}
                         <button
                             onClick={() => setTicketModal(true)}
                             className="flex items-center gap-1.5 px-3 py-1 text-xs font-semibold rounded-full bg-surface-container hover:bg-surface-container-high text-on-surface-variant transition"
@@ -547,6 +850,15 @@ const StoreOrderCard: React.FC<{
                     onClose={() => setTicketModal(false)}
                     onTicketUploaded={() => setTicketCount(c => c + 1)}
                     onTicketDeleted={() => setTicketCount(c => Math.max(0, c - 1))}
+                />
+            )}
+            {editModal && (
+                <EditStoreOrderModal
+                    order={order}
+                    authToken={authToken}
+                    onAuthError={onAuthError}
+                    onClose={() => setEditModal(false)}
+                    onOrderChanged={onOrderEdited}
                 />
             )}
         </article>
@@ -1250,6 +1562,10 @@ const OrdersView: React.FC<OrdersViewProps> = ({ authToken, onAuthError }) => {
         }));
     }, []);
 
+    const handleStoreOrderEdited = useCallback((updatedOrder: StoreOrder) => {
+        setStoreOrders(prev => prev.map(o => o.id === updatedOrder.id ? updatedOrder : o));
+    }, []);
+
     useEffect(() => {
         if (tabMode !== 'store') return;
         let cancelled = false;
@@ -1398,6 +1714,7 @@ const OrdersView: React.FC<OrdersViewProps> = ({ authToken, onAuthError }) => {
                             onComplete={handleCompleteStoreOrder}
                             onItemUpdate={handleStoreItemUpdate}
                             onViewImage={handleViewImage}
+                            onOrderEdited={handleStoreOrderEdited}
                         />
                     ))}
                 </div>
