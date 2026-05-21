@@ -533,38 +533,45 @@ const EditStoreOrderModal: React.FC<{
         if (!selected) return;
         const article = selected.article;
         const sids = article.supplierIds;
+        const targetsIds = sids.length > 1 ? sids : [selected.supplierId];
 
-        // Multi-supplier: create one draft per supplier (mirrors StoreView order creation)
-        const newDrafts: DraftItem[] = [];
-        if (sids.length > 1) {
-            for (const sid of sids) {
-                newDrafts.push({
-                    kind: 'new',
-                    tempId: `new-${Date.now()}-${sid}`,
-                    articleId: article.id,
-                    name: article.name,
-                    price: addForm.price,
-                    qty: addForm.qty,
-                    imageUrl: article.image,
-                    supplierName: supplierNameMap[sid] || sid,
-                    supplierId: sid,
+        setDrafts(prev => {
+            let next = [...prev];
+            for (const sid of targetsIds) {
+                const supplierName = sids.length > 1 ? (supplierNameMap[sid] || sid) : selected.supplierName;
+                // Find existing non-deleted draft for this article+supplier
+                const existingIdx = next.findIndex(d => {
+                    if (d.kind === 'existing' && !d.deleted)
+                        return d.item.articleId === article.id && (d.item.supplierId ?? '') === sid;
+                    if (d.kind === 'new')
+                        return d.articleId === article.id && d.supplierId === sid;
+                    return false;
                 });
+                if (existingIdx !== -1) {
+                    // Merge: add qty to existing draft
+                    const d = next[existingIdx];
+                    if (d.kind === 'existing') {
+                        const currentQty = d.edited?.qty ?? d.item.qty;
+                        next[existingIdx] = { ...d, edited: { qty: currentQty + addForm.qty, price: d.edited?.price ?? d.item.price, supplierName: d.edited?.supplierName ?? d.item.supplierName } };
+                    } else {
+                        next[existingIdx] = { ...d, qty: d.qty + addForm.qty };
+                    }
+                } else {
+                    next.push({
+                        kind: 'new',
+                        tempId: `new-${Date.now()}-${sid}`,
+                        articleId: article.id,
+                        name: article.name,
+                        price: addForm.price,
+                        qty: addForm.qty,
+                        imageUrl: article.image,
+                        supplierName,
+                        supplierId: sid,
+                    });
+                }
             }
-        } else {
-            newDrafts.push({
-                kind: 'new',
-                tempId: `new-${Date.now()}`,
-                articleId: article.id,
-                name: article.name,
-                price: addForm.price,
-                qty: addForm.qty,
-                imageUrl: article.image,
-                supplierName: selected.supplierName,
-                supplierId: selected.supplierId,
-            });
-        }
-
-        setDrafts(prev => [...prev, ...newDrafts]);
+            return next;
+        });
         setSelected(null);
         setAddForm({ qty: 1, price: 0 });
     };
