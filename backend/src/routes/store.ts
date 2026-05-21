@@ -160,17 +160,49 @@ router.patch('/:id/items/:itemId', async (req: Request, res: Response) => {
     if (isStructuralEdit) {
         try {
             const { qty, price, supplierName } = parsed.data;
-            const item = await prisma.storeOrderItem.update({
-                where: { id: itemId },
-                data: { ...(qty !== undefined && { qty }), ...(price !== undefined && { price }), ...(supplierName !== undefined && { supplierName }) },
+            const before = await prisma.storeOrderItem.findUnique({ where: { id: itemId } });
+            if (!before) { res.status(404).json({ error: 'Item no encontrado' }); return; }
+
+            const newQty = qty ?? before.qty;
+            // If new qty increases beyond what was purchased, reset purchase progress
+            const needsReset = qty !== undefined && qty > before.quantityPurchased;
+            const updateData: Record<string, unknown> = {
+                ...(qty !== undefined && { qty }),
+                ...(price !== undefined && { price }),
+                ...(supplierName !== undefined && { supplierName }),
+                ...(needsReset && { isPurchased: false, quantityPurchased: before.quantityPurchased }),
+            };
+            const item = await prisma.storeOrderItem.update({ where: { id: itemId }, data: updateData });
+
+            // Sync siblings: if this item's qty changed, recalc their isPurchased based on cross-supplier coverage
+            const siblings = await prisma.storeOrderItem.findMany({
+                where: { orderId: item.orderId, articleId: item.articleId, id: { not: itemId } },
             });
+            if (qty !== undefined && siblings.length > 0) {
+                const totalPurchased = item.quantityPurchased + siblings.reduce((s, r) => s + r.quantityPurchased, 0);
+                const shouldBePurchased = totalPurchased >= newQty;
+                await prisma.storeOrderItem.updateMany({
+                    where: { orderId: item.orderId, articleId: item.articleId, id: { not: itemId } },
+                    data: { isPurchased: shouldBePurchased },
+                });
+                if (shouldBePurchased !== item.isPurchased) {
+                    await prisma.storeOrderItem.update({ where: { id: itemId }, data: { isPurchased: shouldBePurchased } });
+                    item.isPurchased = shouldBePurchased;
+                }
+            }
+
             const allItems = await prisma.storeOrderItem.findMany({ where: { orderId: item.orderId } });
             const newTotal = recalcOrderTotal(allItems);
             await prisma.storeOrder.update({ where: { id: item.orderId }, data: { total: newTotal } });
             const itemsWithCross = addCrossSupplierInfo(allItems);
             const updatedItem = itemsWithCross.find(i => i.id === itemId)!;
-            const totalByOthers = itemsWithCross.filter(i => i.articleId === item.articleId && i.id !== itemId).reduce((s, i) => s + i.quantityPurchased, 0);
-            res.json({ item: { ...updatedItem, quantityPurchasedByOthers: totalByOthers }, order: { total: newTotal } });
+            const siblingItems = itemsWithCross.filter(i => i.articleId === item.articleId && i.id !== itemId);
+            const totalByOthers = siblingItems.reduce((s, i) => s + i.quantityPurchased, 0);
+            res.json({
+                item: { ...updatedItem, quantityPurchasedByOthers: totalByOthers },
+                order: { total: newTotal },
+                siblingUpdates: siblingItems.map(s => ({ ...s, quantityPurchasedByOthers: item.quantityPurchased })),
+            });
         } catch (err) {
             console.error('Error al editar item de tienda:', err);
             res.status(500).json({ error: 'Error al editar item' });
