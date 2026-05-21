@@ -2,7 +2,7 @@
 import type { Order, LineItem, StoreOrder, StoreOrderItem, OrderTicket, Supplier, Article } from '../../types';
 import { getOrders, saveItemStatus, completeOrder, AuthError, type OrderStatusType, getSuppliers, getArticles } from '../../services/api';
 import { getStoreOrders, completeStoreOrder, getOrderTickets, getOrderTicketContent, createOrderTicket, deleteOrderTicket, getOrderTicketCounts, updateStoreItemStatus, getStoreOrderTickets, getStoreOrderTicketContent, createStoreOrderTicket, deleteStoreOrderTicket, addStoreOrderItem, deleteStoreOrderItem, editStoreOrderItem } from '../../services/api';
-import { Modal, Input, Button, Select } from '../ui';
+import { Modal, Input, Button } from '../ui';
 import { CheckCircleIcon, ChevronDownIcon, XMarkIcon, EyeIcon } from '../ui/icons';
 import { showToast } from '../ui/Toast';
 import { fmt } from '../ui';
@@ -436,27 +436,60 @@ const EditStoreOrderModal: React.FC<{
     // Article search
     const [searchQuery, setSearchQuery] = useState('');
     const [articles, setArticles] = useState<Article[]>([]);
+    const [supplierNameMap, setSupplierNameMap] = useState<Record<string, string>>({});
     const [articlesLoaded, setArticlesLoaded] = useState(false);
     const [articlesLoading, setArticlesLoading] = useState(false);
-    const [selectedArticle, setSelectedArticle] = useState<Article | null>(null);
-    const [addForm, setAddForm] = useState({ qty: 1, price: 0, supplierName: '', supplierId: '' });
+    // Selected = article + already-resolved supplier
+    const [selected, setSelected] = useState<{ article: Article; supplierId: string; supplierName: string } | null>(null);
+    const [addForm, setAddForm] = useState({ qty: 1, price: 0 });
 
     const visibleDrafts = drafts.filter(d => !(d.kind === 'existing' && d.deleted));
     const previewTotal = draftTotal(drafts);
     const hasChanges = drafts.some(d => d.kind === 'new' || (d.kind === 'existing' && (d.deleted || d.edited)));
 
-    const filteredArticles = useMemo(() => {
-        if (!searchQuery.trim()) return articles.slice(0, 30);
+    // Expand each article×supplier into its own row — mirrors StoreView logic
+    const articleSupplierRows = useMemo(() => {
+        const rows: { article: Article; supplierId: string; supplierName: string }[] = [];
+        for (const a of articles) {
+            if (a.supplierIds.length === 0) {
+                rows.push({ article: a, supplierId: '', supplierName: 'Sin proveedor' });
+            } else {
+                for (const sid of a.supplierIds) {
+                    rows.push({ article: a, supplierId: sid, supplierName: supplierNameMap[sid] || sid });
+                }
+            }
+        }
+        return rows;
+    }, [articles, supplierNameMap]);
+
+    const filteredRows = useMemo(() => {
+        if (!searchQuery.trim()) return articleSupplierRows.slice(0, 40);
         const q = searchQuery.toLowerCase();
-        return articles.filter(a => a.name.toLowerCase().includes(q) || (a.sku ?? '').toLowerCase().includes(q)).slice(0, 30);
-    }, [articles, searchQuery]);
+        return articleSupplierRows.filter(r =>
+            r.article.name.toLowerCase().includes(q) ||
+            (r.article.sku ?? '').toLowerCase().includes(q) ||
+            r.supplierName.toLowerCase().includes(q)
+        ).slice(0, 40);
+    }, [articleSupplierRows, searchQuery]);
+
+    // Group filtered rows by supplier for display
+    const rowsBySupplier = useMemo(() => {
+        const map = new Map<string, { supplierName: string; rows: typeof filteredRows }>();
+        for (const r of filteredRows) {
+            const key = r.supplierId || '__none__';
+            if (!map.has(key)) map.set(key, { supplierName: r.supplierName, rows: [] });
+            map.get(key)!.rows.push(r);
+        }
+        return [...map.entries()].sort(([, a], [, b]) => a.supplierName.localeCompare(b.supplierName, 'es'));
+    }, [filteredRows]);
 
     const loadArticles = async () => {
         if (articlesLoaded || articlesLoading) return;
         setArticlesLoading(true);
         try {
-            const data = await getArticles(authToken);
+            const [data, suppliers] = await Promise.all([getArticles(authToken), getSuppliers(authToken)]);
             setArticles(data);
+            setSupplierNameMap(Object.fromEntries(suppliers.map((s: Supplier) => [s.id, s.name])));
             setArticlesLoaded(true);
         } catch (err) {
             if (err instanceof AuthError) { onAuthError(); return; }
@@ -490,29 +523,28 @@ const EditStoreOrderModal: React.FC<{
         else setDrafts(prev => prev.filter(x => !(x.kind === 'new' && x.tempId === d.tempId)));
     };
 
-    const handleSelectArticle = (article: Article) => {
-        setSelectedArticle(article);
-        const firstSupplierId = article.supplierIds[0] ?? '';
-        setAddForm({ qty: 1, price: article.price, supplierName: '', supplierId: firstSupplierId });
+    const handleSelectRow = (row: { article: Article; supplierId: string; supplierName: string }) => {
+        setSelected(row);
+        setAddForm({ qty: 1, price: row.article.price });
         setSearchQuery('');
     };
 
     const handleAddToDraft = () => {
-        if (!selectedArticle) return;
+        if (!selected) return;
         const newDraft: DraftItem = {
             kind: 'new',
             tempId: `new-${Date.now()}`,
-            articleId: selectedArticle.id,
-            name: selectedArticle.name,
+            articleId: selected.article.id,
+            name: selected.article.name,
             price: addForm.price,
             qty: addForm.qty,
-            imageUrl: selectedArticle.image,
-            supplierName: addForm.supplierName || addForm.supplierId || 'Sin proveedor',
-            supplierId: addForm.supplierId,
+            imageUrl: selected.article.image,
+            supplierName: selected.supplierName,
+            supplierId: selected.supplierId,
         };
         setDrafts(prev => [...prev, newDraft]);
-        setSelectedArticle(null);
-        setAddForm({ qty: 1, price: 0, supplierName: '', supplierId: '' });
+        setSelected(null);
+        setAddForm({ qty: 1, price: 0 });
     };
 
     const handleSave = async () => {
@@ -695,26 +727,32 @@ const EditStoreOrderModal: React.FC<{
                 <div className="p-5 bg-surface-container-low">
                     <h3 className="text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-3">Agregar artículo</h3>
 
-                    {selectedArticle ? (
+                    {selected ? (
                         <div className="bg-white border border-primary/20 rounded-xl p-4 space-y-3 shadow-sm">
                             <div className="flex items-center gap-3">
-                                {selectedArticle.image ? (
-                                    <img src={selectedArticle.image} alt={selectedArticle.name} className="w-12 h-12 rounded-xl object-cover shrink-0 shadow-sm" />
+                                {selected.article.image ? (
+                                    <img src={selected.article.image} alt={selected.article.name} className="w-12 h-12 rounded-xl object-cover shrink-0 shadow-sm" />
                                 ) : (
                                     <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center shrink-0 text-primary font-bold text-lg">
-                                        {selectedArticle.name.charAt(0)}
+                                        {selected.article.name.charAt(0)}
                                     </div>
                                 )}
                                 <div className="flex-1 min-w-0">
-                                    <p className="font-semibold text-on-background truncate">{selectedArticle.name}</p>
-                                    <p className="text-xs text-on-surface-variant">{fmt(selectedArticle.price)} precio base</p>
+                                    <p className="font-semibold text-on-background truncate">{selected.article.name}</p>
+                                    <div className="flex items-center gap-2 mt-0.5">
+                                        <span className="text-xs text-on-surface-variant">{fmt(selected.article.price)} precio base</span>
+                                        <span className="inline-flex items-center gap-1 text-xs font-semibold bg-primary/10 text-primary px-2 py-0.5 rounded-full">
+                                            <span className="material-symbols-outlined text-[12px] leading-none">storefront</span>
+                                            {selected.supplierName}
+                                        </span>
+                                    </div>
                                 </div>
-                                <button onClick={() => setSelectedArticle(null)} className="p-1.5 rounded-full text-on-surface-variant hover:text-error hover:bg-error-container/20 transition">
+                                <button onClick={() => setSelected(null)} className="p-1.5 rounded-full text-on-surface-variant hover:text-error hover:bg-error-container/20 transition">
                                     <XMarkIcon className="w-4 h-4" />
                                 </button>
                             </div>
 
-                            <div className="grid grid-cols-3 gap-2">
+                            <div className="grid grid-cols-2 gap-2">
                                 <div className="flex flex-col gap-1">
                                     <label className="text-xs font-semibold text-on-surface-variant">Cantidad</label>
                                     <Input type="number" min={1} value={addForm.qty} onChange={e => setAddForm(f => ({ ...f, qty: parseInt(e.target.value) || 1 }))} className="w-full" />
@@ -722,17 +760,6 @@ const EditStoreOrderModal: React.FC<{
                                 <div className="flex flex-col gap-1">
                                     <label className="text-xs font-semibold text-on-surface-variant">Precio c/u</label>
                                     <Input type="number" min={0} step="0.01" value={addForm.price} onChange={e => setAddForm(f => ({ ...f, price: parseFloat(e.target.value) || 0 }))} className="w-full" />
-                                </div>
-                                <div className="flex flex-col gap-1">
-                                    <label className="text-xs font-semibold text-on-surface-variant">Proveedor</label>
-                                    {selectedArticle.supplierIds.length > 1 ? (
-                                        <Select value={addForm.supplierId} onChange={e => setAddForm(f => ({ ...f, supplierId: e.target.value }))} className="w-full">
-                                            <option value="">Sin proveedor</option>
-                                            {selectedArticle.supplierIds.map(id => <option key={id} value={id}>{id}</option>)}
-                                        </Select>
-                                    ) : (
-                                        <Input value={addForm.supplierName} onChange={e => setAddForm(f => ({ ...f, supplierName: e.target.value }))} placeholder="Sin proveedor" className="w-full" />
-                                    )}
                                 </div>
                             </div>
 
@@ -745,7 +772,7 @@ const EditStoreOrderModal: React.FC<{
                             <div className="relative">
                                 <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-lg pointer-events-none">search</span>
                                 <Input
-                                    placeholder="Buscar artículo por nombre o SKU…"
+                                    placeholder="Buscar por nombre, SKU o proveedor…"
                                     value={searchQuery}
                                     onChange={e => { setSearchQuery(e.target.value); loadArticles(); }}
                                     onFocus={loadArticles}
@@ -757,30 +784,41 @@ const EditStoreOrderModal: React.FC<{
                                     <span className="material-symbols-outlined text-primary text-4xl animate-spin">progress_activity</span>
                                 </div>
                             )}
-                            {articlesLoaded && filteredArticles.length > 0 && (
-                                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-48 overflow-y-auto pr-1">
-                                    {filteredArticles.map(article => (
-                                        <button
-                                            key={article.id}
-                                            onClick={() => handleSelectArticle(article)}
-                                            className="flex items-center gap-2 p-2 rounded-xl border border-surface-variant bg-white hover:border-primary/40 hover:bg-primary/5 hover:shadow-sm transition-all text-left group"
-                                        >
-                                            {article.image ? (
-                                                <img src={article.image} alt={article.name} className="w-10 h-10 rounded-lg object-cover shrink-0" />
-                                            ) : (
-                                                <div className="w-10 h-10 rounded-lg bg-surface-container-high flex items-center justify-center shrink-0 text-on-surface-variant text-sm font-bold group-hover:bg-primary/10 group-hover:text-primary transition">
-                                                    {article.name.charAt(0)}
-                                                </div>
-                                            )}
-                                            <div className="min-w-0 flex-1">
-                                                <p className="text-xs font-semibold text-on-background truncate">{article.name}</p>
-                                                <p className="text-xs text-primary font-semibold">{fmt(article.price)}</p>
+                            {articlesLoaded && rowsBySupplier.length > 0 && (
+                                <div className="max-h-56 overflow-y-auto space-y-3 pr-1">
+                                    {rowsBySupplier.map(([suppKey, { supplierName, rows }]) => (
+                                        <div key={suppKey}>
+                                            <div className="flex items-center gap-2 mb-1.5">
+                                                <span className="material-symbols-outlined text-[14px] text-on-surface-variant leading-none">storefront</span>
+                                                <span className="text-[11px] font-bold uppercase tracking-wider text-on-surface-variant">{supplierName}</span>
+                                                <div className="flex-1 h-px bg-surface-variant" />
                                             </div>
-                                        </button>
+                                            <div className="grid grid-cols-1 gap-1">
+                                                {rows.map(r => (
+                                                    <button
+                                                        key={`${r.article.id}-${r.supplierId}`}
+                                                        onClick={() => handleSelectRow(r)}
+                                                        className="flex items-center gap-3 p-2 rounded-xl border border-surface-variant bg-white hover:border-primary/40 hover:bg-primary/5 hover:shadow-sm transition-all text-left group"
+                                                    >
+                                                        {r.article.image ? (
+                                                            <img src={r.article.image} alt={r.article.name} className="w-9 h-9 rounded-lg object-cover shrink-0" />
+                                                        ) : (
+                                                            <div className="w-9 h-9 rounded-lg bg-surface-container-high flex items-center justify-center shrink-0 text-on-surface-variant text-xs font-bold group-hover:bg-primary/10 group-hover:text-primary transition">
+                                                                {r.article.name.charAt(0)}
+                                                            </div>
+                                                        )}
+                                                        <div className="min-w-0 flex-1">
+                                                            <p className="text-xs font-semibold text-on-background truncate">{r.article.name}</p>
+                                                        </div>
+                                                        <span className="text-sm font-bold text-primary shrink-0">{fmt(r.article.price)}</span>
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
                                     ))}
                                 </div>
                             )}
-                            {articlesLoaded && searchQuery && filteredArticles.length === 0 && (
+                            {articlesLoaded && searchQuery && rowsBySupplier.length === 0 && (
                                 <div className="text-center py-6 text-on-surface-variant">
                                     <span className="material-symbols-outlined text-3xl mb-1 opacity-30">search_off</span>
                                     <p className="text-sm">Sin resultados para "{searchQuery}"</p>
