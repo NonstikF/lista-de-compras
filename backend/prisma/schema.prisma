@@ -201,6 +201,14 @@ model InventoryMovement {
   item            InventoryItem @relation(fields: [inventoryItemId], references: [id], onDelete: Cascade)
 }
 
+// ---------- Configuración de empresa ----------
+model CompanySettings {
+  id        Int      @id @default(1)
+  name      String   @default("")
+  logo      String?
+  updatedAt DateTime @updatedAt
+}
+
 // ---------- Tickets de proveedor ----------
 model SupplierTicket {
   id         String   @id @default(cuid())

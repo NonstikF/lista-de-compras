@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 
-export type AppView = 'login' | 'dashboard' | 'orders' | 'articles' | 'recipes' | 'store' | 'suppliers' | 'users' | 'inventory';
+export type AppView = 'login' | 'dashboard' | 'orders' | 'articles' | 'recipes' | 'store' | 'suppliers' | 'users' | 'inventory' | 'settings';
 
 export const navItems: { view: AppView; label: string; icon: string }[] = [
   { view: 'dashboard',  label: 'Panel',       icon: 'dashboard'        },
@@ -11,6 +11,7 @@ export const navItems: { view: AppView; label: string; icon: string }[] = [
   { view: 'suppliers',  label: 'Proveedores', icon: 'local_shipping'   },
   { view: 'users',      label: 'Usuarios',    icon: 'manage_accounts'  },
   { view: 'inventory',  label: 'Inventario',  icon: 'inventory'        },
+  { view: 'settings',   label: 'Configuración', icon: 'settings'       },
 ];
 
 const PRIMARY_NAV: AppView[] = ['dashboard', 'orders', 'articles', 'store'];

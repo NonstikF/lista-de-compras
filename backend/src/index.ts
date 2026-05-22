@@ -14,6 +14,7 @@ import recipesRouter from './routes/recipes';
 import storeRouter from './routes/store';
 import usersRouter from './routes/users';
 import inventoryRouter from './routes/inventory';
+import settingsRouter from './routes/settings';
 
 declare global {
     namespace Express {
@@ -58,6 +59,7 @@ app.use('/api/recipes', recipesRouter);
 app.use('/api/store-orders', storeRouter);
 app.use('/api/users', usersRouter);
 app.use('/api/inventory', inventoryRouter);
+app.use('/api/settings', settingsRouter);
 
 const port = process.env.PORT || 4000;
 app.listen(port, () => {

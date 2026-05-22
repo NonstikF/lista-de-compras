@@ -12,6 +12,7 @@ import StoreView from './components/views/StoreView';
 import SuppliersView from './components/views/SuppliersView';
 import UsersView from './components/views/UsersView';
 import InventoryView from './components/views/InventoryView';
+import SettingsView from './components/views/SettingsView';
 
 const App: React.FC = () => {
   const [authToken, setAuthToken] = useState<string | null>(() => {
@@ -84,6 +85,8 @@ const App: React.FC = () => {
         return <UsersView authToken={authToken!} onAuthError={handleAuthError} />;
       case 'inventory':
         return <InventoryView authToken={authToken!} onAuthError={handleAuthError} />;
+      case 'settings':
+        return <SettingsView authToken={authToken!} onAuthError={handleAuthError} />;
       default:
         return <Login onLoginSuccess={handleLoginSuccess} />;
     }

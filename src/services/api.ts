@@ -12,6 +12,7 @@ import type {
   OrderTicketUpload,
   InventoryItem,
   InventoryMovement,
+  CompanySettings,
 } from '../types';
 
 const BASE = import.meta.env.VITE_BACKEND_API_URL || 'http://localhost:4000';
@@ -337,6 +338,18 @@ export async function editStoreOrderItem(
 ): Promise<{ item: StoreOrderItem; order: { total: number } }> {
   return handleResponse(await fetch(`${BASE}/api/store-orders/${orderId}/items/${itemId}`, {
     method: 'PATCH', headers: authHeaders(token), body: JSON.stringify(data),
+  }));
+}
+
+// ---- Configuración de empresa ----
+
+export async function getSettings(token: string): Promise<CompanySettings> {
+  return handleResponse(await fetch(`${BASE}/api/settings`, { headers: authHeaders(token) }));
+}
+
+export async function updateSettings(token: string, data: { name?: string; logo?: string | null }): Promise<CompanySettings> {
+  return handleResponse(await fetch(`${BASE}/api/settings`, {
+    method: 'PUT', headers: authHeaders(token), body: JSON.stringify(data),
   }));
 }
 

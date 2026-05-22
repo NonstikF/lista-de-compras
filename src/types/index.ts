@@ -164,6 +164,14 @@ export interface InventoryMovement {
   createdAt: string;
 }
 
+// ---------- Configuración de empresa ----------
+export interface CompanySettings {
+  id: number;
+  name: string;
+  logo: string | null;
+  updatedAt: string;
+}
+
 // ---------- Recetas ----------
 export type RecipeType = 'alimento' | 'bebida' | 'otros';
 export type DrinkTemp = 'fria' | 'caliente';
