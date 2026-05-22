@@ -70,11 +70,25 @@ function productPrice(product: WooCommerceProduct): number {
     return Number.isFinite(price) && price >= 0 ? price : 0;
 }
 
-function mapWooProductToArticle(product: WooCommerceProduct) {
+async function downloadImageAsBase64(url: string): Promise<string | null> {
+    try {
+        const response = await axios.get<Buffer>(url, { responseType: 'arraybuffer', timeout: 15000 });
+        const contentType = (response.headers['content-type'] as string | undefined) || 'image/jpeg';
+        const mimeType = contentType.split(';')[0].trim();
+        const base64 = Buffer.from(response.data).toString('base64');
+        return `data:${mimeType};base64,${base64}`;
+    } catch {
+        return null;
+    }
+}
+
+async function mapWooProductToArticle(product: WooCommerceProduct) {
+    const srcUrl = product.images?.[0]?.src || null;
+    const image = srcUrl ? await downloadImageAsBase64(srcUrl) : null;
     return {
         wooProductId: product.id,
         name: product.name.trim(),
-        image: product.images?.[0]?.src || null,
+        image,
         price: productPrice(product),
         sku: product.sku || '',
         category: product.categories?.[0]?.name || '',
@@ -194,7 +208,7 @@ router.post('/import-woocommerce', async (_req: Request, res: Response) => {
         };
 
         for (const product of products) {
-            const data = mapWooProductToArticle(product);
+            const data = await mapWooProductToArticle(product);
             if (!data.name) { skipped += 1; continue; }
 
             const supplierId = await getOrCreateSupplierByCategory(data.category);
