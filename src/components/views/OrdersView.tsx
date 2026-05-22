@@ -711,15 +711,9 @@ const EditStoreOrderModal: React.FC<{
                                                 <p className="text-sm font-semibold text-on-background">{name}</p>
                                                 {isMultiSupplier && <span className="text-[10px] text-on-surface-variant">· todos los proveedores</span>}
                                             </div>
-                                            <div className="grid grid-cols-2 gap-2">
-                                                <div className="flex flex-col gap-1">
-                                                    <label className="text-xs font-semibold text-on-surface-variant">Cantidad</label>
-                                                    <Input type="number" min={1} value={editForm.qty} onChange={e => setEditForm(f => ({ ...f, qty: parseInt(e.target.value) || 1 }))} className="w-full" />
-                                                </div>
-                                                <div className="flex flex-col gap-1">
-                                                    <label className="text-xs font-semibold text-on-surface-variant">Precio c/u</label>
-                                                    <Input type="number" min={0} step="0.01" value={editForm.price} onChange={e => setEditForm(f => ({ ...f, price: parseFloat(e.target.value) || 0 }))} className="w-full" />
-                                                </div>
+                                            <div className="flex flex-col gap-1 max-w-[160px]">
+                                                <label className="text-xs font-semibold text-on-surface-variant">Cantidad</label>
+                                                <Input type="number" min={1} value={editForm.qty} onChange={e => setEditForm(f => ({ ...f, qty: parseInt(e.target.value) || 1 }))} className="w-full" />
                                             </div>
                                             <div className="flex gap-2">
                                                 <Button size="sm" icon="check" onClick={confirmEdit}>Confirmar</Button>
@@ -802,15 +796,9 @@ const EditStoreOrderModal: React.FC<{
                                 </button>
                             </div>
 
-                            <div className="grid grid-cols-2 gap-2">
-                                <div className="flex flex-col gap-1">
-                                    <label className="text-xs font-semibold text-on-surface-variant">Cantidad</label>
-                                    <Input type="number" min={1} value={addForm.qty} onChange={e => setAddForm(f => ({ ...f, qty: parseInt(e.target.value) || 1 }))} className="w-full" />
-                                </div>
-                                <div className="flex flex-col gap-1">
-                                    <label className="text-xs font-semibold text-on-surface-variant">Precio c/u</label>
-                                    <Input type="number" min={0} step="0.01" value={addForm.price} onChange={e => setAddForm(f => ({ ...f, price: parseFloat(e.target.value) || 0 }))} className="w-full" />
-                                </div>
+                            <div className="flex flex-col gap-1 max-w-[160px]">
+                                <label className="text-xs font-semibold text-on-surface-variant">Cantidad</label>
+                                <Input type="number" min={1} value={addForm.qty} onChange={e => setAddForm(f => ({ ...f, qty: parseInt(e.target.value) || 1 }))} className="w-full" />
                             </div>
 
                             <Button icon="add_shopping_cart" onClick={handleAddToDraft} className="w-full">
