@@ -447,6 +447,18 @@ const EditStoreOrderModal: React.FC<{
     const previewTotal = draftTotal(drafts);
     const hasChanges = drafts.some(d => d.kind === 'new' || (d.kind === 'existing' && (d.deleted || d.edited)));
 
+    // Group visible drafts by articleId — multi-supplier items show as one row
+    const draftGroups = useMemo(() => {
+        const map = new Map<string, DraftItem[]>();
+        for (const d of visibleDrafts) {
+            const articleId = d.kind === 'existing' ? d.item.articleId : d.articleId;
+            if (!map.has(articleId)) map.set(articleId, []);
+            map.get(articleId)!.push(d);
+        }
+        // Preserve insertion order; representative = first item in group
+        return [...map.entries()].map(([articleId, items]) => ({ articleId, items, rep: items[0] }));
+    }, [visibleDrafts]);
+
     // Expand each article×supplier into its own row — mirrors StoreView logic
     const articleSupplierRows = useMemo(() => {
         const rows: { article: Article; supplierId: string; supplierName: string }[] = [];
@@ -499,28 +511,37 @@ const EditStoreOrderModal: React.FC<{
         }
     };
 
-    const startEdit = (d: DraftItem) => {
-        if (d.kind === 'existing') {
-            setEditingId(d.item.id);
-            setEditForm({ qty: d.edited?.qty ?? d.item.qty, price: d.edited?.price ?? d.item.price, supplierName: d.edited?.supplierName ?? d.item.supplierName });
-        } else {
-            setEditingId(d.tempId);
-            setEditForm({ qty: d.qty, price: d.price, supplierName: d.supplierName });
-        }
+    // editingId stores articleId of the group being edited
+    const startEdit = (group: { articleId: string; items: DraftItem[] }) => {
+        const rep = group.items[0];
+        setEditingId(group.articleId);
+        setEditForm({
+            qty: rep.kind === 'existing' ? (rep.edited?.qty ?? rep.item.qty) : rep.qty,
+            price: rep.kind === 'existing' ? (rep.edited?.price ?? rep.item.price) : rep.price,
+            supplierName: rep.kind === 'existing' ? (rep.edited?.supplierName ?? rep.item.supplierName) : rep.supplierName,
+        });
     };
 
     const confirmEdit = () => {
         setDrafts(prev => prev.map(d => {
-            if (d.kind === 'existing' && d.item.id === editingId) return { ...d, edited: { ...editForm } };
-            if (d.kind === 'new' && d.tempId === editingId) return { ...d, qty: editForm.qty, price: editForm.price, supplierName: editForm.supplierName };
-            return d;
+            const articleId = d.kind === 'existing' ? d.item.articleId : d.articleId;
+            if (articleId !== editingId) return d;
+            if (d.kind === 'existing') return { ...d, edited: { qty: editForm.qty, price: editForm.price, supplierName: d.edited?.supplierName ?? d.item.supplierName } };
+            return { ...d, qty: editForm.qty, price: editForm.price };
         }));
         setEditingId(null);
     };
 
-    const markDelete = (d: DraftItem) => {
-        if (d.kind === 'existing') setDrafts(prev => prev.map(x => x.kind === 'existing' && x.item.id === d.item.id ? { ...x, deleted: true } : x));
-        else setDrafts(prev => prev.filter(x => !(x.kind === 'new' && x.tempId === d.tempId)));
+    const markDelete = (group: { articleId: string; items: DraftItem[] }) => {
+        setDrafts(prev => prev
+            .map(d => {
+                const articleId = d.kind === 'existing' ? d.item.articleId : d.articleId;
+                if (articleId !== group.articleId) return d;
+                if (d.kind === 'existing') return { ...d, deleted: true as const };
+                return null;
+            })
+            .filter((d): d is DraftItem => d !== null)
+        );
     };
 
     const handleSelectRow = (row: { article: Article; supplierId: string; supplierName: string }) => {
@@ -663,30 +684,34 @@ const EditStoreOrderModal: React.FC<{
                     </div>
 
                     <div className="rounded-xl border border-surface-variant overflow-hidden divide-y divide-surface-variant">
-                        {visibleDrafts.length === 0 && (
+                        {draftGroups.length === 0 && (
                             <div className="flex flex-col items-center py-8 text-on-surface-variant">
                                 <span className="material-symbols-outlined text-4xl mb-2 opacity-30">shopping_bag</span>
                                 <p className="text-sm">Sin artículos</p>
                             </div>
                         )}
-                        {visibleDrafts.map(d => {
-                            const key = getDraftKey(d);
-                            const isEditing = editingId === (d.kind === 'existing' ? d.item.id : (d as { tempId: string }).tempId);
-                            const img = getDraftImage(d);
-                            const name = getDraftName(d);
-                            const qty = getDraftQty(d);
-                            const price = getDraftPrice(d);
-                            const supplier = getDraftSupplier(d);
+                        {draftGroups.map(group => {
+                            const { articleId, items, rep } = group;
+                            const isEditing = editingId === articleId;
+                            const img = getDraftImage(rep);
+                            const name = getDraftName(rep);
+                            const qty = getDraftQty(rep);
+                            const price = getDraftPrice(rep);
+                            const isMultiSupplier = items.length > 1;
+                            const supplierNames = items.map(d => getDraftSupplier(d)).filter(s => s && s !== 'Sin proveedor');
+                            const hasNew = items.some(d => isNew(d));
+                            const hasEdited = items.some(d => isEdited(d));
 
                             return (
-                                <div key={key} className={`transition-colors ${isNew(d) ? 'bg-primary/5' : isEdited(d) ? 'bg-amber-50/60' : 'bg-white'}`}>
+                                <div key={articleId} className={`transition-colors ${hasNew ? 'bg-primary/5' : hasEdited ? 'bg-amber-50/60' : 'bg-white'}`}>
                                     {isEditing ? (
                                         <div className="p-3 space-y-3">
                                             <div className="flex items-center gap-2">
                                                 {img ? <img src={img} alt={name} className="w-8 h-8 rounded-lg object-cover shrink-0" /> : <div className="w-8 h-8 rounded-lg bg-surface-container-high flex items-center justify-center text-xs font-bold text-on-surface-variant">{name.charAt(0)}</div>}
                                                 <p className="text-sm font-semibold text-on-background">{name}</p>
+                                                {isMultiSupplier && <span className="text-[10px] text-on-surface-variant">· todos los proveedores</span>}
                                             </div>
-                                            <div className="grid grid-cols-3 gap-2">
+                                            <div className="grid grid-cols-2 gap-2">
                                                 <div className="flex flex-col gap-1">
                                                     <label className="text-xs font-semibold text-on-surface-variant">Cantidad</label>
                                                     <Input type="number" min={1} value={editForm.qty} onChange={e => setEditForm(f => ({ ...f, qty: parseInt(e.target.value) || 1 }))} className="w-full" />
@@ -694,10 +719,6 @@ const EditStoreOrderModal: React.FC<{
                                                 <div className="flex flex-col gap-1">
                                                     <label className="text-xs font-semibold text-on-surface-variant">Precio c/u</label>
                                                     <Input type="number" min={0} step="0.01" value={editForm.price} onChange={e => setEditForm(f => ({ ...f, price: parseFloat(e.target.value) || 0 }))} className="w-full" />
-                                                </div>
-                                                <div className="flex flex-col gap-1">
-                                                    <label className="text-xs font-semibold text-on-surface-variant">Proveedor</label>
-                                                    <Input value={editForm.supplierName} onChange={e => setEditForm(f => ({ ...f, supplierName: e.target.value }))} placeholder="Sin proveedor" className="w-full" />
                                                 </div>
                                             </div>
                                             <div className="flex gap-2">
@@ -717,18 +738,18 @@ const EditStoreOrderModal: React.FC<{
                                             <div className="flex-1 min-w-0">
                                                 <div className="flex items-center gap-2 flex-wrap">
                                                     <p className="text-sm font-semibold text-on-background truncate">{name}</p>
-                                                    {isNew(d) && <span className="text-[10px] font-bold uppercase bg-primary/15 text-primary px-1.5 py-0.5 rounded-full">Nuevo</span>}
-                                                    {isEdited(d) && <span className="text-[10px] font-bold uppercase bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full">Editado</span>}
+                                                    {hasNew && <span className="text-[10px] font-bold uppercase bg-primary/15 text-primary px-1.5 py-0.5 rounded-full">Nuevo</span>}
+                                                    {hasEdited && <span className="text-[10px] font-bold uppercase bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full">Editado</span>}
                                                 </div>
                                                 <p className="text-xs text-on-surface-variant mt-0.5">
                                                     <span className="font-semibold text-on-surface">{qty}×</span> {fmt(price)} c/u
-                                                    {supplier && supplier !== 'Sin proveedor' && <span className="ml-1">· {supplier}</span>}
+                                                    {supplierNames.length > 0 && <span className="ml-1">· {supplierNames.join(', ')}</span>}
                                                 </p>
                                             </div>
                                             <div className="flex items-center gap-0.5 shrink-0">
                                                 <span className="text-sm font-bold text-on-background mr-2">{fmt(qty * price)}</span>
                                                 <button
-                                                    onClick={() => startEdit(d)}
+                                                    onClick={() => startEdit(group)}
                                                     disabled={editingId !== null}
                                                     className="p-1.5 rounded-lg text-on-surface-variant hover:text-primary hover:bg-primary/10 transition disabled:opacity-30"
                                                     title="Editar"
@@ -736,7 +757,7 @@ const EditStoreOrderModal: React.FC<{
                                                     <span className="material-symbols-outlined text-[18px] leading-none">edit</span>
                                                 </button>
                                                 <button
-                                                    onClick={() => markDelete(d)}
+                                                    onClick={() => markDelete(group)}
                                                     disabled={editingId !== null}
                                                     className="p-1.5 rounded-lg text-on-surface-variant hover:text-error hover:bg-error-container/30 transition disabled:opacity-30"
                                                     title="Eliminar"
