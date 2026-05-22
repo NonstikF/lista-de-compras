@@ -82,9 +82,7 @@ async function downloadImageAsBase64(url: string): Promise<string | null> {
     }
 }
 
-async function mapWooProductToArticle(product: WooCommerceProduct) {
-    const srcUrl = product.images?.[0]?.src || null;
-    const image = srcUrl ? await downloadImageAsBase64(srcUrl) : null;
+function mapWooProductToArticle(product: WooCommerceProduct, image: string | null) {
     return {
         wooProductId: product.id,
         name: product.name.trim(),
@@ -95,6 +93,18 @@ async function mapWooProductToArticle(product: WooCommerceProduct) {
         description: stripHtml(product.short_description || product.description),
         stockStatus: product.stock_status || '',
     };
+}
+
+async function downloadImagesInBatches(products: WooCommerceProduct[], batchSize = 10): Promise<Map<number, string | null>> {
+    const result = new Map<number, string | null>();
+    for (let i = 0; i < products.length; i += batchSize) {
+        const batch = products.slice(i, i + batchSize);
+        await Promise.all(batch.map(async (p) => {
+            const src = p.images?.[0]?.src || null;
+            result.set(p.id, src ? await downloadImageAsBase64(src) : null);
+        }));
+    }
+    return result;
 }
 
 async function fetchWooProducts(): Promise<WooCommerceProduct[]> {
@@ -188,9 +198,9 @@ router.delete('/:id', async (req: Request, res: Response) => {
 router.post('/import-woocommerce', async (_req: Request, res: Response) => {
     try {
         const products = await fetchWooProducts();
+        const imageMap = await downloadImagesInBatches(products);
         let created = 0, updated = 0, skipped = 0;
 
-        // Cache supplier IDs by category name to avoid repeated lookups/creates
         const supplierCache = new Map<string, string>();
         const getOrCreateSupplierByCategory = async (categoryName: string): Promise<string | null> => {
             const name = categoryName.trim();
@@ -208,7 +218,7 @@ router.post('/import-woocommerce', async (_req: Request, res: Response) => {
         };
 
         for (const product of products) {
-            const data = await mapWooProductToArticle(product);
+            const data = mapWooProductToArticle(product, imageMap.get(product.id) ?? null);
             if (!data.name) { skipped += 1; continue; }
 
             const supplierId = await getOrCreateSupplierByCategory(data.category);
