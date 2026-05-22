@@ -46,8 +46,8 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
         <div className="bg-surface-container-lowest rounded-xl shadow-lg border border-outline-variant/30 overflow-hidden">
           {/* Header */}
           <div className="p-8 pb-6 flex flex-col items-center text-center border-b border-surface-variant/50 bg-gradient-to-b from-surface-muted to-surface-container-lowest">
-            <div className="w-16 h-16 bg-primary-container flex items-center justify-center rounded-full mb-4 shadow-sm">
-              <span className="material-symbols-outlined text-3xl text-on-primary-container" style={{ fontVariationSettings: "'FILL' 1" }}>eco</span>
+            <div className="w-16 h-16 bg-primary-container flex items-center justify-center rounded-full mb-4 shadow-sm overflow-hidden">
+              <img src="/icon.png" alt="PlantArte" className="w-12 h-12 object-contain" />
             </div>
             <h1 className="font-epilogue text-4xl font-bold text-primary tracking-tight">PlantArte</h1>
             <p className="text-on-surface-variant mt-2 text-sm">Acceso al sistema de gestión</p>

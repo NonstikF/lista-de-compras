@@ -45,10 +45,10 @@ const Sidebar: React.FC<SidebarProps> = ({ onLogout, setView, currentView }) => 
         <div className={`flex items-center h-16 px-3 border-b border-surface-variant gap-2 ${collapsed ? 'justify-center' : ''}`}>
           <button
             onClick={() => setView('dashboard')}
-            className="w-9 h-9 rounded-lg bg-primary text-on-primary flex items-center justify-center shrink-0"
+            className="w-9 h-9 rounded-lg bg-primary flex items-center justify-center shrink-0 overflow-hidden"
             aria-label="Ir al panel"
           >
-            <span className="material-symbols-outlined text-lg" style={{ fontVariationSettings: "'FILL' 1" }}>eco</span>
+            <img src="/icon.png" alt="PlantArte" className="w-7 h-7 object-contain" />
           </button>
           {!collapsed && (
             <span
