@@ -2,6 +2,17 @@ const { PrismaClient } = require('@prisma/client');
 const bcrypt = require('bcrypt');
 
 const prisma = new PrismaClient();
+const DEFAULT_PERMISSIONS = {
+    dashboard: true,
+    orders: true,
+    recipes: true,
+    articles: true,
+    store: true,
+    suppliers: true,
+    users: true,
+    inventory: true,
+    settings: true,
+};
 
 async function main() {
     const existing = await prisma.user.findUnique({ where: { username: 'admin' } });
@@ -15,6 +26,7 @@ async function main() {
             username: 'admin',
             nombre: 'Administrador',
             passwordHash,
+            permissions: DEFAULT_PERMISSIONS,
             activo: true,
         },
     });

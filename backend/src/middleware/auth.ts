@@ -1,7 +1,9 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
+import { prisma } from '../lib/prisma';
+import { normalizePermissions } from '../permissions';
 
-export function authenticateToken(req: Request, res: Response, next: NextFunction): void {
+export async function authenticateToken(req: Request, res: Response, next: NextFunction): Promise<void> {
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1];
 
@@ -19,9 +21,22 @@ export function authenticateToken(req: Request, res: Response, next: NextFunctio
 
     try {
         const payload = jwt.verify(token, jwtSecret) as { userId: string; username: string };
-        req.user = { userId: payload.userId, username: payload.username };
+        const user = await prisma.user.findUnique({
+            where: { id: payload.userId },
+            select: { id: true, username: true, nombre: true, activo: true, permissions: true },
+        });
+        if (!user || !user.activo) {
+            res.status(401).json({ error: 'Token invalido o expirado' });
+            return;
+        }
+        req.user = {
+            userId: user.id,
+            username: user.username,
+            nombre: user.nombre,
+            permissions: normalizePermissions(user.permissions),
+        };
         next();
     } catch {
-        res.status(403).json({ error: 'Token invalido o expirado' });
+        res.status(401).json({ error: 'Token invalido o expirado' });
     }
 }

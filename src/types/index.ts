@@ -29,7 +29,7 @@ export interface Order {
 
 export interface LoginResponse {
   token: string;
-  user: string;
+  user: AuthUser;
 }
 
 export interface AuthError {
@@ -37,11 +37,22 @@ export interface AuthError {
 }
 
 // ---------- Usuarios ----------
+export type PermissionKey = 'dashboard' | 'orders' | 'recipes' | 'articles' | 'store' | 'suppliers' | 'users' | 'inventory' | 'settings';
+export type UserPermissions = Record<PermissionKey, boolean>;
+
+export interface AuthUser {
+  id: string;
+  username: string;
+  nombre: string;
+  permissions: UserPermissions;
+}
+
 export interface User {
   id: string;
   username: string;
   nombre: string;
   activo: boolean;
+  permissions: UserPermissions;
   createdAt: string;
 }
 

@@ -4,6 +4,7 @@ import * as bcrypt from 'bcrypt';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma';
 import { loginLimiter } from '../middleware/rateLimiter';
+import { normalizePermissions } from '../permissions';
 
 const router = Router();
 
@@ -40,8 +41,12 @@ router.post('/login', loginLimiter, async (req: Request, res: Response) => {
         return;
     }
 
+    const permissions = normalizePermissions(user.permissions);
     const token = jwt.sign({ userId: user.id, username: user.username }, jwtSecret, { expiresIn: '24h' });
-    res.json({ token, user: user.username });
+    res.json({
+        token,
+        user: { id: user.id, username: user.username, nombre: user.nombre, permissions },
+    });
 });
 
 export default router;

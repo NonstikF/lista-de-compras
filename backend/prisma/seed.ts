@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
+import { DEFAULT_PERMISSIONS } from '../src/permissions';
 
 const prisma = new PrismaClient();
 
@@ -16,6 +17,7 @@ async function main() {
             username: 'admin',
             nombre: 'Administrador',
             passwordHash,
+            permissions: DEFAULT_PERMISSIONS,
             activo: true,
         },
     });

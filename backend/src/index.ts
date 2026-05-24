@@ -4,6 +4,7 @@ import helmet from 'helmet';
 
 import { generalLimiter } from './middleware/rateLimiter';
 import { authenticateToken } from './middleware/auth';
+import { requirePermission, type UserPermissions } from './permissions';
 
 import authRouter from './routes/auth';
 import ordersRouter from './routes/orders';
@@ -19,7 +20,7 @@ import settingsRouter from './routes/settings';
 declare global {
     namespace Express {
         interface Request {
-            user?: { userId: string; username: string };
+            user?: { userId: string; username: string; nombre: string; permissions: UserPermissions };
         }
     }
 }
@@ -51,15 +52,23 @@ app.use('/api', authRouter);
 
 // Protected routes
 app.use('/api', authenticateToken);
-app.use('/api/item-status', itemStatusRouter);
-app.use('/api/orders', ordersRouter);
-app.use('/api/suppliers', suppliersRouter);
-app.use('/api/articles', articlesRouter);
-app.use('/api/recipes', recipesRouter);
-app.use('/api/store-orders', storeRouter);
-app.use('/api/users', usersRouter);
-app.use('/api/inventory', inventoryRouter);
-app.use('/api/settings', settingsRouter);
+app.get('/api/me', (req: Request, res: Response) => {
+    res.json({
+        id: req.user!.userId,
+        username: req.user!.username,
+        nombre: req.user!.nombre,
+        permissions: req.user!.permissions,
+    });
+});
+app.use('/api/item-status', requirePermission('orders'), itemStatusRouter);
+app.use('/api/orders', requirePermission('orders'), ordersRouter);
+app.use('/api/suppliers', requirePermission('suppliers'), suppliersRouter);
+app.use('/api/articles', requirePermission('articles'), articlesRouter);
+app.use('/api/recipes', requirePermission('recipes'), recipesRouter);
+app.use('/api/store-orders', requirePermission('store'), storeRouter);
+app.use('/api/users', requirePermission('users'), usersRouter);
+app.use('/api/inventory', requirePermission('inventory'), inventoryRouter);
+app.use('/api/settings', requirePermission('settings'), settingsRouter);
 
 const port = process.env.PORT || 4000;
 app.listen(port, () => {

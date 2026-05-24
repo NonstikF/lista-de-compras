@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import type { User } from '../../types';
+import type { User, UserPermissions, PermissionKey } from '../../types';
 import { AuthError, getUsers, createUser, updateUser, deleteUser } from '../../services/api';
 import { Modal, Button, Field, Input, MIcon, useToast } from '../ui';
+import { defaultPermissions, permissionKeys, permissionLabels, normalizePermissions } from '../../auth/permissions';
 
 interface UsersViewProps {
     authToken: string;
@@ -13,20 +14,56 @@ interface UserForm {
     nombre: string;
     password: string;
     confirmPassword: string;
+    permissions: UserPermissions;
 }
 
 interface EditForm {
     nombre: string;
     password: string;
     confirmPassword: string;
+    permissions: UserPermissions;
 }
+
+const PermissionGrid: React.FC<{
+    permissions: UserPermissions;
+    onChange: (permissions: UserPermissions) => void;
+}> = ({ permissions, onChange }) => {
+    const toggle = (key: PermissionKey) => {
+        onChange({ ...permissions, [key]: !permissions[key] });
+    };
+
+    return (
+        <div className="grid grid-cols-2 gap-2">
+            {permissionKeys.map(key => (
+                <label
+                    key={key}
+                    className="flex items-center gap-2 rounded-lg border border-surface-variant px-3 py-2 text-sm text-on-surface cursor-pointer hover:bg-surface-container-low"
+                >
+                    <input
+                        type="checkbox"
+                        checked={permissions[key]}
+                        onChange={() => toggle(key)}
+                        className="h-4 w-4 accent-primary"
+                    />
+                    {permissionLabels[key]}
+                </label>
+            ))}
+        </div>
+    );
+};
 
 // ---------- Modal nuevo usuario ----------
 const NewUserModal: React.FC<{
     onClose: () => void;
-    onSave: (data: { username: string; nombre: string; password: string }) => Promise<void>;
+    onSave: (data: { username: string; nombre: string; password: string; permissions: UserPermissions }) => Promise<void>;
 }> = ({ onClose, onSave }) => {
-    const [form, setForm] = useState<UserForm>({ username: '', nombre: '', password: '', confirmPassword: '' });
+    const [form, setForm] = useState<UserForm>({
+        username: '',
+        nombre: '',
+        password: '',
+        confirmPassword: '',
+        permissions: defaultPermissions,
+    });
     const [errors, setErrors] = useState<Partial<UserForm>>({});
     const [saving, setSaving] = useState(false);
 
@@ -50,7 +87,12 @@ const NewUserModal: React.FC<{
         if (!validate()) return;
         setSaving(true);
         try {
-            await onSave({ username: form.username.trim(), nombre: form.nombre.trim(), password: form.password });
+            await onSave({
+                username: form.username.trim(),
+                nombre: form.nombre.trim(),
+                password: form.password,
+                permissions: form.permissions,
+            });
         } finally {
             setSaving(false);
         }
@@ -84,6 +126,12 @@ const NewUserModal: React.FC<{
                 <Field label="Confirmar contraseña" error={errors.confirmPassword}>
                     <Input value={form.confirmPassword} onChange={e => update('confirmPassword', e.target.value)} type="password" placeholder="Repetir contraseña" />
                 </Field>
+                <Field label="Permisos">
+                    <PermissionGrid
+                        permissions={form.permissions}
+                        onChange={permissions => setForm(f => ({ ...f, permissions }))}
+                    />
+                </Field>
             </form>
         </Modal>
     );
@@ -93,9 +141,14 @@ const NewUserModal: React.FC<{
 const EditUserModal: React.FC<{
     user: User;
     onClose: () => void;
-    onSave: (data: { nombre?: string; password?: string }) => Promise<void>;
+    onSave: (data: { nombre?: string; password?: string; permissions?: UserPermissions }) => Promise<void>;
 }> = ({ user, onClose, onSave }) => {
-    const [form, setForm] = useState<EditForm>({ nombre: user.nombre, password: '', confirmPassword: '' });
+    const [form, setForm] = useState<EditForm>({
+        nombre: user.nombre,
+        password: '',
+        confirmPassword: '',
+        permissions: normalizePermissions(user.permissions),
+    });
     const [errors, setErrors] = useState<Partial<EditForm>>({});
     const [saving, setSaving] = useState(false);
 
@@ -117,7 +170,10 @@ const EditUserModal: React.FC<{
         e.preventDefault();
         if (!validate()) return;
         setSaving(true);
-        const data: { nombre?: string; password?: string } = { nombre: form.nombre.trim() };
+        const data: { nombre?: string; password?: string; permissions?: UserPermissions } = {
+            nombre: form.nombre.trim(),
+            permissions: form.permissions,
+        };
         if (form.password) data.password = form.password;
         try {
             await onSave(data);
@@ -153,6 +209,12 @@ const EditUserModal: React.FC<{
                         <Input value={form.confirmPassword} onChange={e => update('confirmPassword', e.target.value)} type="password" placeholder="Repetir contraseña" />
                     </Field>
                 )}
+                <Field label="Permisos">
+                    <PermissionGrid
+                        permissions={form.permissions}
+                        onChange={permissions => setForm(f => ({ ...f, permissions }))}
+                    />
+                </Field>
             </form>
         </Modal>
     );
@@ -181,7 +243,7 @@ const UsersView: React.FC<UsersViewProps> = ({ authToken, onAuthError }) => {
 
     useEffect(() => { load(); }, []);
 
-    const handleCreate = async (data: { username: string; nombre: string; password: string }) => {
+    const handleCreate = async (data: { username: string; nombre: string; password: string; permissions: UserPermissions }) => {
         try {
             const user = await createUser(authToken, data);
             setUsers(u => [...u, user]);
@@ -194,7 +256,7 @@ const UsersView: React.FC<UsersViewProps> = ({ authToken, onAuthError }) => {
         }
     };
 
-    const handleEdit = async (data: { nombre?: string; password?: string }) => {
+    const handleEdit = async (data: { nombre?: string; password?: string; permissions?: UserPermissions }) => {
         if (!editingUser) return;
         try {
             const updated = await updateUser(authToken, editingUser.id, data);
@@ -279,6 +341,13 @@ const UsersView: React.FC<UsersViewProps> = ({ authToken, onAuthError }) => {
                                     )}
                                 </div>
                                 <span className="text-sm text-on-surface-variant">@{user.username}</span>
+                                <div className="mt-1 flex flex-wrap gap-1">
+                                    {permissionKeys.filter(key => user.permissions[key]).map(key => (
+                                        <span key={key} className="text-[10px] px-1.5 py-0.5 rounded bg-surface-container text-on-surface-variant">
+                                            {permissionLabels[key]}
+                                        </span>
+                                    ))}
+                                </div>
                             </div>
                             <div className="flex items-center gap-1 shrink-0">
                                 <button

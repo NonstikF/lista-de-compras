@@ -13,6 +13,7 @@ import type {
   InventoryItem,
   InventoryMovement,
   CompanySettings,
+  UserPermissions,
 } from '../types';
 
 const BASE = import.meta.env.VITE_BACKEND_API_URL || 'http://localhost:4000';
@@ -34,7 +35,7 @@ function authHeaders(token: string): Record<string, string> {
 }
 
 async function handleResponse<T>(res: Response): Promise<T> {
-  if (res.status === 401 || res.status === 403) throw new AuthError('Sesion expirada. Inicia sesion de nuevo.');
+  if (res.status === 401) throw new AuthError('Sesion expirada. Inicia sesion de nuevo.');
   if (!res.ok) {
     const data = await res.json().catch(() => ({ error: `Error ${res.status}` }));
     throw new Error(data.error || `Error ${res.status}`);
@@ -74,13 +75,13 @@ export async function getUsers(token: string): Promise<User[]> {
   return handleResponse(await fetch(`${BASE}/api/users`, { headers: authHeaders(token) }));
 }
 
-export async function createUser(token: string, data: { username: string; nombre: string; password: string }): Promise<User> {
+export async function createUser(token: string, data: { username: string; nombre: string; password: string; permissions: UserPermissions }): Promise<User> {
   return handleResponse(await fetch(`${BASE}/api/users`, {
     method: 'POST', headers: authHeaders(token), body: JSON.stringify(data),
   }));
 }
 
-export async function updateUser(token: string, id: string, data: { nombre?: string; password?: string; activo?: boolean }): Promise<User> {
+export async function updateUser(token: string, id: string, data: { nombre?: string; password?: string; activo?: boolean; permissions?: UserPermissions }): Promise<User> {
   return handleResponse(await fetch(`${BASE}/api/users/${id}`, {
     method: 'PUT', headers: authHeaders(token), body: JSON.stringify(data),
   }));
@@ -88,7 +89,7 @@ export async function updateUser(token: string, id: string, data: { nombre?: str
 
 export async function deleteUser(token: string, id: string): Promise<void> {
   const res = await fetch(`${BASE}/api/users/${id}`, { method: 'DELETE', headers: authHeaders(token) });
-  if (res.status === 401 || res.status === 403) throw new AuthError('Sesion expirada. Inicia sesion de nuevo.');
+  if (res.status === 401) throw new AuthError('Sesion expirada. Inicia sesion de nuevo.');
   if (!res.ok) {
     const data = await res.json().catch(() => ({ error: `Error ${res.status}` }));
     throw new Error(data.error || `Error ${res.status}`);

@@ -1,4 +1,5 @@
 import React from 'react';
+import type { PermissionKey, UserPermissions } from '../../types';
 
 interface DashboardProps {
     onNavigateToOrders: () => void;
@@ -8,11 +9,13 @@ interface DashboardProps {
     onNavigateToSuppliers: () => void;
     onNavigateToUsers: () => void;
     onNavigateToInventory: () => void;
+    permissions: UserPermissions;
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ onNavigateToOrders, onNavigateToRecipes, onNavigateToArticles, onNavigateToStore, onNavigateToSuppliers, onNavigateToUsers, onNavigateToInventory }) => {
+const Dashboard: React.FC<DashboardProps> = ({ onNavigateToOrders, onNavigateToRecipes, onNavigateToArticles, onNavigateToStore, onNavigateToSuppliers, onNavigateToUsers, onNavigateToInventory, permissions }) => {
     const cards = [
         {
+            permission: 'orders' as PermissionKey,
             onClick: onNavigateToOrders,
             label: 'Pedidos',
             desc: 'Surte el inventario',
@@ -21,6 +24,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigateToOrders, onNavigateToR
             badge: null as string | null,
         },
         {
+            permission: 'recipes' as PermissionKey,
             onClick: onNavigateToRecipes,
             label: 'Recetas',
             desc: 'Recetas de bebidas',
@@ -29,6 +33,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigateToOrders, onNavigateToR
             badge: null,
         },
         {
+            permission: 'articles' as PermissionKey,
             onClick: onNavigateToArticles,
             label: 'Artículos',
             desc: 'Catálogo de la tienda',
@@ -37,6 +42,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigateToOrders, onNavigateToR
             badge: null,
         },
         {
+            permission: 'store' as PermissionKey,
             onClick: onNavigateToStore,
             label: 'Tienda',
             desc: 'Crear pedido manual',
@@ -45,6 +51,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigateToOrders, onNavigateToR
             badge: null,
         },
         {
+            permission: 'suppliers' as PermissionKey,
             onClick: onNavigateToSuppliers,
             label: 'Proveedores',
             desc: 'Gestionar proveedores',
@@ -53,6 +60,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigateToOrders, onNavigateToR
             badge: null,
         },
         {
+            permission: 'users' as PermissionKey,
             onClick: onNavigateToUsers,
             label: 'Usuarios',
             desc: 'Gestionar acceso',
@@ -61,6 +69,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigateToOrders, onNavigateToR
             badge: null,
         },
         {
+            permission: 'inventory' as PermissionKey,
             onClick: onNavigateToInventory,
             label: 'Inventario',
             desc: 'Control de insumos',
@@ -78,7 +87,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigateToOrders, onNavigateToR
             </section>
 
             <section className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
-                {cards.map(card => (
+                {cards.filter(card => permissions[card.permission]).map(card => (
                     <button
                         key={card.label}
                         onClick={card.onClick}

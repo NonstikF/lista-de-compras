@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
+import type { AuthUser } from '../../types';
+import { normalizePermissions } from '../../auth/permissions';
 
 const BACKEND_API_URL = import.meta.env.VITE_BACKEND_API_URL || 'http://localhost:4000';
 
 interface LoginProps {
-  onLoginSuccess: (token: string) => void;
+  onLoginSuccess: (token: string, user: AuthUser) => void;
 }
 
 const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
@@ -26,7 +28,10 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
       if (response.status === 429) { setError('Demasiados intentos. Intenta en 15 minutos.'); return; }
       const data = await response.json();
       if (!response.ok) { setError(data.error || 'Credenciales inválidas'); return; }
-      onLoginSuccess(data.token);
+      onLoginSuccess(data.token, {
+        ...data.user,
+        permissions: normalizePermissions(data.user?.permissions),
+      });
     } catch {
       setError('Error de conexión. Verifica que el servidor esté activo.');
     } finally {

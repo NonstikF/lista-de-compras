@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import type { PermissionKey, UserPermissions } from '../../types';
 
 export type AppView = 'login' | 'dashboard' | 'orders' | 'articles' | 'recipes' | 'store' | 'suppliers' | 'users' | 'inventory' | 'settings';
 
@@ -19,14 +20,16 @@ interface SidebarProps {
   onLogout: () => void;
   setView: (view: AppView) => void;
   currentView: AppView;
+  permissions: UserPermissions;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ onLogout, setView, currentView }) => {
+const Sidebar: React.FC<SidebarProps> = ({ onLogout, setView, currentView, permissions }) => {
   const [collapsed, setCollapsed] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
 
-  const primaryItems = navItems.filter(n => PRIMARY_NAV.includes(n.view));
-  const moreItems = navItems.filter(n => !PRIMARY_NAV.includes(n.view));
+  const allowedItems = navItems.filter(n => n.view !== 'login' && permissions[n.view as PermissionKey]);
+  const primaryItems = allowedItems.filter(n => PRIMARY_NAV.includes(n.view));
+  const moreItems = allowedItems.filter(n => !PRIMARY_NAV.includes(n.view));
   const moreIsActive = moreItems.some(n => n.view === currentView);
 
   const handleMoreNav = (view: AppView) => {
