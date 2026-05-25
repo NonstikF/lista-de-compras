@@ -13,40 +13,30 @@ const itemStatusSchema = z.object({
     totalQuantity: z.number().int().min(0).optional(),
 });
 
+// POST /api/item-status
+// Actualiza estado de compra de un StoreOrderItem.
+// lineItemId aqui = StoreOrderItem.id (post-migracion Woo).
+// supplierId es informativo: el nuevo modelo no rastrea por proveedor (StoreOrderItem ya esta segmentado).
 router.post('/', async (req: Request, res: Response) => {
     const parsed = itemStatusSchema.safeParse(req.body);
     if (!parsed.success) {
         res.status(400).json({ error: parsed.error.issues[0].message });
         return;
     }
-    const { lineItemId, orderId, supplierId, totalQuantity } = parsed.data;
-    let { isPurchased, quantityPurchased } = parsed.data;
+    const { lineItemId, isPurchased, quantityPurchased } = parsed.data;
 
     try {
-        if (supplierId !== undefined) {
-            // Update per-supplier quantity
-            await prisma.purchaseStatusBySupplier.upsert({
-                where: { lineItemId_supplierId: { lineItemId, supplierId } },
-                update: { quantity: quantityPurchased },
-                create: { lineItemId, supplierId, orderId, quantity: quantityPurchased },
-            });
-
-            // Recalculate total from all suppliers
-            const allSupplierRows = await prisma.purchaseStatusBySupplier.findMany({ where: { lineItemId } });
-            const totalPurchased = allSupplierRows.reduce((sum, r) => sum + r.quantity, 0);
-            const total = totalQuantity ?? totalPurchased;
-            quantityPurchased = totalPurchased;
-            isPurchased = totalPurchased >= total && total > 0;
-        }
-
-        const status = await prisma.purchaseStatus.upsert({
-            where: { lineItemId },
-            update: { isPurchased, quantityPurchased },
-            create: { lineItemId, orderId, isPurchased, quantityPurchased },
+        const item = await prisma.storeOrderItem.update({
+            where: { id: lineItemId },
+            data: { isPurchased, quantityPurchased },
         });
-        res.json({ success: true, status });
-    } catch (error) {
-        console.error('Error al guardar estado:', error);
+        res.json({ success: true, status: item });
+    } catch (err: unknown) {
+        if (err && typeof err === 'object' && 'code' in err && (err as { code: string }).code === 'P2025') {
+            res.status(404).json({ error: 'Item no encontrado' });
+            return;
+        }
+        console.error('Error al guardar estado:', err);
         res.status(500).json({ error: 'No se pudo guardar el estado' });
     }
 });

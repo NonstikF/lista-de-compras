@@ -31,7 +31,8 @@
     "dev": "ts-node-dev src/index.ts",
     "build": "prisma generate && tsc",
     "start": "prisma generate && node prisma/seed.js && node dist/index.js",
-    "seed": "ts-node-dev prisma/seed.ts"
+    "seed": "ts-node-dev prisma/seed.ts",
+    "archive-woo": "ts-node-dev --transpile-only scripts/archive-woo.ts"
   },
   "prisma": {
     "seed": "ts-node-dev prisma/seed.ts"

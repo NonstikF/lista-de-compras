@@ -7,31 +7,6 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model PurchaseStatus {
-  id                Int      @id @default(autoincrement())
-  lineItemId        Int      @unique
-  orderId           Int
-  isPurchased       Boolean  @default(false)
-  quantityPurchased Int      @default(0)
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-
-  @@index([orderId])
-}
-
-model PurchaseStatusBySupplier {
-  lineItemId   Int
-  supplierId   String
-  orderId      Int
-  quantity     Int      @default(0)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-
-  @@id([lineItemId, supplierId])
-  @@index([lineItemId])
-  @@index([orderId])
-}
-
 // ---------- Usuarios ----------
 model User {
   id           String   @id @default(cuid())
@@ -62,9 +37,9 @@ model Supplier {
 
 // ---------- Artículos ----------
 model Article {
-  id           String            @id @default(cuid())
-  wooProductId Int?              @unique
-  name         String
+  id                 String            @id @default(cuid())
+  legacyWooProductId Int?              @unique
+  name               String
   image        String?
   price        Float
   sku          String            @default("")
@@ -134,44 +109,51 @@ model RecipeSizeIngredient {
 
 // ---------- Pedidos de Tienda ----------
 model StoreOrder {
-  id            Int              @id @default(autoincrement())
-  dateCreated   DateTime         @default(now())
-  status        String           @default("pending")
-  customerName  String
-  customerPhone String
-  notes         String           @default("")
-  total         Float
-  items         StoreOrderItem[]
+  id               Int              @id @default(autoincrement())
+  legacyWooOrderId Int?             @unique
+  legacySource     String?
+  dateCreated      DateTime         @default(now())
+  status           String           @default("pending")
+  customerName     String
+  customerPhone    String
+  notes            String           @default("")
+  total            Float
+  items            StoreOrderItem[]
+  tickets          OrderTicket[]
+
+  @@index([legacyWooOrderId])
 }
 
 model StoreOrderItem {
-  id                Int        @id @default(autoincrement())
-  orderId           Int
-  articleId         String
-  name              String
-  price             Float
-  qty               Int
-  isPurchased       Boolean    @default(false)
-  quantityPurchased Int        @default(0)
-  imageUrl          String?
-  supplierName      String     @default("Sin proveedor")
-  supplierId        String?
-  order             StoreOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  id                  Int        @id @default(autoincrement())
+  legacyWooLineItemId Int?       @unique
+  orderId             Int
+  articleId           String
+  name                String
+  price               Float
+  qty                 Int
+  isPurchased         Boolean    @default(false)
+  quantityPurchased   Int        @default(0)
+  imageUrl            String?
+  supplierName        String     @default("Sin proveedor")
+  supplierId          String?
+  order               StoreOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
   @@index([orderId, articleId])
 }
 
 // ---------- Tickets de pedido ----------
 model OrderTicket {
-  id           String   @id @default(cuid())
+  id           String     @id @default(cuid())
   orderId      Int
   supplierName String
-  invoiced     Boolean  @default(false)
+  invoiced     Boolean    @default(false)
   filename     String
   mimeType     String
   size         Int
   content      String
-  createdAt    DateTime @default(now())
+  createdAt    DateTime   @default(now())
+  order        StoreOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
   @@index([orderId])
   @@index([orderId, supplierName])
