@@ -279,11 +279,11 @@ const StoreView: React.FC<StoreViewProps> = ({ authToken, onAuthError }) => {
             const sids = article?.supplierIds ?? [];
             if (sids.length > 1) {
                 for (const sid of sids) {
-                    items.push({ articleId: e.articleId, name: article?.name ?? e.articleId, price: article?.price ?? 0, qty: e.qty, imageUrl: article?.image ?? null, supplierName: supplierMap[sid] || 'Sin proveedor', supplierId: sid });
+                    items.push({ articleId: e.articleId, name: article?.name ?? e.articleId, price: article?.price ?? 0, qty: e.qty, imageUrl: null, supplierName: supplierMap[sid] || 'Sin proveedor', supplierId: sid });
                 }
             } else {
                 const supplierId = sids[0];
-                items.push({ articleId: e.articleId, name: article?.name ?? e.articleId, price: article?.price ?? 0, qty: e.qty, imageUrl: article?.image ?? null, supplierName: (supplierId && supplierMap[supplierId]) || 'Sin proveedor', supplierId });
+                items.push({ articleId: e.articleId, name: article?.name ?? e.articleId, price: article?.price ?? 0, qty: e.qty, imageUrl: null, supplierName: (supplierId && supplierMap[supplierId]) || 'Sin proveedor', supplierId });
             }
         }
         setSubmitting(true);

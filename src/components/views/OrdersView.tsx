@@ -609,7 +609,7 @@ const EditStoreOrderModal: React.FC<{
                 } else if (d.kind === 'new') {
                     ops.push(addStoreOrderItem(authToken, order.id, {
                         articleId: d.articleId, name: d.name, price: d.price, qty: d.qty,
-                        imageUrl: d.imageUrl, supplierName: d.supplierName, supplierId: d.supplierId || undefined,
+                        imageUrl: null, supplierName: d.supplierName, supplierId: d.supplierId || undefined,
                     }));
                 }
             }
