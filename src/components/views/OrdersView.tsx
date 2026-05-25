@@ -1586,7 +1586,7 @@ const OrderCard = React.memo<{
     }, [authToken, order.id]);
 
     // Build supplier groups: items with PlantArte suppliers appear once per supplier.
-    // Items without PlantArte suppliers fall back to WooCommerce category grouping.
+    // Items without PlantArte suppliers fall back to category grouping.
     const supplierGroups = React.useMemo<SupplierGroup[]>(() => {
         const map = new Map<string, SupplierGroup>();
         for (const item of order.lineItems) {
@@ -1862,7 +1862,7 @@ const OrdersView: React.FC<OrdersViewProps> = ({ authToken, onAuthError }) => {
             {/* Header */}
             <div>
                 <h1 className="font-epilogue text-2xl md:text-3xl font-bold text-on-background">Pedidos</h1>
-                <p className="text-on-surface-variant text-sm mt-0.5">Gestión de pedidos WooCommerce y Tienda</p>
+                <p className="text-on-surface-variant text-sm mt-0.5">Gestión de pedidos</p>
             </div>
 
             {/* Tabs */}
@@ -1902,7 +1902,7 @@ const OrdersView: React.FC<OrdersViewProps> = ({ authToken, onAuthError }) => {
                 </div>
             )}
 
-            {/* Tabs WooCommerce */}
+            {/* Tabs Pedidos (processing/completed) */}
             {tabMode !== 'store' && (
                 <>
                     {isLoading && <LoadingSpinner />}

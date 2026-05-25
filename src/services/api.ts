@@ -43,7 +43,7 @@ async function handleResponse<T>(res: Response): Promise<T> {
   return res.json();
 }
 
-// ---- Pedidos WooCommerce ----
+// ---- Pedidos (adapter sobre StoreOrder, formato legacy) ----
 
 export const getOrders = async (status: OrderStatusType, token: string): Promise<Order[]> => {
   return handleResponse(await fetch(`${BASE}/api/orders?status=${status}`, {
@@ -218,20 +218,6 @@ export async function updateArticle(token: string, id: string, data: Omit<Articl
 export async function deleteArticle(token: string, id: string): Promise<void> {
   await handleResponse(await fetch(`${BASE}/api/articles/${id}`, {
     method: 'DELETE', headers: authHeaders(token),
-  }));
-}
-
-export interface ImportWooCommerceArticlesResult {
-  created: number;
-  updated: number;
-  skipped: number;
-  total: number;
-  articles: Article[];
-}
-
-export async function importWooCommerceArticles(token: string): Promise<ImportWooCommerceArticlesResult> {
-  return handleResponse(await fetch(`${BASE}/api/articles/import-woocommerce`, {
-    method: 'POST', headers: authHeaders(token),
   }));
 }
 

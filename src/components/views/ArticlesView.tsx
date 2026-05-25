@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import type { Article, Supplier } from '../../types';
-import { AuthError, getArticles, createArticle, updateArticle, deleteArticle, getSuppliers, importWooCommerceArticles } from '../../services/api';
+import { AuthError, getArticles, createArticle, updateArticle, deleteArticle, getSuppliers } from '../../services/api';
 import { Modal, Button, Field, Input, MIcon, fmt, useToast } from '../ui';
 
 interface ArticlesViewProps {
@@ -341,7 +341,6 @@ const ArticlesView: React.FC<ArticlesViewProps> = ({ authToken, onAuthError }) =
     const [editing, setEditing] = useState<Article | 'new' | null>(null);
     const [confirmDelete, setConfirmDelete] = useState<Article | null>(null);
     const [deleting, setDeleting] = useState(false);
-    const [importing, setImporting] = useState(false);
     const [search, setSearch] = useState('');
     const [categoryFilter, setCategoryFilter] = useState('');
     const toast = useToast();
@@ -383,7 +382,7 @@ const ArticlesView: React.FC<ArticlesViewProps> = ({ authToken, onAuthError }) =
             } else {
                 const current = editing as Article;
                 const updated = await updateArticle(authToken, current.id, {
-                    wooProductId: current.wooProductId,
+                    legacyWooProductId: current.legacyWooProductId,
                     category: current.category,
                     description: current.description,
                     stockStatus: current.stockStatus,
@@ -415,20 +414,6 @@ const ArticlesView: React.FC<ArticlesViewProps> = ({ authToken, onAuthError }) =
         }
     };
 
-    const handleImportWooCommerce = async () => {
-        setImporting(true);
-        try {
-            const result = await importWooCommerceArticles(authToken);
-            setArticles(result.articles);
-            toast('success', `Importacion lista: ${result.created} nuevos, ${result.updated} actualizados`);
-        } catch (err) {
-            if (err instanceof AuthError) { onAuthError(); return; }
-            toast('error', err instanceof Error ? err.message : 'Error al importar desde WooCommerce');
-        } finally {
-            setImporting(false);
-        }
-    };
-
     return (
         <main className="max-w-6xl mx-auto px-4 md:px-6 py-8 pb-28 md:pb-10">
             <div className="flex items-center justify-between mb-4">
@@ -439,9 +424,6 @@ const ArticlesView: React.FC<ArticlesViewProps> = ({ authToken, onAuthError }) =
                     </p>
                 </div>
                 <div className="flex flex-wrap items-center justify-end gap-2">
-                    <Button variant="tonal" icon="download" onClick={handleImportWooCommerce} disabled={importing || isLoading}>
-                        {importing ? 'Importando...' : 'Importar WooCommerce'}
-                    </Button>
                     <Button variant="filled" icon="add" onClick={() => setEditing('new')}>
                         Nuevo artículo
                     </Button>
@@ -504,9 +486,6 @@ const ArticlesView: React.FC<ArticlesViewProps> = ({ authToken, onAuthError }) =
                     </p>
                     <Button variant="filled" icon="add" onClick={() => setEditing('new')}>
                         Crear artículo
-                    </Button>
-                    <Button variant="tonal" icon="download" className="mt-2" onClick={handleImportWooCommerce} disabled={importing}>
-                        {importing ? 'Importando...' : 'Importar desde WooCommerce'}
                     </Button>
                 </div>
             )}

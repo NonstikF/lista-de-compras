@@ -114,7 +114,7 @@ export interface SupplierTicketUpload {
 // ---------- Artículos ----------
 export interface Article {
   id: string;
-  wooProductId?: number | null;
+  legacyWooProductId?: number | null;
   name: string;
   image: string | null;
   price: number;

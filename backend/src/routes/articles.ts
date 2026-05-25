@@ -1,14 +1,11 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
-import axios from 'axios';
 import { prisma } from '../lib/prisma';
-import { ensureInventoryForAllArticles } from './inventory';
-import type { WooCommerceProduct } from '../types';
 
 const router = Router();
 
 const articleSchema = z.object({
-    wooProductId: z.number().int().positive().nullable().optional(),
+    legacyWooProductId: z.number().int().positive().nullable().optional(),
     name: z.string().min(1, 'Nombre requerido'),
     image: z.string().nullable().default(null),
     price: z.number().min(0, 'Precio inválido'),
@@ -23,7 +20,7 @@ const articleSchema = z.object({
 
 function formatArticle(a: {
     id: string;
-    wooProductId: number | null;
+    legacyWooProductId: number | null;
     name: string;
     image: string | null;
     price: number;
@@ -38,7 +35,7 @@ function formatArticle(a: {
 }) {
     return {
         id: a.id,
-        wooProductId: a.wooProductId,
+        legacyWooProductId: a.legacyWooProductId,
         name: a.name,
         image: a.image,
         price: a.price,
@@ -51,85 +48,6 @@ function formatArticle(a: {
         supplierZones: Object.fromEntries(a.suppliers.map((s) => [s.supplierId, s.zone])),
         createdAt: a.createdAt,
     };
-}
-
-function stripHtml(value: string | undefined): string {
-    return (value || '')
-        .replace(/<[^>]*>/g, ' ')
-        .replace(/&nbsp;/g, ' ')
-        .replace(/&amp;/g, '&')
-        .replace(/&quot;/g, '"')
-        .replace(/&#039;/g, "'")
-        .replace(/\s+/g, ' ')
-        .trim();
-}
-
-function productPrice(product: WooCommerceProduct): number {
-    const raw = product.price || product.sale_price || product.regular_price || '0';
-    const price = Number.parseFloat(raw);
-    return Number.isFinite(price) && price >= 0 ? price : 0;
-}
-
-async function downloadImageAsBase64(url: string): Promise<string | null> {
-    try {
-        const response = await axios.get<Buffer>(url, { responseType: 'arraybuffer', timeout: 15000 });
-        const contentType = (response.headers['content-type'] as string | undefined) || 'image/jpeg';
-        const mimeType = contentType.split(';')[0].trim();
-        const base64 = Buffer.from(response.data).toString('base64');
-        return `data:${mimeType};base64,${base64}`;
-    } catch {
-        return null;
-    }
-}
-
-function mapWooProductToArticle(product: WooCommerceProduct, image: string | null) {
-    return {
-        wooProductId: product.id,
-        name: product.name.trim(),
-        image,
-        price: productPrice(product),
-        sku: product.sku || '',
-        category: product.categories?.[0]?.name || '',
-        description: stripHtml(product.short_description || product.description),
-        stockStatus: product.stock_status || '',
-    };
-}
-
-async function downloadImagesInBatches(products: WooCommerceProduct[], batchSize = 10): Promise<Map<number, string | null>> {
-    const result = new Map<number, string | null>();
-    for (let i = 0; i < products.length; i += batchSize) {
-        const batch = products.slice(i, i + batchSize);
-        await Promise.all(batch.map(async (p) => {
-            const src = p.images?.[0]?.src || null;
-            result.set(p.id, src ? await downloadImageAsBase64(src) : null);
-        }));
-    }
-    return result;
-}
-
-async function fetchWooProducts(): Promise<WooCommerceProduct[]> {
-    const { WOO_URL, WOO_KEY, WOO_SECRET } = process.env;
-    if (!WOO_URL || !WOO_KEY || !WOO_SECRET) {
-        throw new Error('Variables de API de WooCommerce no configuradas en el servidor');
-    }
-
-    const products: WooCommerceProduct[] = [];
-    const perPage = 100;
-    let page = 1;
-
-    while (true) {
-        const response = await axios.get(`${WOO_URL}/wp-json/wc/v3/products`, {
-            auth: { username: WOO_KEY, password: WOO_SECRET },
-            params: { page, per_page: perPage, status: 'publish' },
-            timeout: 20000,
-        });
-        const batch: WooCommerceProduct[] = response.data;
-        products.push(...batch);
-        if (batch.length < perPage) break;
-        page += 1;
-    }
-
-    return products;
 }
 
 router.get('/', async (_req: Request, res: Response) => {
@@ -148,11 +66,11 @@ router.get('/', async (_req: Request, res: Response) => {
 router.post('/', async (req: Request, res: Response) => {
     const parsed = articleSchema.safeParse(req.body);
     if (!parsed.success) { res.status(400).json({ error: parsed.error.issues[0].message }); return; }
-    const { wooProductId, name, image, price, sku, barcode, category, description, stockStatus, supplierIds, supplierZones } = parsed.data;
+    const { legacyWooProductId, name, image, price, sku, barcode, category, description, stockStatus, supplierIds, supplierZones } = parsed.data;
     try {
         const article = await prisma.article.create({
             data: {
-                wooProductId, name, image, price, sku, barcode, category, description, stockStatus,
+                legacyWooProductId, name, image, price, sku, barcode, category, description, stockStatus,
                 suppliers: { create: supplierIds.map((sid: string) => ({ supplierId: sid, zone: supplierZones[sid] ?? '' })) },
                 inventory: { create: {} },
             },
@@ -168,12 +86,12 @@ router.post('/', async (req: Request, res: Response) => {
 router.put('/:id', async (req: Request, res: Response) => {
     const parsed = articleSchema.safeParse(req.body);
     if (!parsed.success) { res.status(400).json({ error: parsed.error.issues[0].message }); return; }
-    const { wooProductId, name, image, price, sku, barcode, category, description, stockStatus, supplierIds, supplierZones } = parsed.data;
+    const { legacyWooProductId, name, image, price, sku, barcode, category, description, stockStatus, supplierIds, supplierZones } = parsed.data;
     try {
         const article = await prisma.article.update({
             where: { id: req.params.id },
             data: {
-                wooProductId, name, image, price, sku, barcode, category, description, stockStatus,
+                legacyWooProductId, name, image, price, sku, barcode, category, description, stockStatus,
                 suppliers: { deleteMany: {}, create: supplierIds.map((sid: string) => ({ supplierId: sid, zone: supplierZones[sid] ?? '' })) },
             },
             include: { suppliers: { select: { supplierId: true, zone: true } } },
@@ -192,76 +110,6 @@ router.delete('/:id', async (req: Request, res: Response) => {
     } catch (err) {
         console.error('Error al eliminar artículo:', err);
         res.status(500).json({ error: 'Error al eliminar artículo' });
-    }
-});
-
-router.post('/import-woocommerce', async (_req: Request, res: Response) => {
-    try {
-        const products = await fetchWooProducts();
-        const imageMap = await downloadImagesInBatches(products);
-        let created = 0, updated = 0, skipped = 0;
-
-        const supplierCache = new Map<string, string>();
-        const getOrCreateSupplierByCategory = async (categoryName: string): Promise<string | null> => {
-            const name = categoryName.trim();
-            if (!name) return null;
-            const cached = supplierCache.get(name);
-            if (cached) return cached;
-            const existing = await prisma.supplier.findFirst({ where: { name }, select: { id: true } });
-            if (existing) {
-                supplierCache.set(name, existing.id);
-                return existing.id;
-            }
-            const newSupplier = await prisma.supplier.create({ data: { name }, select: { id: true } });
-            supplierCache.set(name, newSupplier.id);
-            return newSupplier.id;
-        };
-
-        for (const product of products) {
-            const data = mapWooProductToArticle(product, imageMap.get(product.id) ?? null);
-            if (!data.name) { skipped += 1; continue; }
-
-            const supplierId = await getOrCreateSupplierByCategory(data.category);
-
-            const existing = await prisma.article.findFirst({
-                where: { OR: [{ wooProductId: data.wooProductId }, { name: data.name }] },
-                select: { id: true },
-            });
-
-            if (existing) {
-                await prisma.article.update({ where: { id: existing.id }, data });
-                if (supplierId) {
-                    await prisma.articleSupplier.upsert({
-                        where: { articleId_supplierId: { articleId: existing.id, supplierId } },
-                        create: { articleId: existing.id, supplierId },
-                        update: {},
-                    });
-                }
-                updated += 1;
-            } else {
-                await prisma.article.create({
-                    data: {
-                        ...data,
-                        inventory: { create: {} },
-                        ...(supplierId ? { suppliers: { create: { supplierId } } } : {}),
-                    },
-                });
-                created += 1;
-            }
-        }
-
-        await ensureInventoryForAllArticles();
-
-        const articles = await prisma.article.findMany({
-            include: { suppliers: { select: { supplierId: true, zone: true } } },
-            orderBy: { createdAt: 'asc' },
-        });
-
-        res.json({ created, updated, skipped, total: products.length, articles: articles.map(formatArticle) });
-    } catch (err) {
-        const axiosErr = err as { response?: { data?: unknown }; message?: string };
-        console.error('Error al importar de WooCommerce:', axiosErr.response?.data || axiosErr.message || err);
-        res.status(500).json({ error: axiosErr.message || 'No se pudieron importar productos de WooCommerce' });
     }
 });
 

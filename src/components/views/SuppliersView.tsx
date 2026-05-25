@@ -803,7 +803,7 @@ const SupplierTicketsModal: React.FC<{
                                         </div>
                                         {isOrderGroup && (
                                             <span className="flex items-center gap-1 text-xs font-medium text-blue-500 bg-blue-50 px-2.5 py-1 rounded-full">
-                                                <MIcon name="shopping_cart" className="text-sm" /> WooCommerce
+                                                <MIcon name="shopping_cart" className="text-sm" /> Pedido
                                             </span>
                                         )}
                                         {!isOrderGroup && invoicedCount === activeSupplierTickets.length && activeSupplierTickets.length > 0 && (
