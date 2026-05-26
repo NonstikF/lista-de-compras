@@ -155,7 +155,7 @@ router.get('/:id/order-tickets', async (req: Request, res: Response) => {
         if (!supplier) { res.status(404).json({ error: 'Proveedor no encontrado' }); return; }
         const tickets = await prisma.orderTicket.findMany({
             where: { supplierName: supplier.name },
-            select: { id: true, orderId: true, supplierName: true, filename: true, mimeType: true, size: true, createdAt: true },
+            select: { id: true, orderId: true, supplierName: true, invoiced: true, filename: true, mimeType: true, size: true, createdAt: true },
             orderBy: { createdAt: 'desc' },
         });
         res.json(tickets);
