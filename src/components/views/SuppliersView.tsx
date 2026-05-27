@@ -6,6 +6,7 @@ import {
     AuthError, getSuppliers, createSupplier, updateSupplier, deleteSupplier,
     getSupplierTickets, getSupplierTicketContent, createSupplierTicket, deleteSupplierTicket,
     updateSupplierTicketInvoiced, getSupplierOrderTickets, getOrderTicketContent, updateOrderTicketInvoiced,
+    getSupplierPendingInvoicedCounts,
 } from '../../services/api';
 import { Modal, Button, Field, Input, MIcon, useToast } from '../ui';
 
@@ -1036,11 +1037,12 @@ const SupplierTicketsModal: React.FC<{
 // ---------- Fila de proveedor ----------
 const SupplierRow: React.FC<{
     supplier: Supplier;
+    pendingInvoiced: number;
     onEdit: (s: Supplier) => void;
     onDelete: (s: Supplier) => void;
     onTickets: (s: Supplier) => void;
     onMap: (s: Supplier) => void;
-}> = ({ supplier, onEdit, onDelete, onTickets, onMap }) => (
+}> = ({ supplier, pendingInvoiced, onEdit, onDelete, onTickets, onMap }) => (
     <div className="bg-white rounded-xl border border-surface-variant shadow-sm p-4 flex items-center gap-4 hover:shadow-md transition-shadow">
         <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
             <MIcon name="local_shipping" className="text-primary" fill />
@@ -1048,6 +1050,15 @@ const SupplierRow: React.FC<{
         <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
                 <p className="font-epilogue font-semibold text-on-background truncate">{supplier.name}</p>
+                {pendingInvoiced > 0 && (
+                    <span
+                        title={`${pendingInvoiced} ticket${pendingInvoiced !== 1 ? 's' : ''} sin facturar`}
+                        className="flex items-center gap-1 text-xs font-semibold text-amber-700 bg-amber-100 border border-amber-200 px-2 py-0.5 rounded-full"
+                    >
+                        <MIcon name="receipt_long" className="text-sm" />
+                        {pendingInvoiced} sin facturar
+                    </span>
+                )}
                 {supplier.website && (
                     <a
                         href={supplier.website}
@@ -1139,15 +1150,28 @@ const SuppliersView: React.FC<SuppliersViewProps> = ({ authToken, onAuthError })
     const [deleting, setDeleting] = useState(false);
     const [ticketsSupplier, setTicketsSupplier] = useState<Supplier | null>(null);
     const [mapSupplier, setMapSupplier] = useState<Supplier | null>(null);
+    const [pendingCounts, setPendingCounts] = useState<Record<string, number>>({});
     const toast = useToast();
+
+    const reloadPendingCounts = async () => {
+        try {
+            const counts = await getSupplierPendingInvoicedCounts(authToken);
+            setPendingCounts(counts);
+        } catch (err) {
+            if (err instanceof AuthError) { onAuthError(); return; }
+        }
+    };
 
     useEffect(() => {
         let cancelled = false;
         const load = async () => {
             setIsLoading(true);
             try {
-                const data = await getSuppliers(authToken);
-                if (!cancelled) setSuppliers(data);
+                const [data, counts] = await Promise.all([
+                    getSuppliers(authToken),
+                    getSupplierPendingInvoicedCounts(authToken).catch(() => ({} as Record<string, number>)),
+                ]);
+                if (!cancelled) { setSuppliers(data); setPendingCounts(counts); }
             } catch (err) {
                 if (err instanceof AuthError) { onAuthError(); return; }
                 if (!cancelled) toast('error', err instanceof Error ? err.message : 'Error al cargar proveedores');
@@ -1158,6 +1182,10 @@ const SuppliersView: React.FC<SuppliersViewProps> = ({ authToken, onAuthError })
         load();
         return () => { cancelled = true; };
     }, [authToken]);
+
+    useEffect(() => {
+        if (ticketsSupplier === null) reloadPendingCounts();
+    }, [ticketsSupplier]);
 
     const handleSave = async (data: { name: string; contact: string; phone: string; zones: string[]; website: string; notes: string; locations: string[] }) => {
         const isNew = editing === 'new';
@@ -1235,6 +1263,7 @@ const SuppliersView: React.FC<SuppliersViewProps> = ({ authToken, onAuthError })
                         <SupplierRow
                             key={s.id}
                             supplier={s}
+                            pendingInvoiced={pendingCounts[s.id] ?? 0}
                             onEdit={setEditing}
                             onDelete={setConfirmDelete}
                             onTickets={setTicketsSupplier}

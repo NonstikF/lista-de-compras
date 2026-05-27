@@ -191,6 +191,12 @@ export async function getSupplierOrderTickets(token: string, supplierId: string)
   }));
 }
 
+export async function getSupplierPendingInvoicedCounts(token: string): Promise<Record<string, number>> {
+  return handleResponse(await fetch(`${BASE}/api/suppliers/pending-invoiced-counts`, {
+    headers: authHeaders(token),
+  }));
+}
+
 export async function updateSupplierTicketInvoiced(token: string, supplierId: string, ticketId: string, invoiced: boolean): Promise<SupplierTicket> {
   return handleResponse(await fetch(`${BASE}/api/suppliers/${supplierId}/tickets/${ticketId}`, {
     method: 'PATCH', headers: authHeaders(token), body: JSON.stringify({ invoiced }),

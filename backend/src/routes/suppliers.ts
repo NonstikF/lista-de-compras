@@ -87,6 +87,36 @@ router.delete('/:id', async (req: Request, res: Response) => {
     }
 });
 
+// GET /api/suppliers/pending-invoiced-counts — tickets sin facturar por proveedor
+router.get('/pending-invoiced-counts', async (_req: Request, res: Response) => {
+    try {
+        const suppliers = await prisma.supplier.findMany({ select: { id: true, name: true } });
+
+        const supplierTicketGroups = await prisma.supplierTicket.groupBy({
+            by: ['supplierId'],
+            where: { invoiced: false },
+            _count: { _all: true },
+        });
+        const supplierTicketMap = new Map(supplierTicketGroups.map(g => [g.supplierId, g._count._all]));
+
+        const orderTicketGroups = await prisma.orderTicket.groupBy({
+            by: ['supplierName'],
+            where: { invoiced: false },
+            _count: { _all: true },
+        });
+        const orderTicketMap = new Map(orderTicketGroups.map(g => [g.supplierName, g._count._all]));
+
+        const counts: Record<string, number> = {};
+        for (const s of suppliers) {
+            counts[s.id] = (supplierTicketMap.get(s.id) ?? 0) + (orderTicketMap.get(s.name) ?? 0);
+        }
+        res.json(counts);
+    } catch (err) {
+        console.error('Error al obtener conteos de tickets pendientes:', err);
+        res.status(500).json({ error: 'Error al obtener conteos' });
+    }
+});
+
 // ---- Supplier Tickets ----
 
 router.get('/:id/tickets', async (req: Request, res: Response) => {
