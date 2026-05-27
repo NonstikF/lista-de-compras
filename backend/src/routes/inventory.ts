@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma';
+import { resolveLocationSkuToId } from '../lib/locations';
 
 const router = Router();
 
@@ -8,6 +9,7 @@ const updateInventoryItemSchema = z.object({
     stockMin: z.number().optional(),
     unit: z.string().optional(),
     locationId: z.string().nullable().optional(),
+    locationSku: z.string().nullable().optional(),
 });
 
 const createMovementSchema = z.object({
@@ -55,7 +57,17 @@ router.put('/:id', async (req: Request, res: Response) => {
     const data: { stockMin?: number; unit?: string; locationId?: string | null } = {};
     if (parsed.data.stockMin !== undefined) data.stockMin = parsed.data.stockMin;
     if (parsed.data.unit !== undefined) data.unit = parsed.data.unit;
-    if (parsed.data.locationId !== undefined) data.locationId = parsed.data.locationId;
+    if (parsed.data.locationSku !== undefined) {
+        try {
+            data.locationId = await resolveLocationSkuToId(parsed.data.locationSku);
+        } catch (err) {
+            console.error('Error al resolver locationSku:', err);
+            res.status(500).json({ error: 'Error al asignar ubicación' });
+            return;
+        }
+    } else if (parsed.data.locationId !== undefined) {
+        data.locationId = parsed.data.locationId;
+    }
     try {
         const item = await prisma.inventoryItem.update({
             where: { id: req.params.id },

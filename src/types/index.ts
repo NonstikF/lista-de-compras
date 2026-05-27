@@ -125,6 +125,7 @@ export interface Article {
   stockStatus?: string;
   supplierIds: string[];
   supplierZones: Record<string, string>;
+  locationSku?: string;
 }
 
 // ---------- Pedidos de Tienda ----------

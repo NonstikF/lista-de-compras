@@ -8,7 +8,7 @@ import {
     getInventoryMovements,
     getLocations,
 } from '../../services/api';
-import { Modal, Button, Field, Input, Select, MIcon, Chip, useToast } from '../ui';
+import { Modal, Button, Field, Input, MIcon, Chip, useToast } from '../ui';
 
 interface InventoryViewProps {
     authToken: string;
@@ -44,11 +44,11 @@ const EditItemModal: React.FC<{
     item: InventoryItem;
     locations: Location[];
     onClose: () => void;
-    onSave: (data: { stockMin: number; unit: string; locationId: string | null }) => Promise<void>;
+    onSave: (data: { stockMin: number; unit: string; locationSku: string }) => Promise<void>;
 }> = ({ item, locations, onClose, onSave }) => {
     const [stockMin, setStockMin] = useState(String(item.stockMin));
     const [unit, setUnit] = useState(item.unit);
-    const [locationId, setLocationId] = useState<string>(item.locationId ?? '');
+    const [locationSku, setLocationSku] = useState<string>(item.location?.code ?? '');
     const [errors, setErrors] = useState<Record<string, string>>({});
     const [saving, setSaving] = useState(false);
 
@@ -65,13 +65,16 @@ const EditItemModal: React.FC<{
         if (!validate()) return;
         setSaving(true);
         try {
-            await onSave({ stockMin: Number(stockMin), unit: unit.trim(), locationId: locationId || null });
+            await onSave({ stockMin: Number(stockMin), unit: unit.trim(), locationSku: locationSku.trim().toUpperCase() });
         } finally {
             setSaving(false);
         }
     };
 
-    const activeLocations = locations.filter(l => l.active || l.id === item.locationId);
+    const suggestions = locations
+        .filter(l => l.active || l.code === item.location?.code)
+        .map(l => l.code)
+        .sort();
 
     return (
         <Modal
@@ -95,13 +98,16 @@ const EditItemModal: React.FC<{
                 <Field label="Unidad" error={errors.unit}>
                     <Input value={unit} onChange={e => { setUnit(e.target.value); setErrors(x => ({ ...x, unit: '' })); }} placeholder="ej: kg, litros, unidad" />
                 </Field>
-                <Field label="Ubicación" hint={activeLocations.length === 0 ? 'No hay ubicaciones creadas todavía.' : undefined}>
-                    <Select value={locationId} onChange={e => setLocationId(e.target.value)}>
-                        <option value="">— Sin ubicación —</option>
-                        {activeLocations.map(l => (
-                            <option key={l.id} value={l.id}>{l.name} ({l.code})</option>
-                        ))}
-                    </Select>
+                <Field label="SKU de ubicación" hint="Si la ubicación no existe se crea automáticamente. Deja vacío para quitar.">
+                    <Input
+                        value={locationSku}
+                        onChange={e => setLocationSku(e.target.value.toUpperCase())}
+                        placeholder="Ej. A3, BODEGA-1"
+                        list="inventory-location-suggestions"
+                    />
+                    <datalist id="inventory-location-suggestions">
+                        {suggestions.map(s => <option key={s} value={s} />)}
+                    </datalist>
                 </Field>
             </form>
         </Modal>
@@ -983,11 +989,13 @@ const InventoryView: React.FC<InventoryViewProps> = ({ authToken, onAuthError })
         }
     };
 
-    const handleEdit = async (data: { stockMin: number; unit: string; locationId: string | null }) => {
+    const handleEdit = async (data: { stockMin: number; unit: string; locationSku: string }) => {
         if (!editingItem) return;
         try {
             const updated = await updateInventoryItem(authToken, editingItem.id, data);
             setItems(prev => prev.map(x => x.id === updated.id ? updated : x));
+            // Refrescar lista de ubicaciones por si se creó una nueva via upsert.
+            getLocations(authToken).then(setLocations).catch(() => {});
             setEditingItem(null);
             toast('success', 'Insumo actualizado');
         } catch (err) {

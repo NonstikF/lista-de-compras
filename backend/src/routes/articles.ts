@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma';
+import { resolveLocationSkuToId } from '../lib/locations';
 
 const router = Router();
 
@@ -16,9 +17,10 @@ const articleSchema = z.object({
     stockStatus: z.string().default(''),
     supplierIds: z.array(z.string()).default([]),
     supplierZones: z.record(z.string(), z.string()).default({}),
+    locationSku: z.string().nullable().optional(),
 });
 
-function formatArticle(a: {
+type ArticleRow = {
     id: string;
     legacyWooProductId: number | null;
     name: string;
@@ -32,7 +34,10 @@ function formatArticle(a: {
     createdAt: Date;
     updatedAt: Date;
     suppliers: { supplierId: string; zone: string }[];
-}) {
+    inventory: { location: { code: string } | null } | null;
+};
+
+function formatArticle(a: ArticleRow) {
     return {
         id: a.id,
         legacyWooProductId: a.legacyWooProductId,
@@ -46,14 +51,20 @@ function formatArticle(a: {
         stockStatus: a.stockStatus,
         supplierIds: a.suppliers.map((s) => s.supplierId),
         supplierZones: Object.fromEntries(a.suppliers.map((s) => [s.supplierId, s.zone])),
+        locationSku: a.inventory?.location?.code ?? '',
         createdAt: a.createdAt,
     };
 }
 
+const articleInclude = {
+    suppliers: { select: { supplierId: true, zone: true } },
+    inventory: { select: { location: { select: { code: true } } } },
+} as const;
+
 router.get('/', async (_req: Request, res: Response) => {
     try {
         const articles = await prisma.article.findMany({
-            include: { suppliers: { select: { supplierId: true, zone: true } } },
+            include: articleInclude,
             orderBy: { createdAt: 'asc' },
         });
         res.json(articles.map(formatArticle));
@@ -66,15 +77,16 @@ router.get('/', async (_req: Request, res: Response) => {
 router.post('/', async (req: Request, res: Response) => {
     const parsed = articleSchema.safeParse(req.body);
     if (!parsed.success) { res.status(400).json({ error: parsed.error.issues[0].message }); return; }
-    const { legacyWooProductId, name, image, price, sku, barcode, category, description, stockStatus, supplierIds, supplierZones } = parsed.data;
+    const { legacyWooProductId, name, image, price, sku, barcode, category, description, stockStatus, supplierIds, supplierZones, locationSku } = parsed.data;
     try {
+        const locationId = locationSku !== undefined ? await resolveLocationSkuToId(locationSku) : null;
         const article = await prisma.article.create({
             data: {
                 legacyWooProductId, name, image, price, sku, barcode, category, description, stockStatus,
                 suppliers: { create: supplierIds.map((sid: string) => ({ supplierId: sid, zone: supplierZones[sid] ?? '' })) },
-                inventory: { create: {} },
+                inventory: { create: { locationId } },
             },
-            include: { suppliers: { select: { supplierId: true, zone: true } } },
+            include: articleInclude,
         });
         res.status(201).json(formatArticle(article));
     } catch (err) {
@@ -86,7 +98,7 @@ router.post('/', async (req: Request, res: Response) => {
 router.put('/:id', async (req: Request, res: Response) => {
     const parsed = articleSchema.safeParse(req.body);
     if (!parsed.success) { res.status(400).json({ error: parsed.error.issues[0].message }); return; }
-    const { legacyWooProductId, name, image, price, sku, barcode, category, description, stockStatus, supplierIds, supplierZones } = parsed.data;
+    const { legacyWooProductId, name, image, price, sku, barcode, category, description, stockStatus, supplierIds, supplierZones, locationSku } = parsed.data;
     try {
         const article = await prisma.article.update({
             where: { id: req.params.id },
@@ -94,8 +106,24 @@ router.put('/:id', async (req: Request, res: Response) => {
                 legacyWooProductId, name, image, price, sku, barcode, category, description, stockStatus,
                 suppliers: { deleteMany: {}, create: supplierIds.map((sid: string) => ({ supplierId: sid, zone: supplierZones[sid] ?? '' })) },
             },
-            include: { suppliers: { select: { supplierId: true, zone: true } } },
+            include: articleInclude,
         });
+
+        if (locationSku !== undefined) {
+            const locationId = await resolveLocationSkuToId(locationSku);
+            await prisma.inventoryItem.upsert({
+                where: { articleId: article.id },
+                create: { articleId: article.id, locationId },
+                update: { locationId },
+            });
+            const refreshed = await prisma.article.findUniqueOrThrow({
+                where: { id: article.id },
+                include: articleInclude,
+            });
+            res.json(formatArticle(refreshed));
+            return;
+        }
+
         res.json(formatArticle(article));
     } catch (err) {
         console.error('Error al actualizar artículo:', err);
