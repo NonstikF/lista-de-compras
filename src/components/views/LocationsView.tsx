@@ -36,6 +36,7 @@ const LocationEditModal: React.FC<{
         : { name: l.name, code: l.code, description: l.description, active: l.active };
 
     const [form, setForm] = useState<LocationForm>(initial);
+    const [showAdvanced, setShowAdvanced] = useState<boolean>(!isNew && (l?.description?.length > 0 || !l?.active));
     const [errors, setErrors] = useState<Record<string, string>>({});
     const [saving, setSaving] = useState(false);
 
@@ -45,16 +46,16 @@ const LocationEditModal: React.FC<{
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         const err: Record<string, string> = {};
-        if (!form.name.trim()) err.name = 'El nombre es requerido';
-        if (form.name.length > 80) err.name = 'Máximo 80 caracteres';
-        if (form.code.length > 40) err.code = 'Máximo 40 caracteres';
+        const code = form.code.trim();
+        if (!code) err.code = 'El SKU es requerido';
+        if (code.length > 40) err.code = 'Máximo 40 caracteres';
         if (Object.keys(err).length) { setErrors(err); return; }
 
         setSaving(true);
         try {
             await onSave({
-                name: form.name.trim(),
-                code: form.code.trim(),
+                name: form.name.trim() || code,
+                code,
                 description: form.description.trim(),
                 active: form.active,
             });
@@ -79,41 +80,54 @@ const LocationEditModal: React.FC<{
             }
         >
             <form onSubmit={handleSubmit} className="px-6 py-4 space-y-3">
-                <Field label="Nombre" required error={errors.name}>
-                    <Input
-                        value={form.name}
-                        onChange={e => { update('name', e.target.value); setErrors(x => ({ ...x, name: '' })); }}
-                        placeholder="ej: Bodega Principal"
-                        autoFocus
-                        maxLength={80}
-                    />
-                </Field>
-                <Field label="Código" hint={isNew ? 'Si lo dejas vacío, se genera automáticamente (LOC-XXXX)' : undefined} error={errors.code}>
+                <Field label="SKU de ubicación" required hint="Lo que escribirás en los productos. Ej: A3, BODEGA-1." error={errors.code}>
                     <Input
                         value={form.code}
                         onChange={e => { update('code', e.target.value.toUpperCase()); setErrors(x => ({ ...x, code: '' })); }}
-                        placeholder={isNew ? 'Se genera automáticamente' : 'LOC-XXXX'}
+                        placeholder="A3"
+                        autoFocus
                         maxLength={40}
                     />
                 </Field>
-                <Field label="Descripción">
-                    <Textarea
-                        value={form.description}
-                        onChange={e => update('description', e.target.value)}
-                        placeholder="ej: Estante 3, segunda repisa"
-                    />
-                </Field>
-                <Field label="Estado">
-                    <label className="flex items-center gap-2 text-sm text-on-surface">
-                        <input
-                            type="checkbox"
-                            checked={form.active}
-                            onChange={e => update('active', e.target.checked)}
-                            className="w-4 h-4 rounded border-outline-variant text-primary focus:ring-2 focus:ring-primary/20"
-                        />
-                        Activa
-                    </label>
-                </Field>
+
+                {!showAdvanced ? (
+                    <button
+                        type="button"
+                        onClick={() => setShowAdvanced(true)}
+                        className="text-xs text-primary hover:underline font-medium"
+                    >
+                        + Mostrar opciones avanzadas (nombre, descripción, estado)
+                    </button>
+                ) : (
+                    <>
+                        <Field label="Nombre (opcional)" hint="Si lo dejas vacío se usa el SKU.">
+                            <Input
+                                value={form.name}
+                                onChange={e => update('name', e.target.value)}
+                                placeholder={form.code || 'Igual al SKU'}
+                                maxLength={80}
+                            />
+                        </Field>
+                        <Field label="Descripción (opcional)">
+                            <Textarea
+                                value={form.description}
+                                onChange={e => update('description', e.target.value)}
+                                placeholder="ej: Estante 3, segunda repisa"
+                            />
+                        </Field>
+                        <Field label="Estado">
+                            <label className="flex items-center gap-2 text-sm text-on-surface">
+                                <input
+                                    type="checkbox"
+                                    checked={form.active}
+                                    onChange={e => update('active', e.target.checked)}
+                                    className="w-4 h-4 rounded border-outline-variant text-primary focus:ring-2 focus:ring-primary/20"
+                                />
+                                Activa
+                            </label>
+                        </Field>
+                    </>
+                )}
             </form>
         </Modal>
     );
