@@ -7,6 +7,7 @@ const router = Router();
 const updateInventoryItemSchema = z.object({
     stockMin: z.number().optional(),
     unit: z.string().optional(),
+    locationId: z.string().nullable().optional(),
 });
 
 const createMovementSchema = z.object({
@@ -33,6 +34,7 @@ router.get('/', async (_req: Request, res: Response) => {
         const items = await prisma.inventoryItem.findMany({
             include: {
                 article: { select: { id: true, name: true, image: true, category: true } },
+                location: { select: { id: true, name: true, code: true } },
                 _count: { select: { movements: true } },
             },
             orderBy: { article: { name: 'asc' } },
@@ -50,15 +52,17 @@ router.put('/:id', async (req: Request, res: Response) => {
         res.status(400).json({ error: parsed.error.issues[0].message });
         return;
     }
-    const data: { stockMin?: number; unit?: string } = {};
+    const data: { stockMin?: number; unit?: string; locationId?: string | null } = {};
     if (parsed.data.stockMin !== undefined) data.stockMin = parsed.data.stockMin;
     if (parsed.data.unit !== undefined) data.unit = parsed.data.unit;
+    if (parsed.data.locationId !== undefined) data.locationId = parsed.data.locationId;
     try {
         const item = await prisma.inventoryItem.update({
             where: { id: req.params.id },
             data,
             include: {
                 article: { select: { id: true, name: true, image: true, category: true } },
+                location: { select: { id: true, name: true, code: true } },
                 _count: { select: { movements: true } },
             },
         });

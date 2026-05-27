@@ -15,6 +15,7 @@ import recipesRouter from './routes/recipes';
 import storeRouter from './routes/store';
 import usersRouter from './routes/users';
 import inventoryRouter from './routes/inventory';
+import locationsRouter from './routes/locations';
 import settingsRouter from './routes/settings';
 
 declare global {
@@ -68,6 +69,7 @@ app.use('/api/recipes', requirePermission('recipes'), recipesRouter);
 app.use('/api/store-orders', requirePermission('store'), storeRouter);
 app.use('/api/users', requirePermission('users'), usersRouter);
 app.use('/api/inventory', requirePermission('inventory'), inventoryRouter);
+app.use('/api/locations', requirePermission('locations'), locationsRouter);
 app.use('/api/settings', requirePermission('settings'), settingsRouter);
 
 const port = process.env.PORT || 4000;

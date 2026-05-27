@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import type { PermissionKey, UserPermissions } from '../../types';
 
-export type AppView = 'login' | 'dashboard' | 'orders' | 'articles' | 'recipes' | 'store' | 'suppliers' | 'users' | 'inventory' | 'settings';
+export type AppView = 'login' | 'dashboard' | 'orders' | 'articles' | 'recipes' | 'store' | 'suppliers' | 'users' | 'inventory' | 'locations' | 'settings';
 
 export const navItems: { view: AppView; label: string; icon: string }[] = [
   { view: 'dashboard',  label: 'Panel',       icon: 'dashboard'        },
@@ -12,6 +12,7 @@ export const navItems: { view: AppView; label: string; icon: string }[] = [
   { view: 'suppliers',  label: 'Proveedores', icon: 'local_shipping'   },
   { view: 'users',      label: 'Usuarios',    icon: 'manage_accounts'  },
   { view: 'inventory',  label: 'Inventario',  icon: 'inventory'        },
+  { view: 'locations',  label: 'Ubicaciones', icon: 'location_on'      },
   { view: 'settings',   label: 'Configuración', icon: 'settings'       },
 ];
 

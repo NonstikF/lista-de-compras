@@ -14,7 +14,17 @@ import StoreView from './components/views/StoreView';
 import SuppliersView from './components/views/SuppliersView';
 import UsersView from './components/views/UsersView';
 import InventoryView from './components/views/InventoryView';
+import LocationsView from './components/views/LocationsView';
+import LocationScanView from './components/views/LocationScanView';
 import SettingsView from './components/views/SettingsView';
+
+const SCAN_PATH_RE = /^\/l\/([^/?#]+)/;
+
+function readScanCodeFromUrl(): string | null {
+  const m = window.location.pathname.match(SCAN_PATH_RE);
+  if (!m) return null;
+  try { return decodeURIComponent(m[1]); } catch { return m[1]; }
+}
 
 const App: React.FC = () => {
   const [authToken, setAuthToken] = useState<string | null>(() => {
@@ -34,9 +44,24 @@ const App: React.FC = () => {
 
   const isAuthenticated = !!authToken && !!authUser;
 
+  const [scanCode, setScanCode] = useState<string | null>(() => readScanCodeFromUrl());
+
   const [view, setView] = useState<AppView>(() =>
     localStorage.getItem('authToken') ? 'dashboard' : 'login'
   );
+
+  const clearScanCode = () => {
+    setScanCode(null);
+    if (SCAN_PATH_RE.test(window.location.pathname)) {
+      window.history.replaceState({}, '', '/');
+    }
+  };
+
+  useEffect(() => {
+    const onPop = () => setScanCode(readScanCodeFromUrl());
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
 
   const canAccess = (nextView: AppView) => {
     if (nextView === 'login') return true;
@@ -45,7 +70,7 @@ const App: React.FC = () => {
 
   const firstAllowedView = (user = authUser): AppView => {
     if (!user) return 'login';
-    const preferred: PermissionKey[] = ['dashboard', 'orders', 'articles', 'store', 'recipes', 'suppliers', 'inventory', 'users', 'settings'];
+    const preferred: PermissionKey[] = ['dashboard', 'orders', 'articles', 'store', 'recipes', 'suppliers', 'inventory', 'locations', 'users', 'settings'];
     return preferred.find((permission) => user.permissions[permission]) ?? 'login';
   };
 
@@ -95,6 +120,16 @@ const App: React.FC = () => {
 
   const renderView = () => {
     if (!isAuthenticated) return <Login onLoginSuccess={handleLoginSuccess} />;
+    if (scanCode) {
+      return (
+        <LocationScanView
+          code={scanCode}
+          authToken={authToken!}
+          onAuthError={handleAuthError}
+          onClose={clearScanCode}
+        />
+      );
+    }
     if (!canAccess(view)) {
       return (
         <div className="max-w-3xl mx-auto px-4 md:px-6 py-16 text-center">
@@ -138,6 +173,8 @@ const App: React.FC = () => {
         return <UsersView authToken={authToken!} onAuthError={handleAuthError} />;
       case 'inventory':
         return <InventoryView authToken={authToken!} onAuthError={handleAuthError} />;
+      case 'locations':
+        return <LocationsView authToken={authToken!} onAuthError={handleAuthError} />;
       case 'settings':
         return <SettingsView authToken={authToken!} onAuthError={handleAuthError} />;
       default:

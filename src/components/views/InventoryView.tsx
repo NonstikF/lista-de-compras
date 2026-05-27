@@ -1,13 +1,14 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import type { InventoryItem, InventoryMovement } from '../../types';
+import type { InventoryItem, InventoryMovement, Location } from '../../types';
 import {
     AuthError,
     getInventory,
     updateInventoryItem,
     addInventoryMovement,
     getInventoryMovements,
+    getLocations,
 } from '../../services/api';
-import { Modal, Button, Field, Input, MIcon, Chip, useToast } from '../ui';
+import { Modal, Button, Field, Input, Select, MIcon, Chip, useToast } from '../ui';
 
 interface InventoryViewProps {
     authToken: string;
@@ -41,11 +42,13 @@ const savePrefs = (p: Prefs) => {
 // ---------- Modal editar item ----------
 const EditItemModal: React.FC<{
     item: InventoryItem;
+    locations: Location[];
     onClose: () => void;
-    onSave: (data: { stockMin: number; unit: string }) => Promise<void>;
-}> = ({ item, onClose, onSave }) => {
+    onSave: (data: { stockMin: number; unit: string; locationId: string | null }) => Promise<void>;
+}> = ({ item, locations, onClose, onSave }) => {
     const [stockMin, setStockMin] = useState(String(item.stockMin));
     const [unit, setUnit] = useState(item.unit);
+    const [locationId, setLocationId] = useState<string>(item.locationId ?? '');
     const [errors, setErrors] = useState<Record<string, string>>({});
     const [saving, setSaving] = useState(false);
 
@@ -62,11 +65,13 @@ const EditItemModal: React.FC<{
         if (!validate()) return;
         setSaving(true);
         try {
-            await onSave({ stockMin: Number(stockMin), unit: unit.trim() });
+            await onSave({ stockMin: Number(stockMin), unit: unit.trim(), locationId: locationId || null });
         } finally {
             setSaving(false);
         }
     };
+
+    const activeLocations = locations.filter(l => l.active || l.id === item.locationId);
 
     return (
         <Modal
@@ -89,6 +94,14 @@ const EditItemModal: React.FC<{
                 </Field>
                 <Field label="Unidad" error={errors.unit}>
                     <Input value={unit} onChange={e => { setUnit(e.target.value); setErrors(x => ({ ...x, unit: '' })); }} placeholder="ej: kg, litros, unidad" />
+                </Field>
+                <Field label="Ubicación" hint={activeLocations.length === 0 ? 'No hay ubicaciones creadas todavía.' : undefined}>
+                    <Select value={locationId} onChange={e => setLocationId(e.target.value)}>
+                        <option value="">— Sin ubicación —</option>
+                        {activeLocations.map(l => (
+                            <option key={l.id} value={l.id}>{l.name} ({l.code})</option>
+                        ))}
+                    </Select>
                 </Field>
             </form>
         </Modal>
@@ -808,12 +821,14 @@ const CountReviewView: React.FC<{
 const InventoryView: React.FC<InventoryViewProps> = ({ authToken, onAuthError }) => {
     const toast = useToast();
     const [items, setItems] = useState<InventoryItem[]>([]);
+    const [locations, setLocations] = useState<Location[]>([]);
     const [loading, setLoading] = useState(true);
     const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
     const [movementItem, setMovementItem] = useState<{ item: InventoryItem; type: 'entrada' | 'salida' | 'ajuste' } | null>(null);
     const [historyItem, setHistoryItem] = useState<InventoryItem | null>(null);
     const [movements, setMovements] = useState<InventoryMovement[]>([]);
     const [movementsLoading, setMovementsLoading] = useState(false);
+    const [locationFilter, setLocationFilter] = useState<string | null>(null);
 
     // --- Conteo físico ---
     const [viewMode, setViewMode] = useState<ViewMode>('list');
@@ -853,7 +868,12 @@ const InventoryView: React.FC<InventoryViewProps> = ({ authToken, onAuthError })
     const load = async () => {
         try {
             setLoading(true);
-            setItems(await getInventory(authToken));
+            const [inv, locs] = await Promise.all([
+                getInventory(authToken),
+                getLocations(authToken).catch(() => [] as Location[]),
+            ]);
+            setItems(inv);
+            setLocations(locs);
         } catch (err) {
             if (err instanceof AuthError) { onAuthError(); return; }
             toast('error', 'Error al cargar inventario');
@@ -883,8 +903,11 @@ const InventoryView: React.FC<InventoryViewProps> = ({ authToken, onAuthError })
             if (categoryFilter && i.article.category !== categoryFilter) return false;
             if (stockFilter === 'low' && !(i.stock > 0 && i.stock <= i.stockMin)) return false;
             if (stockFilter === 'out' && i.stock > 0) return false;
+            if (locationFilter === '__none__' && i.locationId) return false;
+            if (locationFilter && locationFilter !== '__none__' && i.locationId !== locationFilter) return false;
             if (q) {
-                const hay = `${i.article.name} ${i.article.category || ''} ${i.unit}`.toLowerCase();
+                const loc = i.location?.name ?? '';
+                const hay = `${i.article.name} ${i.article.category || ''} ${i.unit} ${loc}`.toLowerCase();
                 if (!hay.includes(q)) return false;
             }
             return true;
@@ -898,7 +921,7 @@ const InventoryView: React.FC<InventoryViewProps> = ({ authToken, onAuthError })
             }
         });
         return list;
-    }, [items, debouncedSearch, sort, stockFilter, categoryFilter]);
+    }, [items, debouncedSearch, sort, stockFilter, categoryFilter, locationFilter]);
 
     const startCounting = () => {
         const draft = localStorage.getItem(COUNT_DRAFT_KEY);
@@ -960,7 +983,7 @@ const InventoryView: React.FC<InventoryViewProps> = ({ authToken, onAuthError })
         }
     };
 
-    const handleEdit = async (data: { stockMin: number; unit: string }) => {
+    const handleEdit = async (data: { stockMin: number; unit: string; locationId: string | null }) => {
         if (!editingItem) return;
         try {
             const updated = await updateInventoryItem(authToken, editingItem.id, data);
@@ -1003,12 +1026,13 @@ const InventoryView: React.FC<InventoryViewProps> = ({ authToken, onAuthError })
         }
     };
 
-    const hasFilters = !!debouncedSearch || stockFilter !== 'all' || categoryFilter !== null;
+    const hasFilters = !!debouncedSearch || stockFilter !== 'all' || categoryFilter !== null || locationFilter !== null;
 
     const clearFilters = () => {
         setSearch('');
         setStockFilter('all');
         setCategoryFilter(null);
+        setLocationFilter(null);
     };
 
     if (viewMode === 'movements') {
@@ -1137,6 +1161,20 @@ const InventoryView: React.FC<InventoryViewProps> = ({ authToken, onAuthError })
                     <option value="stock-desc">Stock: mayor primero</option>
                     <option value="category">Por categoría</option>
                 </select>
+                {locations.length > 0 && (
+                    <select
+                        value={locationFilter ?? ''}
+                        onChange={e => setLocationFilter(e.target.value || null)}
+                        className="px-3 py-2.5 rounded-xl bg-surface-container-low border border-outline-variant focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none text-sm text-on-surface transition md:w-52"
+                        title="Filtrar por ubicación"
+                    >
+                        <option value="">Todas las ubicaciones</option>
+                        <option value="__none__">Sin ubicación</option>
+                        {locations.filter(l => l.active).map(l => (
+                            <option key={l.id} value={l.id}>{l.name}</option>
+                        ))}
+                    </select>
+                )}
             </div>
 
             {/* Category chips */}
@@ -1236,8 +1274,19 @@ const InventoryView: React.FC<InventoryViewProps> = ({ authToken, onAuthError })
                                                 </span>
                                             )}
                                         </div>
-                                        <div className="flex items-center gap-3 mt-1 text-xs text-on-surface-variant">
+                                        <div className="flex items-center gap-3 mt-1 text-xs text-on-surface-variant flex-wrap">
                                             <span>mín: {item.stockMin} {item.unit}</span>
+                                            {item.location ? (
+                                                <span className="inline-flex items-center gap-1 text-on-surface-variant">
+                                                    <MIcon name="location_on" className="text-sm" />
+                                                    {item.location.name}
+                                                </span>
+                                            ) : (
+                                                <span className="inline-flex items-center gap-1 text-on-surface-variant/60 italic">
+                                                    <MIcon name="location_off" className="text-sm" />
+                                                    sin ubicación
+                                                </span>
+                                            )}
                                         </div>
                                         {item.stockMin > 0 && (
                                             <div className="mt-1.5 h-1 rounded-full bg-surface-container overflow-hidden">
@@ -1262,6 +1311,7 @@ const InventoryView: React.FC<InventoryViewProps> = ({ authToken, onAuthError })
             {editingItem && (
                 <EditItemModal
                     item={editingItem}
+                    locations={locations}
                     onClose={() => setEditingItem(null)}
                     onSave={handleEdit}
                 />
