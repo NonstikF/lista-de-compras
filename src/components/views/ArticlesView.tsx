@@ -53,9 +53,9 @@ const ArticleCard: React.FC<{
                 {article.description && (
                     <p className="text-[11px] leading-snug text-on-surface-variant line-clamp-2">{article.description}</p>
                 )}
-                {(article.sku || article.stockStatus === 'instock' || article.stockStatus === 'outofstock') && (
+                {(article.locationSku || article.stockStatus === 'instock' || article.stockStatus === 'outofstock') && (
                     <div className="flex flex-col gap-0.5 text-[11px] text-on-surface-variant">
-                        {article.sku && <span className="truncate">SKU: {article.sku}</span>}
+                        {article.locationSku && <span className="truncate">SKU: {article.locationSku}</span>}
                         {(article.stockStatus === 'instock' || article.stockStatus === 'outofstock') && (
                             <span className="truncate">
                                 {article.stockStatus === 'instock' ? 'En stock' : 'Sin stock'}
@@ -93,7 +93,6 @@ const ArticleCard: React.FC<{
 // ---------- Modal de edición ----------
 interface ArticleForm {
     name: string;
-    sku: string;
     barcode: string;
     price: string;
     image: string | null;
@@ -111,8 +110,8 @@ const ArticleEditModal: React.FC<{
 }> = ({ article, suppliers, locationSuggestions, onClose, onSave }) => {
     const isNew = article === 'new';
     const initial: ArticleForm = isNew
-        ? { name: '', sku: '', barcode: '', price: '', image: null, supplierIds: [], supplierZones: {}, locationSku: '' }
-        : { name: (article as Article).name, sku: (article as Article).sku ?? '', barcode: (article as Article).barcode ?? '', price: String((article as Article).price), image: (article as Article).image, supplierIds: (article as Article).supplierIds, supplierZones: (article as Article).supplierZones ?? {}, locationSku: (article as Article).locationSku ?? '' };
+        ? { name: '', barcode: '', price: '', image: null, supplierIds: [], supplierZones: {}, locationSku: '' }
+        : { name: (article as Article).name, barcode: (article as Article).barcode ?? '', price: String((article as Article).price), image: (article as Article).image, supplierIds: (article as Article).supplierIds, supplierZones: (article as Article).supplierZones ?? {}, locationSku: (article as Article).locationSku ?? '' };
 
     const [form, setForm] = useState<ArticleForm>(initial);
     const [errors, setErrors] = useState<Partial<Record<keyof ArticleForm, string>>>({});
@@ -176,7 +175,7 @@ const ArticleEditModal: React.FC<{
         try {
             await onSave({
                 name: form.name.trim(),
-                sku: form.sku.trim(),
+                sku: '',
                 barcode: form.barcode.trim(),
                 price: parseFloat(form.price),
                 image: form.image,
@@ -244,23 +243,7 @@ const ArticleEditModal: React.FC<{
                         />
                     </Field>
 
-                    <Field label="SKU">
-                        <Input
-                            value={form.sku}
-                            onChange={e => update('sku', e.target.value)}
-                            placeholder="Ej. CAF-001"
-                        />
-                    </Field>
-
-                    <Field label="Código de barras">
-                        <Input
-                            value={form.barcode}
-                            onChange={e => update('barcode', e.target.value)}
-                            placeholder="Ej. 7501234567890"
-                        />
-                    </Field>
-
-                    <Field label="SKU de ubicación" hint="Si la ubicación no existe se crea automáticamente.">
+                    <Field label="SKU" hint="SKU de la ubicación. Si no existe se crea automáticamente.">
                         <Input
                             value={form.locationSku}
                             onChange={e => update('locationSku', e.target.value.toUpperCase())}
@@ -270,6 +253,14 @@ const ArticleEditModal: React.FC<{
                         <datalist id="article-location-suggestions">
                             {locationSuggestions.map(s => <option key={s} value={s} />)}
                         </datalist>
+                    </Field>
+
+                    <Field label="Código de barras">
+                        <Input
+                            value={form.barcode}
+                            onChange={e => update('barcode', e.target.value)}
+                            placeholder="Ej. 7501234567890"
+                        />
                     </Field>
 
                     <Field label="Precio" required error={errors.price}>
@@ -364,7 +355,7 @@ const ArticlesView: React.FC<ArticlesViewProps> = ({ authToken, onAuthError }) =
 
     const filtered = articles.filter(a => {
         const q = search.toLowerCase();
-        const matchSearch = !q || a.name.toLowerCase().includes(q) || (a.sku ?? '').toLowerCase().includes(q) || (a.barcode ?? '').toLowerCase().includes(q);
+        const matchSearch = !q || a.name.toLowerCase().includes(q) || (a.locationSku ?? '').toLowerCase().includes(q) || (a.barcode ?? '').toLowerCase().includes(q);
         const matchCat = !categoryFilter || a.category === categoryFilter;
         return matchSearch && matchCat;
     });

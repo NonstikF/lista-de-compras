@@ -98,7 +98,7 @@ const EditItemModal: React.FC<{
                 <Field label="Unidad" error={errors.unit}>
                     <Input value={unit} onChange={e => { setUnit(e.target.value); setErrors(x => ({ ...x, unit: '' })); }} placeholder="ej: kg, litros, unidad" />
                 </Field>
-                <Field label="SKU de ubicación" hint="Si la ubicación no existe se crea automáticamente. Deja vacío para quitar.">
+                <Field label="SKU" hint="SKU de la ubicación. Si no existe se crea automáticamente. Deja vacío para quitar.">
                     <Input
                         value={locationSku}
                         onChange={e => setLocationSku(e.target.value.toUpperCase())}
