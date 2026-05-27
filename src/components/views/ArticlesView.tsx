@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import type { Article, Supplier } from '../../types';
 import { AuthError, getArticles, createArticle, updateArticle, deleteArticle, getSuppliers } from '../../services/api';
 import { Modal, Button, Field, Input, MIcon, fmt, useToast } from '../ui';
@@ -99,18 +99,20 @@ interface ArticleForm {
     image: string | null;
     supplierIds: string[];
     supplierZones: Record<string, string>;
+    locationSku: string;
 }
 
 const ArticleEditModal: React.FC<{
     article: Article | 'new' | null;
     suppliers: Supplier[];
+    locationSuggestions: string[];
     onClose: () => void;
-    onSave: (data: { name: string; sku: string; barcode: string; price: number; image: string | null; supplierIds: string[]; supplierZones: Record<string, string> }) => Promise<void>;
-}> = ({ article, suppliers, onClose, onSave }) => {
+    onSave: (data: { name: string; sku: string; barcode: string; price: number; image: string | null; supplierIds: string[]; supplierZones: Record<string, string>; locationSku: string }) => Promise<void>;
+}> = ({ article, suppliers, locationSuggestions, onClose, onSave }) => {
     const isNew = article === 'new';
     const initial: ArticleForm = isNew
-        ? { name: '', sku: '', barcode: '', price: '', image: null, supplierIds: [], supplierZones: {} }
-        : { name: (article as Article).name, sku: (article as Article).sku ?? '', barcode: (article as Article).barcode ?? '', price: String((article as Article).price), image: (article as Article).image, supplierIds: (article as Article).supplierIds, supplierZones: (article as Article).supplierZones ?? {} };
+        ? { name: '', sku: '', barcode: '', price: '', image: null, supplierIds: [], supplierZones: {}, locationSku: '' }
+        : { name: (article as Article).name, sku: (article as Article).sku ?? '', barcode: (article as Article).barcode ?? '', price: String((article as Article).price), image: (article as Article).image, supplierIds: (article as Article).supplierIds, supplierZones: (article as Article).supplierZones ?? {}, locationSku: (article as Article).locationSku ?? '' };
 
     const [form, setForm] = useState<ArticleForm>(initial);
     const [errors, setErrors] = useState<Partial<Record<keyof ArticleForm, string>>>({});
@@ -180,6 +182,7 @@ const ArticleEditModal: React.FC<{
                 image: form.image,
                 supplierIds: form.supplierIds,
                 supplierZones: form.supplierZones,
+                locationSku: form.locationSku.trim().toUpperCase(),
             });
         } finally {
             setSaving(false);
@@ -255,6 +258,18 @@ const ArticleEditModal: React.FC<{
                             onChange={e => update('barcode', e.target.value)}
                             placeholder="Ej. 7501234567890"
                         />
+                    </Field>
+
+                    <Field label="SKU de ubicación" hint="Si la ubicación no existe se crea automáticamente.">
+                        <Input
+                            value={form.locationSku}
+                            onChange={e => update('locationSku', e.target.value.toUpperCase())}
+                            placeholder="Ej. A3, BODEGA-1"
+                            list="article-location-suggestions"
+                        />
+                        <datalist id="article-location-suggestions">
+                            {locationSuggestions.map(s => <option key={s} value={s} />)}
+                        </datalist>
                     </Field>
 
                     <Field label="Precio" required error={errors.price}>
@@ -372,7 +387,16 @@ const ArticlesView: React.FC<ArticlesViewProps> = ({ authToken, onAuthError }) =
         return () => { cancelled = true; };
     }, [authToken]);
 
-    const handleSave = async (data: { name: string; sku: string; barcode: string; price: number; image: string | null; supplierIds: string[]; supplierZones: Record<string, string> }) => {
+    const locationSuggestions = useMemo(() => {
+        const set = new Set<string>();
+        for (const a of articles) {
+            const v = (a.locationSku ?? '').trim().toUpperCase();
+            if (v) set.add(v);
+        }
+        return Array.from(set).sort();
+    }, [articles]);
+
+    const handleSave = async (data: { name: string; sku: string; barcode: string; price: number; image: string | null; supplierIds: string[]; supplierZones: Record<string, string>; locationSku: string }) => {
         const isNew = editing === 'new';
         try {
             if (isNew) {
@@ -518,6 +542,7 @@ const ArticlesView: React.FC<ArticlesViewProps> = ({ authToken, onAuthError }) =
                 <ArticleEditModal
                     article={editing}
                     suppliers={suppliers}
+                    locationSuggestions={locationSuggestions}
                     onClose={() => setEditing(null)}
                     onSave={handleSave}
                 />

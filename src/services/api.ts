@@ -356,7 +356,7 @@ export async function getInventory(token: string): Promise<InventoryItem[]> {
 export async function updateInventoryItem(
   token: string,
   id: string,
-  data: { stockMin?: number; unit?: string; locationId?: string | null },
+  data: { stockMin?: number; unit?: string; locationId?: string | null; locationSku?: string | null },
 ): Promise<InventoryItem> {
   return handleResponse(await fetch(`${BASE}/api/inventory/${id}`, {
     method: 'PUT', headers: authHeaders(token), body: JSON.stringify(data),
