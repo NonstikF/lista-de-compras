@@ -9,6 +9,7 @@ export const PERMISSION_KEYS = [
     'suppliers',
     'users',
     'inventory',
+    'locations',
     'settings',
 ] as const;
 
@@ -24,6 +25,7 @@ export const DEFAULT_PERMISSIONS: UserPermissions = {
     suppliers: true,
     users: true,
     inventory: true,
+    locations: true,
     settings: true,
 };
 

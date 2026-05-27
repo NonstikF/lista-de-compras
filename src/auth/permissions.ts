@@ -9,6 +9,7 @@ export const permissionKeys: PermissionKey[] = [
   'suppliers',
   'users',
   'inventory',
+  'locations',
   'settings',
 ];
 
@@ -21,6 +22,7 @@ export const permissionLabels: Record<PermissionKey, string> = {
   suppliers: 'Proveedores',
   users: 'Usuarios',
   inventory: 'Inventario',
+  locations: 'Ubicaciones',
   settings: 'Configuracion',
 };
 
@@ -33,6 +35,7 @@ export const defaultPermissions: UserPermissions = {
   suppliers: true,
   users: true,
   inventory: true,
+  locations: true,
   settings: true,
 };
 

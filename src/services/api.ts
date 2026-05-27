@@ -12,6 +12,7 @@ import type {
   OrderTicketUpload,
   InventoryItem,
   InventoryMovement,
+  Location,
   CompanySettings,
   UserPermissions,
 } from '../types';
@@ -355,10 +356,42 @@ export async function getInventory(token: string): Promise<InventoryItem[]> {
 export async function updateInventoryItem(
   token: string,
   id: string,
-  data: { stockMin?: number; unit?: string },
+  data: { stockMin?: number; unit?: string; locationId?: string | null },
 ): Promise<InventoryItem> {
   return handleResponse(await fetch(`${BASE}/api/inventory/${id}`, {
     method: 'PUT', headers: authHeaders(token), body: JSON.stringify(data),
+  }));
+}
+
+// ---- Ubicaciones ----
+
+export async function getLocations(token: string): Promise<Location[]> {
+  return handleResponse(await fetch(`${BASE}/api/locations`, { headers: authHeaders(token) }));
+}
+
+export async function getLocation(token: string, id: string): Promise<Location & { items: InventoryItem[] }> {
+  return handleResponse(await fetch(`${BASE}/api/locations/${id}`, { headers: authHeaders(token) }));
+}
+
+export async function getLocationByCode(token: string, code: string): Promise<Location & { items: InventoryItem[] }> {
+  return handleResponse(await fetch(`${BASE}/api/locations/by-code/${encodeURIComponent(code)}`, { headers: authHeaders(token) }));
+}
+
+export async function createLocation(token: string, data: { name: string; code?: string; description?: string; active?: boolean }): Promise<Location> {
+  return handleResponse(await fetch(`${BASE}/api/locations`, {
+    method: 'POST', headers: authHeaders(token), body: JSON.stringify(data),
+  }));
+}
+
+export async function updateLocation(token: string, id: string, data: { name?: string; code?: string; description?: string; active?: boolean }): Promise<Location> {
+  return handleResponse(await fetch(`${BASE}/api/locations/${id}`, {
+    method: 'PUT', headers: authHeaders(token), body: JSON.stringify(data),
+  }));
+}
+
+export async function deleteLocation(token: string, id: string): Promise<void> {
+  await handleResponse(await fetch(`${BASE}/api/locations/${id}`, {
+    method: 'DELETE', headers: authHeaders(token),
   }));
 }
 

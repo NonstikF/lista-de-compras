@@ -37,7 +37,7 @@ export interface AuthError {
 }
 
 // ---------- Usuarios ----------
-export type PermissionKey = 'dashboard' | 'orders' | 'recipes' | 'articles' | 'store' | 'suppliers' | 'users' | 'inventory' | 'settings';
+export type PermissionKey = 'dashboard' | 'orders' | 'recipes' | 'articles' | 'store' | 'suppliers' | 'users' | 'inventory' | 'locations' | 'settings';
 export type UserPermissions = Record<PermissionKey, boolean>;
 
 export interface AuthUser {
@@ -161,8 +161,22 @@ export interface InventoryItem {
   stock: number;
   stockMin: number;
   unit: string;
+  locationId: string | null;
   createdAt: string;
   article: { id: string; name: string; image: string | null; category: string };
+  location?: { id: string; name: string; code: string } | null;
+}
+
+// ---------- Ubicaciones ----------
+export interface Location {
+  id: string;
+  name: string;
+  code: string;
+  description: string;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+  _count?: { items: number };
 }
 
 export interface InventoryMovement {
