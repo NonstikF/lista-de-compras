@@ -7,7 +7,7 @@ import { CheckCircleIcon, ChevronDownIcon, XMarkIcon, EyeIcon } from '../ui/icon
 import { showToast } from '../ui/Toast';
 import { fmt } from '../ui';
 
-type TabMode = OrderStatusType | 'store';
+type TabMode = 'store' | 'completed';
 
 
 interface OrdersViewProps {
@@ -1686,8 +1686,7 @@ const OrdersView: React.FC<OrdersViewProps> = ({ authToken, onAuthError }) => {
     const [orders, setOrders] = useState<Order[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-    const [tabMode, setTabMode] = useState<TabMode>('processing');
-    const viewMode: OrderStatusType = tabMode === 'store' ? 'processing' : tabMode;
+    const [tabMode, setTabMode] = useState<TabMode>('store');
     const [storeOrders, setStoreOrders] = useState<StoreOrder[]>([]);
     const [loadingStoreOrders, setLoadingStoreOrders] = useState(false);
     const [completingOrderId, setCompletingOrderId] = useState<number | null>(null);
@@ -1749,7 +1748,6 @@ const OrdersView: React.FC<OrdersViewProps> = ({ authToken, onAuthError }) => {
     }, []);
 
     useEffect(() => {
-        if (tabMode !== 'store') return;
         let cancelled = false;
         const load = async () => {
             setLoadingStoreOrders(true);
@@ -1765,16 +1763,16 @@ const OrdersView: React.FC<OrdersViewProps> = ({ authToken, onAuthError }) => {
         };
         load();
         return () => { cancelled = true; };
-    }, [tabMode, authToken, onAuthError]);
+    }, [authToken, onAuthError]);
 
     useEffect(() => {
-        if (tabMode === 'store') return;
+        if (tabMode !== 'completed') return;
         const fetchOrders = async () => {
             try {
                 setIsLoading(true);
                 setError(null);
                 setOrders([]);
-                const fetchedOrders = await getOrders(viewMode, authToken);
+                const fetchedOrders = await getOrders('completed', authToken);
                 setOrders(fetchedOrders.sort((a, b) => new Date(b.dateCreated).getTime() - new Date(a.dateCreated).getTime()));
             } catch (err) {
                 if (err instanceof AuthError) { onAuthError(); return; }
@@ -1785,7 +1783,7 @@ const OrdersView: React.FC<OrdersViewProps> = ({ authToken, onAuthError }) => {
             }
         };
         fetchOrders();
-    }, [tabMode, viewMode, authToken, onAuthError]);
+    }, [tabMode, authToken, onAuthError]);
 
     const handleQuantityChange = useCallback((itemId: number, newQuantity: number, supplierId: string | null) => {
         setOrders(prevOrders => {
@@ -1852,10 +1850,12 @@ const OrdersView: React.FC<OrdersViewProps> = ({ authToken, onAuthError }) => {
     }, [authToken, onAuthError]);
 
     const tabs: { key: TabMode; label: string }[] = [
-        { key: 'processing', label: 'Pendientes' },
-        { key: 'completed', label: 'Completados' },
         { key: 'store', label: 'Tienda' },
+        { key: 'completed', label: 'Completados' },
     ];
+
+    const pendingStoreOrders = storeOrders.filter(o => o.status === 'pending');
+    const completedStoreOrders = storeOrders.filter(o => o.status === 'completed');
 
     return (
         <div className="space-y-6">
@@ -1886,8 +1886,8 @@ const OrdersView: React.FC<OrdersViewProps> = ({ authToken, onAuthError }) => {
             {tabMode === 'store' && (
                 <div className="space-y-4">
                     {loadingStoreOrders && <LoadingSpinner />}
-                    {!loadingStoreOrders && storeOrders.length === 0 && <EmptyStoreOrders />}
-                    {!loadingStoreOrders && storeOrders.map(order => (
+                    {!loadingStoreOrders && pendingStoreOrders.length === 0 && <EmptyStoreOrders />}
+                    {!loadingStoreOrders && pendingStoreOrders.map(order => (
                         <StoreOrderCard
                             key={order.id}
                             order={order}
@@ -1902,24 +1902,36 @@ const OrdersView: React.FC<OrdersViewProps> = ({ authToken, onAuthError }) => {
                 </div>
             )}
 
-            {/* Tabs Pedidos (processing/completed) */}
-            {tabMode !== 'store' && (
+            {/* Tab Completados (legacy + tienda) */}
+            {tabMode === 'completed' && (
                 <>
-                    {isLoading && <LoadingSpinner />}
-                    {!isLoading && error && (
+                    {(isLoading || loadingStoreOrders) && <LoadingSpinner />}
+                    {!isLoading && !loadingStoreOrders && error && (
                         <div className="flex items-center gap-2 p-4 bg-error-container/30 text-error rounded-xl text-sm">
                             <span className="material-symbols-outlined text-base">error</span>
                             {error}
                         </div>
                     )}
-                    {!isLoading && !error && orders.length === 0 && <EmptyState />}
-                    {!isLoading && !error && orders.length > 0 && (
+                    {!isLoading && !loadingStoreOrders && !error && orders.length === 0 && completedStoreOrders.length === 0 && <EmptyState />}
+                    {!isLoading && !loadingStoreOrders && !error && (orders.length > 0 || completedStoreOrders.length > 0) && (
                         <div className="space-y-4">
+                            {completedStoreOrders.map(order => (
+                                <StoreOrderCard
+                                    key={`store-${order.id}`}
+                                    order={order}
+                                    authToken={authToken}
+                                    onAuthError={onAuthError}
+                                    onComplete={handleCompleteStoreOrder}
+                                    onItemUpdate={handleStoreItemUpdate}
+                                    onViewImage={handleViewImage}
+                                    onOrderEdited={handleStoreOrderEdited}
+                                />
+                            ))}
                             {orders.map(order => (
                                 <OrderCard
-                                    key={order.id}
+                                    key={`legacy-${order.id}`}
                                     order={order}
-                                    viewMode={viewMode}
+                                    viewMode="completed"
                                     completingOrderId={completingOrderId}
                                     authToken={authToken}
                                     onAuthError={onAuthError}

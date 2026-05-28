@@ -42,7 +42,7 @@ router.post('/login', loginLimiter, async (req: Request, res: Response) => {
     }
 
     const permissions = normalizePermissions(user.permissions);
-    const token = jwt.sign({ userId: user.id, username: user.username }, jwtSecret, { expiresIn: '24h' });
+    const token = jwt.sign({ userId: user.id, username: user.username }, jwtSecret, { expiresIn: '30d' });
     res.json({
         token,
         user: { id: user.id, username: user.username, nombre: user.nombre, permissions },
