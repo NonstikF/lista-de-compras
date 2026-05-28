@@ -138,14 +138,16 @@ const StoreItem = React.memo<{
                         <EyeIcon className="w-5 h-5" />
                     </button>
                 )}
-                <button
-                    onClick={handleToggleNotFound}
-                    aria-label={isNotFound ? 'Marcar como pendiente' : 'Marcar como no encontrado'}
-                    title={isNotFound ? 'Marcar como pendiente' : 'No se encontró'}
-                    className={`p-1.5 rounded-full transition-colors ${isNotFound ? 'bg-amber-200 text-amber-800 hover:bg-amber-300' : 'text-on-surface-variant hover:bg-amber-100 hover:text-amber-700'}`}
-                >
-                    <span className="material-symbols-outlined text-[20px] leading-none">search_off</span>
-                </button>
+                {!isPurchased && (
+                    <button
+                        onClick={handleToggleNotFound}
+                        aria-label={isNotFound ? 'Marcar como pendiente' : 'Marcar como no encontrado'}
+                        title={isNotFound ? 'Marcar como pendiente' : 'No se encontró'}
+                        className={`p-1.5 rounded-full transition-colors ${isNotFound ? 'bg-amber-200 text-amber-800 hover:bg-amber-300' : 'text-on-surface-variant hover:bg-amber-100 hover:text-amber-700'}`}
+                    >
+                        <span className="material-symbols-outlined text-[20px] leading-none">search_off</span>
+                    </button>
+                )}
                 <button
                     onClick={handleToggle}
                     disabled={(!isPurchased && maxPurchasable === 0) || isNotFound}
