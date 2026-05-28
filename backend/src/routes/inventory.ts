@@ -62,7 +62,8 @@ router.put('/:id', async (req: Request, res: Response) => {
             data.locationId = await resolveLocationSkuToId(parsed.data.locationSku);
         } catch (err) {
             console.error('Error al resolver locationSku:', err);
-            res.status(500).json({ error: 'Error al asignar ubicación' });
+            const message = err instanceof Error ? err.message : 'Error al asignar ubicación';
+            res.status(409).json({ error: message });
             return;
         }
     } else if (parsed.data.locationId !== undefined) {

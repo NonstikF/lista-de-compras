@@ -78,8 +78,17 @@ router.post('/', async (req: Request, res: Response) => {
     const parsed = articleSchema.safeParse(req.body);
     if (!parsed.success) { res.status(400).json({ error: parsed.error.issues[0].message }); return; }
     const { legacyWooProductId, name, image, price, sku, barcode, category, description, stockStatus, supplierIds, supplierZones, locationSku } = parsed.data;
+    let locationId: string | null = null;
+    if (locationSku !== undefined) {
+        try {
+            locationId = await resolveLocationSkuToId(locationSku);
+        } catch (err) {
+            const message = err instanceof Error ? err.message : 'Error al asignar ubicación';
+            res.status(409).json({ error: message });
+            return;
+        }
+    }
     try {
-        const locationId = locationSku !== undefined ? await resolveLocationSkuToId(locationSku) : null;
         const article = await prisma.article.create({
             data: {
                 legacyWooProductId, name, image, price, sku, barcode, category, description, stockStatus,
@@ -110,7 +119,14 @@ router.put('/:id', async (req: Request, res: Response) => {
         });
 
         if (locationSku !== undefined) {
-            const locationId = await resolveLocationSkuToId(locationSku);
+            let locationId: string | null;
+            try {
+                locationId = await resolveLocationSkuToId(locationSku);
+            } catch (err) {
+                const message = err instanceof Error ? err.message : 'Error al asignar ubicación';
+                res.status(409).json({ error: message });
+                return;
+            }
             await prisma.inventoryItem.upsert({
                 where: { articleId: article.id },
                 create: { articleId: article.id, locationId },

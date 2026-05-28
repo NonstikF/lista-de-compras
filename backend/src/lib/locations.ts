@@ -12,12 +12,21 @@ export async function resolveLocationSkuToId(rawSku: string | null | undefined):
     const code = String(rawSku).trim().toUpperCase();
     if (!code) return null;
 
-    const existing = await prisma.location.findUnique({ where: { code }, select: { id: true } });
-    if (existing) return existing.id;
-
-    const created = await prisma.location.create({
-        data: { code, name: code, active: true },
-        select: { id: true },
-    });
-    return created.id;
+    try {
+        const upserted = await prisma.location.upsert({
+            where: { code },
+            update: {},
+            create: { code, name: code, active: true },
+            select: { id: true },
+        });
+        return upserted.id;
+    } catch (err: unknown) {
+        if (err && typeof err === 'object' && 'code' in err && (err as { code: string }).code === 'P2002') {
+            const existing = await prisma.location.findUnique({ where: { code }, select: { id: true } });
+            if (existing) return existing.id;
+            const target = (err as { meta?: { target?: string[] } }).meta?.target?.[0];
+            throw new Error(target === 'name' ? `Ya existe una ubicación con el nombre "${code}"` : 'No se pudo crear la ubicación');
+        }
+        throw err;
+    }
 }
