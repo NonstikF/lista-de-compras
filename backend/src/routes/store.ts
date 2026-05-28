@@ -65,7 +65,7 @@ function addCrossSupplierInfo(items: RawOrder['items']): (RawOrder['items'][numb
     });
 }
 
-type RawOrderItem = { id: number; orderId: number; articleId: string; name: string; price: number; qty: number; isPurchased: boolean; quantityPurchased: number; imageUrl: string | null; supplierName: string; supplierId: string | null };
+type RawOrderItem = { id: number; orderId: number; articleId: string; name: string; price: number; qty: number; isPurchased: boolean; notFound: boolean; quantityPurchased: number; imageUrl: string | null; supplierName: string; supplierId: string | null };
 type RawOrder = {
     id: number; dateCreated: Date; status: string; customerName: string;
     customerPhone: string; notes: string; total: number;
@@ -88,6 +88,66 @@ function formatStoreOrder(o: RawOrder, articleMap: Record<string, ArticleInfo> =
         }),
     };
 }
+
+// GET /api/store-orders/pending-items — aggregated not-found items across completed orders
+router.get('/pending-items', async (_req: Request, res: Response) => {
+    try {
+        const items = await prisma.storeOrderItem.findMany({
+            where: { notFound: true, order: { status: 'completed' } },
+            include: { order: { select: { id: true, dateCreated: true, customerName: true } } },
+        });
+        const articleMap = await getArticleInfoMap([...new Set(items.map(i => i.articleId))]);
+        const groupMap = new Map<string, {
+            articleId: string;
+            name: string;
+            supplierName: string;
+            imageUrl: string | null;
+            totalQty: number;
+            itemIds: number[];
+            orders: { id: string; dateCreated: string; customerName: string; qty: number }[];
+        }>();
+        for (const it of items) {
+            const key = `${it.articleId}::${it.supplierName}`;
+            const existing = groupMap.get(key);
+            const orderInfo = { id: `T-${it.order.id}`, dateCreated: it.order.dateCreated.toISOString(), customerName: it.order.customerName, qty: it.qty };
+            if (existing) {
+                existing.totalQty += it.qty;
+                existing.itemIds.push(it.id);
+                existing.orders.push(orderInfo);
+            } else {
+                groupMap.set(key, {
+                    articleId: it.articleId,
+                    name: it.name,
+                    supplierName: it.supplierName,
+                    imageUrl: articleMap[it.articleId]?.image ?? it.imageUrl,
+                    totalQty: it.qty,
+                    itemIds: [it.id],
+                    orders: [orderInfo],
+                });
+            }
+        }
+        res.json([...groupMap.values()].sort((a, b) => a.supplierName.localeCompare(b.supplierName, 'es') || a.name.localeCompare(b.name, 'es')));
+    } catch (err) {
+        console.error('Error al obtener pendientes:', err);
+        res.status(500).json({ error: 'Error al obtener pendientes' });
+    }
+});
+
+// POST /api/store-orders/pending-items/resolve — mark group of not-found items as purchased
+router.post('/pending-items/resolve', async (req: Request, res: Response) => {
+    const parsed = z.object({ itemIds: z.array(z.number().int().positive()).min(1) }).safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: parsed.error.issues[0].message }); return; }
+    try {
+        await prisma.storeOrderItem.updateMany({
+            where: { id: { in: parsed.data.itemIds }, notFound: true },
+            data: { notFound: false, isPurchased: true },
+        });
+        res.json({ success: true });
+    } catch (err) {
+        console.error('Error al resolver pendientes:', err);
+        res.status(500).json({ error: 'Error al resolver pendientes' });
+    }
+});
 
 router.get('/', async (_req: Request, res: Response) => {
     try {
@@ -128,6 +188,12 @@ router.patch('/:id/complete', async (req: Request, res: Response) => {
         : parseInt(req.params.id, 10);
     if (!Number.isFinite(rawId)) { res.status(400).json({ error: 'ID inválido' }); return; }
     try {
+        const items = await prisma.storeOrderItem.findMany({ where: { orderId: rawId } });
+        const unresolved = items.filter(i => !i.isPurchased && !i.notFound);
+        if (unresolved.length > 0) {
+            res.status(409).json({ error: 'Hay artículos sin marcar como comprados o no encontrados' });
+            return;
+        }
         const order = await prisma.storeOrder.update({
             where: { id: rawId },
             data: { status: 'completed' },
@@ -148,6 +214,7 @@ router.patch('/:id/items/:itemId', async (req: Request, res: Response) => {
     if (!Number.isFinite(itemId)) { res.status(400).json({ error: 'itemId inválido' }); return; }
     const parsed = z.object({
         isPurchased: z.boolean().optional(),
+        notFound: z.boolean().optional(),
         quantityPurchased: z.number().int().min(0).optional(),
         qty: z.number().int().min(1).optional(),
         price: z.number().min(0).optional(),
@@ -211,6 +278,29 @@ router.patch('/:id/items/:itemId', async (req: Request, res: Response) => {
     }
 
     try {
+        // notFound toggle: propagate across siblings, clears purchased state
+        if (parsed.data.notFound !== undefined) {
+            const data: Record<string, unknown> = { notFound: parsed.data.notFound };
+            if (parsed.data.notFound) { data.isPurchased = false; data.quantityPurchased = 0; }
+            const item = await prisma.storeOrderItem.update({ where: { id: itemId }, data });
+            const siblings = await prisma.storeOrderItem.findMany({
+                where: { orderId: item.orderId, articleId: item.articleId, id: { not: itemId } },
+            });
+            if (siblings.length > 0) {
+                await prisma.storeOrderItem.updateMany({
+                    where: { orderId: item.orderId, articleId: item.articleId, id: { not: itemId } },
+                    data,
+                });
+            }
+            const updatedSiblings = siblings.map(s => ({ ...s, ...data }));
+            const totalByOthers = updatedSiblings.reduce((s, r) => s + r.quantityPurchased, 0);
+            res.json({
+                item: { ...item, quantityPurchasedByOthers: totalByOthers },
+                siblingUpdates: updatedSiblings.map(s => ({ ...s, quantityPurchasedByOthers: item.quantityPurchased })),
+            });
+            return;
+        }
+
         const item = await prisma.storeOrderItem.update({
             where: { id: itemId },
             data: { isPurchased: parsed.data.isPurchased, quantityPurchased: parsed.data.quantityPurchased },

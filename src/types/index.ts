@@ -137,6 +137,7 @@ export interface StoreOrderItem {
   price: number;
   qty: number;
   isPurchased: boolean;
+  notFound: boolean;
   quantityPurchased: number;
   quantityPurchasedByOthers: number; // sum of quantityPurchased of sibling items for same articleId in this order
   imageUrl?: string | null;

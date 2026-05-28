@@ -254,6 +254,26 @@ export async function deleteRecipe(token: string, id: string): Promise<void> {
 
 // ---- Pedidos de Tienda ----
 
+export interface PendingItemGroup {
+  articleId: string;
+  name: string;
+  supplierName: string;
+  imageUrl: string | null;
+  totalQty: number;
+  itemIds: number[];
+  orders: { id: string; dateCreated: string; customerName: string; qty: number }[];
+}
+
+export async function getPendingStoreItems(token: string): Promise<PendingItemGroup[]> {
+  return handleResponse(await fetch(`${BASE}/api/store-orders/pending-items`, { headers: authHeaders(token) }));
+}
+
+export async function resolvePendingStoreItems(token: string, itemIds: number[]): Promise<{ success: boolean }> {
+  return handleResponse(await fetch(`${BASE}/api/store-orders/pending-items/resolve`, {
+    method: 'POST', headers: authHeaders(token), body: JSON.stringify({ itemIds }),
+  }));
+}
+
 export async function getStoreOrders(token: string): Promise<StoreOrder[]> {
   return handleResponse(await fetch(`${BASE}/api/store-orders`, { headers: authHeaders(token) }));
 }
@@ -277,7 +297,7 @@ export async function updateStoreItemStatus(
   token: string,
   orderId: string,
   itemId: number,
-  data: { isPurchased?: boolean; quantityPurchased?: number },
+  data: { isPurchased?: boolean; notFound?: boolean; quantityPurchased?: number },
 ): Promise<{ item: StoreOrderItem; siblingUpdates: StoreOrderItem[] }> {
   return handleResponse(await fetch(`${BASE}/api/store-orders/${orderId}/items/${itemId}`, {
     method: 'PATCH', headers: authHeaders(token), body: JSON.stringify(data),

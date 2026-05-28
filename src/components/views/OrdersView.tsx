@@ -1,7 +1,7 @@
 ﻿import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import type { Order, LineItem, StoreOrder, StoreOrderItem, OrderTicket, Supplier, Article } from '../../types';
 import { getOrders, saveItemStatus, completeOrder, AuthError, type OrderStatusType, getSuppliers, getArticles } from '../../services/api';
-import { getStoreOrders, completeStoreOrder, getOrderTickets, getOrderTicketContent, createOrderTicket, deleteOrderTicket, getOrderTicketCounts, updateStoreItemStatus, getStoreOrderTickets, getStoreOrderTicketContent, createStoreOrderTicket, deleteStoreOrderTicket, addStoreOrderItem, deleteStoreOrderItem, editStoreOrderItem } from '../../services/api';
+import { getStoreOrders, completeStoreOrder, getOrderTickets, getOrderTicketContent, createOrderTicket, deleteOrderTicket, getOrderTicketCounts, updateStoreItemStatus, getStoreOrderTickets, getStoreOrderTicketContent, createStoreOrderTicket, deleteStoreOrderTicket, addStoreOrderItem, deleteStoreOrderItem, editStoreOrderItem, getPendingStoreItems, resolvePendingStoreItems, type PendingItemGroup } from '../../services/api';
 import { Modal, Input, Button } from '../ui';
 import { CheckCircleIcon, ChevronDownIcon, XMarkIcon, EyeIcon } from '../ui/icons';
 import { showToast } from '../ui/Toast';
@@ -62,9 +62,11 @@ const StoreItem = React.memo<{
     item: StoreOrderItem;
     // isToggle=true only when the toggle button is used (full complete/uncomplete)
     onQuantityChange: (itemId: number, newQty: number, isPurchased: boolean, isToggle: boolean) => void;
+    onToggleNotFound: (itemId: number, notFound: boolean) => void;
     onViewImage: (url: string, name: string) => void;
-}>(({ item, onQuantityChange, onViewImage }) => {
+}>(({ item, onQuantityChange, onToggleNotFound, onViewImage }) => {
     const isPurchased = item.isPurchased;
+    const isNotFound = item.notFound;
     const displayQty = item.quantityPurchased;
     const purchasedByOthers = item.quantityPurchasedByOthers ?? 0;
     const pendingQty = Math.max(0, item.qty - displayQty - purchasedByOthers);
@@ -87,23 +89,32 @@ const StoreItem = React.memo<{
             onQuantityChange(item.id, newQty, false, false);
         }
     };
+    const handleToggleNotFound = () => onToggleNotFound(item.id, !isNotFound);
 
-    const bgClass = isPurchased
-        ? 'bg-primary/5 text-on-surface-variant'
-        : isInProgress
-            ? 'bg-secondary-container/60'
-            : 'bg-white hover:bg-surface-container-low';
+    const bgClass = isNotFound
+        ? 'bg-amber-50 text-on-surface-variant'
+        : isPurchased
+            ? 'bg-primary/5 text-on-surface-variant'
+            : isInProgress
+                ? 'bg-secondary-container/60'
+                : 'bg-white hover:bg-surface-container-low';
 
     return (
         <div className={`flex items-center justify-between p-3 transition-all duration-300 ${bgClass}`}>
             <div className="flex items-center gap-4 flex-grow">
                 <span className="text-primary font-bold text-lg shrink-0">{item.qty}x</span>
                 <div>
-                    <p className={`font-semibold text-on-background ${isPurchased ? 'line-through opacity-60' : ''}`}>
+                    <p className={`font-semibold text-on-background ${isPurchased || isNotFound ? 'line-through opacity-60' : ''}`}>
                         {item.name}
                     </p>
                     <p className="text-xs text-on-surface-variant">{fmt(item.price)} c/u</p>
-                    {purchasedByOthers > 0 && !isPurchased && (
+                    {isNotFound && (
+                        <p className="text-xs text-amber-700 font-semibold mt-0.5 flex items-center gap-1">
+                            <span className="material-symbols-outlined text-[14px] leading-none">search_off</span>
+                            No se encontró
+                        </p>
+                    )}
+                    {purchasedByOthers > 0 && !isPurchased && !isNotFound && (
                         <p className="text-xs text-amber-600 font-medium mt-0.5">
                             {purchasedByOthers} surtido por otro proveedor · pendiente: {pendingQty}
                         </p>
@@ -111,7 +122,7 @@ const StoreItem = React.memo<{
                 </div>
             </div>
             <div className="flex items-center gap-3">
-                {maxPurchasable > 1 && (
+                {maxPurchasable > 1 && !isNotFound && (
                     <div className="flex items-center gap-2">
                         <button onClick={handleDecrement} disabled={displayQty === 0} className="w-7 h-7 flex items-center justify-center rounded-full bg-surface-container text-on-surface hover:bg-surface-container-high disabled:opacity-40 transition">-</button>
                         <span className="font-mono text-base font-semibold text-on-background w-8 text-center">{displayQty}</span>
@@ -128,8 +139,16 @@ const StoreItem = React.memo<{
                     </button>
                 )}
                 <button
+                    onClick={handleToggleNotFound}
+                    aria-label={isNotFound ? 'Marcar como pendiente' : 'Marcar como no encontrado'}
+                    title={isNotFound ? 'Marcar como pendiente' : 'No se encontró'}
+                    className={`p-1.5 rounded-full transition-colors ${isNotFound ? 'bg-amber-200 text-amber-800 hover:bg-amber-300' : 'text-on-surface-variant hover:bg-amber-100 hover:text-amber-700'}`}
+                >
+                    <span className="material-symbols-outlined text-[20px] leading-none">search_off</span>
+                </button>
+                <button
                     onClick={handleToggle}
-                    disabled={!isPurchased && maxPurchasable === 0}
+                    disabled={(!isPurchased && maxPurchasable === 0) || isNotFound}
                     aria-label={isPurchased ? 'Marcar como pendiente' : 'Marcar como comprado'}
                     className={`relative w-14 h-8 rounded-full flex items-center transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-40 ${isPurchased ? 'bg-success-purchased focus:ring-success-purchased' : 'bg-surface-container-high focus:ring-primary'}`}
                 >
@@ -879,7 +898,7 @@ const StoreOrderCard: React.FC<{
     authToken: string;
     onAuthError: () => void;
     onComplete: (id: string) => void;
-    onItemUpdate: (orderId: string, itemId: number, isPurchased: boolean, quantityPurchased: number, quantityPurchasedByOthers?: number) => void;
+    onItemUpdate: (orderId: string, itemId: number, isPurchased: boolean, quantityPurchased: number, quantityPurchasedByOthers?: number, notFound?: boolean) => void;
     onViewImage: (url: string, name: string) => void;
     onOrderEdited: (updated: StoreOrder) => void;
 }> = ({ order, authToken, onAuthError, onComplete, onItemUpdate, onViewImage, onOrderEdited }) => {
@@ -887,13 +906,17 @@ const StoreOrderCard: React.FC<{
     const [ticketModal, setTicketModal] = useState(false);
     const [editModal, setEditModal] = useState(false);
     const [ticketCount, setTicketCount] = useState(0);
+    const [confirmNotFound, setConfirmNotFound] = useState(false);
     const isPending = order.status === 'pending';
     const date = new Date(order.dateCreated).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' });
     // Deduplicate by articleId — multi-supplier items count as one article
     const uniqueArticleIds = new Set(order.items.map(i => i.articleId));
     const purchasedArticleIds = new Set(order.items.filter(i => i.isPurchased).map(i => i.articleId));
+    const notFoundArticleIds = new Set(order.items.filter(i => i.notFound).map(i => i.articleId));
+    const resolvedArticleIds = new Set([...purchasedArticleIds, ...notFoundArticleIds]);
     const purchasedCount = purchasedArticleIds.size;
-    const allPurchased = purchasedCount === uniqueArticleIds.size;
+    const notFoundCount = notFoundArticleIds.size;
+    const allResolved = resolvedArticleIds.size === uniqueArticleIds.size;
     // Recalculate total deduplicating multi-supplier items
     const displayTotal = (() => {
         const seen = new Set<string>();
@@ -915,9 +938,9 @@ const StoreOrderCard: React.FC<{
             : { quantityPurchased: newQty };
         updateStoreItemStatus(authToken, order.id, itemId, patch)
             .then(({ item: updated, siblingUpdates }) => {
-                onItemUpdate(order.id, itemId, updated.isPurchased, updated.quantityPurchased, updated.quantityPurchasedByOthers);
+                onItemUpdate(order.id, itemId, updated.isPurchased, updated.quantityPurchased, updated.quantityPurchasedByOthers, updated.notFound);
                 for (const sibling of siblingUpdates) {
-                    onItemUpdate(order.id, sibling.id, sibling.isPurchased, sibling.quantityPurchased, sibling.quantityPurchasedByOthers);
+                    onItemUpdate(order.id, sibling.id, sibling.isPurchased, sibling.quantityPurchased, sibling.quantityPurchasedByOthers, sibling.notFound);
                 }
             })
             .catch(err => {
@@ -925,6 +948,26 @@ const StoreOrderCard: React.FC<{
                 else showToast('error', 'Error al guardar progreso');
             });
     }, [authToken, order.id, onItemUpdate, onAuthError]);
+
+    const handleToggleNotFound = useCallback((itemId: number, notFound: boolean) => {
+        updateStoreItemStatus(authToken, order.id, itemId, { notFound })
+            .then(({ item: updated, siblingUpdates }) => {
+                onItemUpdate(order.id, itemId, updated.isPurchased, updated.quantityPurchased, updated.quantityPurchasedByOthers, updated.notFound);
+                for (const sibling of siblingUpdates) {
+                    onItemUpdate(order.id, sibling.id, sibling.isPurchased, sibling.quantityPurchased, sibling.quantityPurchasedByOthers, sibling.notFound);
+                }
+            })
+            .catch(err => {
+                if (err instanceof AuthError) onAuthError();
+                else showToast('error', 'Error al guardar progreso');
+            });
+    }, [authToken, order.id, onItemUpdate, onAuthError]);
+
+    const handleCompleteClick = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (notFoundCount > 0) setConfirmNotFound(true);
+        else onComplete(order.id);
+    };
 
     return (
         <article aria-labelledby={`store-order-heading-${order.id}`} className="bg-white rounded-2xl shadow-sm border border-surface-variant overflow-hidden">
@@ -952,13 +995,19 @@ const StoreOrderCard: React.FC<{
                     <span className={`px-2 py-0.5 text-xs font-semibold rounded-full bg-surface-container-high text-on-surface-variant`}>
                         {purchasedCount}/{uniqueArticleIds.size}
                     </span>
+                    {notFoundCount > 0 && (
+                        <span className="px-2 py-0.5 text-xs font-semibold rounded-full bg-amber-100 text-amber-800 flex items-center gap-1">
+                            <span className="material-symbols-outlined text-[14px] leading-none">search_off</span>
+                            {notFoundCount} {notFoundCount === 1 ? 'faltante' : 'faltantes'}
+                        </span>
+                    )}
                     <span className={`px-3 py-1 text-xs font-semibold rounded-full ${statusColor}`}>
                         {statusLabel}
                     </span>
                     {isPending && (
                         <button
-                            onClick={e => { e.stopPropagation(); onComplete(order.id); }}
-                            disabled={!allPurchased}
+                            onClick={handleCompleteClick}
+                            disabled={!allResolved}
                             className="px-3 py-1.5 text-sm font-semibold bg-primary text-on-primary rounded-full hover:bg-primary-container shadow-sm transition disabled:opacity-40 disabled:cursor-not-allowed"
                         >
                             Completar Pedido
@@ -1014,6 +1063,7 @@ const StoreOrderCard: React.FC<{
                                                 key={item.id}
                                                 item={item}
                                                 onQuantityChange={handleQuantityChange}
+                                                onToggleNotFound={handleToggleNotFound}
                                                 onViewImage={onViewImage}
                                             />
                                         ))}
@@ -1042,6 +1092,29 @@ const StoreOrderCard: React.FC<{
                     onClose={() => setEditModal(false)}
                     onOrderChanged={onOrderEdited}
                 />
+            )}
+            {confirmNotFound && (
+                <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+                    <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 border border-surface-variant">
+                        <div className="flex items-center gap-3 mb-3">
+                            <div className="w-10 h-10 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center">
+                                <span className="material-symbols-outlined">search_off</span>
+                            </div>
+                            <h3 className="font-epilogue font-bold text-on-background text-lg">Completar con faltantes</h3>
+                        </div>
+                        <p className="text-on-surface text-sm mb-4">
+                            Este pedido tiene <span className="font-bold text-amber-700">{notFoundCount}</span> {notFoundCount === 1 ? 'artículo no encontrado' : 'artículos no encontrados'}. ¿Completar de todas formas?
+                        </p>
+                        <div className="flex justify-end gap-2">
+                            <button onClick={() => setConfirmNotFound(false)} className="px-4 py-2 text-sm text-on-surface bg-surface-container rounded-full hover:bg-surface-container-high transition">
+                                Cancelar
+                            </button>
+                            <button onClick={() => { setConfirmNotFound(false); onComplete(order.id); }} className="px-4 py-2 text-sm font-semibold bg-primary text-on-primary rounded-full hover:bg-primary-container transition">
+                                Completar
+                            </button>
+                        </div>
+                    </div>
+                </div>
             )}
         </article>
     );
@@ -1681,6 +1754,133 @@ const OrderCard = React.memo<{
     );
 });
 
+// --- PendingItemsSection: artículos no encontrados en pedidos completados ---
+const PendingItemsSection: React.FC<{
+    authToken: string;
+    onAuthError: () => void;
+    refreshKey: number;
+    onResolved: () => void;
+}> = ({ authToken, onAuthError, refreshKey, onResolved }) => {
+    const [items, setItems] = useState<PendingItemGroup[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [expanded, setExpanded] = useState(false);
+    const [resolvingKey, setResolvingKey] = useState<string | null>(null);
+
+    useEffect(() => {
+        let cancelled = false;
+        setLoading(true);
+        getPendingStoreItems(authToken)
+            .then(data => { if (!cancelled) setItems(data); })
+            .catch(err => {
+                if (cancelled) return;
+                if (err instanceof AuthError) onAuthError();
+            })
+            .finally(() => { if (!cancelled) setLoading(false); });
+        return () => { cancelled = true; };
+    }, [authToken, onAuthError, refreshKey]);
+
+    const handleResolve = async (group: PendingItemGroup) => {
+        const key = `${group.articleId}::${group.supplierName}`;
+        setResolvingKey(key);
+        try {
+            await resolvePendingStoreItems(authToken, group.itemIds);
+            setItems(prev => prev.filter(g => `${g.articleId}::${g.supplierName}` !== key));
+            showToast('success', `${group.name} marcado como surtido`);
+            onResolved();
+        } catch (err) {
+            if (err instanceof AuthError) { onAuthError(); return; }
+            showToast('error', 'Error al marcar como surtido');
+        } finally {
+            setResolvingKey(null);
+        }
+    };
+
+    if (loading || items.length === 0) return null;
+
+    const totalQty = items.reduce((s, g) => s + g.totalQty, 0);
+
+    // Group by supplier for display
+    const bySupplier = new Map<string, PendingItemGroup[]>();
+    for (const g of items) {
+        const k = g.supplierName || 'Sin proveedor';
+        if (!bySupplier.has(k)) bySupplier.set(k, []);
+        bySupplier.get(k)!.push(g);
+    }
+
+    return (
+        <div className="bg-amber-50 border border-amber-200 rounded-2xl overflow-hidden">
+            <button
+                type="button"
+                onClick={() => setExpanded(!expanded)}
+                className="w-full p-4 flex items-center justify-between hover:bg-amber-100/60 transition"
+            >
+                <div className="flex items-center gap-3">
+                    <ChevronDownIcon className={`w-5 h-5 text-amber-700 transition-transform ${expanded ? 'rotate-180' : ''}`} />
+                    <div className="w-10 h-10 rounded-full bg-amber-200 text-amber-800 flex items-center justify-center">
+                        <span className="material-symbols-outlined">search_off</span>
+                    </div>
+                    <div className="text-left">
+                        <h2 className="font-epilogue font-bold text-on-background text-base md:text-lg">Artículos pendientes de surtir</h2>
+                        <p className="text-xs text-amber-700 mt-0.5">
+                            {items.length} {items.length === 1 ? 'artículo' : 'artículos'} · {totalQty} {totalQty === 1 ? 'unidad' : 'unidades'} de pedidos previos
+                        </p>
+                    </div>
+                </div>
+            </button>
+
+            {expanded && (
+                <div className="p-4 border-t border-amber-200 space-y-4 bg-white/60">
+                    {[...bySupplier.entries()].sort(([a], [b]) => a.localeCompare(b, 'es')).map(([supplierName, groups]) => (
+                        <div key={supplierName}>
+                            <div className="flex items-center gap-2 mb-2">
+                                <span className="material-symbols-outlined text-[16px] text-on-surface-variant leading-none">storefront</span>
+                                <span className="text-xs font-bold uppercase tracking-wider text-on-surface-variant">{supplierName}</span>
+                                <div className="flex-1 h-px bg-amber-200/80" />
+                            </div>
+                            <div className="space-y-2">
+                                {groups.map(group => {
+                                    const key = `${group.articleId}::${group.supplierName}`;
+                                    const isResolving = resolvingKey === key;
+                                    return (
+                                        <div key={key} className="bg-white border border-amber-200 rounded-xl p-3 flex items-center gap-3">
+                                            {group.imageUrl ? (
+                                                <img src={group.imageUrl} alt={group.name} className="w-11 h-11 rounded-lg object-cover shrink-0" />
+                                            ) : (
+                                                <div className="w-11 h-11 rounded-lg bg-amber-100 flex items-center justify-center shrink-0 text-amber-700 font-bold">
+                                                    {group.name.charAt(0)}
+                                                </div>
+                                            )}
+                                            <div className="flex-1 min-w-0">
+                                                <p className="font-semibold text-on-background truncate">{group.name}</p>
+                                                <p className="text-xs text-on-surface-variant mt-0.5">
+                                                    <span className="font-bold text-amber-700">{group.totalQty}</span> {group.totalQty === 1 ? 'unidad pendiente' : 'unidades pendientes'}
+                                                    {' · '}
+                                                    {group.orders.length} {group.orders.length === 1 ? 'pedido' : 'pedidos'}
+                                                </p>
+                                                <p className="text-[11px] text-on-surface-variant/80 mt-0.5 truncate">
+                                                    {group.orders.slice(0, 3).map(o => `${o.id} (${o.customerName})`).join(' · ')}
+                                                    {group.orders.length > 3 ? ` · +${group.orders.length - 3}` : ''}
+                                                </p>
+                                            </div>
+                                            <button
+                                                onClick={() => handleResolve(group)}
+                                                disabled={isResolving}
+                                                className="px-3 py-1.5 text-sm font-semibold bg-success-purchased text-on-primary rounded-full hover:opacity-90 shadow-sm transition disabled:opacity-40"
+                                            >
+                                                {isResolving ? 'Surtiendo…' : 'Surtido'}
+                                            </button>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+};
+
 // --- COMPONENTE PRINCIPAL ---
 const OrdersView: React.FC<OrdersViewProps> = ({ authToken, onAuthError }) => {
     const [orders, setOrders] = useState<Order[]>([]);
@@ -1693,6 +1893,7 @@ const OrdersView: React.FC<OrdersViewProps> = ({ authToken, onAuthError }) => {
     const [modalImageUrl, setModalImageUrl] = useState<string | null>(null);
     const [modalProductName, setModalProductName] = useState<string | null>(null);
     const [supplierLocations, setSupplierLocations] = useState<Record<string, string[]>>({});
+    const [pendingRefreshKey, setPendingRefreshKey] = useState(0);
 
     const handleViewImage = useCallback((imageUrl: string, productName: string) => {
         setModalImageUrl(imageUrl);
@@ -1714,6 +1915,7 @@ const OrdersView: React.FC<OrdersViewProps> = ({ authToken, onAuthError }) => {
         try {
             const updated = await completeStoreOrder(authToken, orderId);
             setStoreOrders(prev => prev.map(o => o.id === orderId ? updated : o));
+            setPendingRefreshKey(k => k + 1);
             showToast('success', `Pedido ${orderId} completado`);
         } catch (err) {
             if (err instanceof AuthError) { onAuthError(); return; }
@@ -1721,12 +1923,12 @@ const OrdersView: React.FC<OrdersViewProps> = ({ authToken, onAuthError }) => {
         }
     }, [authToken, onAuthError]);
 
-    const handleStoreItemUpdate = useCallback((orderId: string, itemId: number, isPurchased: boolean, quantityPurchased: number, quantityPurchasedByOthers?: number) => {
+    const handleStoreItemUpdate = useCallback((orderId: string, itemId: number, isPurchased: boolean, quantityPurchased: number, quantityPurchasedByOthers?: number, notFound?: boolean) => {
         setStoreOrders(prev => prev.map(o => {
             if (o.id !== orderId) return o;
             // Update the changed item; also refresh siblings' quantityPurchasedByOthers
             const updatedItems = o.items.map(i => {
-                if (i.id === itemId) return { ...i, isPurchased, quantityPurchased, quantityPurchasedByOthers: quantityPurchasedByOthers ?? i.quantityPurchasedByOthers };
+                if (i.id === itemId) return { ...i, isPurchased, quantityPurchased, quantityPurchasedByOthers: quantityPurchasedByOthers ?? i.quantityPurchasedByOthers, notFound: notFound ?? i.notFound };
                 // sibling: recalc its quantityPurchasedByOthers if we have the updated value
                 if (quantityPurchasedByOthers !== undefined) {
                     const changedItem = o.items.find(x => x.id === itemId);
@@ -1734,7 +1936,7 @@ const OrdersView: React.FC<OrdersViewProps> = ({ authToken, onAuthError }) => {
                         // sibling's others = total purchased by all - sibling's own
                         const ownQty = i.quantityPurchased;
                         const totalByGroup = quantityPurchased + quantityPurchasedByOthers;
-                        return { ...i, quantityPurchasedByOthers: totalByGroup - ownQty };
+                        return { ...i, quantityPurchasedByOthers: totalByGroup - ownQty, notFound: notFound ?? i.notFound };
                     }
                 }
                 return i;
@@ -1885,6 +2087,12 @@ const OrdersView: React.FC<OrdersViewProps> = ({ authToken, onAuthError }) => {
             {/* Tab Tienda */}
             {tabMode === 'store' && (
                 <div className="space-y-4">
+                    <PendingItemsSection
+                        authToken={authToken}
+                        onAuthError={onAuthError}
+                        refreshKey={pendingRefreshKey}
+                        onResolved={() => setPendingRefreshKey(k => k + 1)}
+                    />
                     {loadingStoreOrders && <LoadingSpinner />}
                     {!loadingStoreOrders && pendingStoreOrders.length === 0 && <EmptyStoreOrders />}
                     {!loadingStoreOrders && pendingStoreOrders.map(order => (

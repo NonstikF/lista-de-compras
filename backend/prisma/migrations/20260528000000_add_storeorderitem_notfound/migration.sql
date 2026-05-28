@@ -1,0 +1,1 @@
+ALTER TABLE "StoreOrderItem" ADD COLUMN "notFound" BOOLEAN NOT NULL DEFAULT false;

@@ -133,6 +133,7 @@ model StoreOrderItem {
   price               Float
   qty                 Int
   isPurchased         Boolean    @default(false)
+  notFound            Boolean    @default(false)
   quantityPurchased   Int        @default(0)
   imageUrl            String?
   supplierName        String     @default("Sin proveedor")
