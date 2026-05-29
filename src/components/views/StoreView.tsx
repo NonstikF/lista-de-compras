@@ -2,11 +2,12 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import type { Article, Supplier } from '../../types';
 import { AuthError, getArticles, getSuppliers, createStoreOrder } from '../../services/api';
 import { Modal, Button, Field, Input, Textarea, MIcon, fmt, useToast } from '../ui';
+import { smartDayWindow, smartDayBadgeLabel, type SmartDayWindow } from '../../utils/smartDay';
 
 interface StoreViewProps { authToken: string; onAuthError: () => void; }
 interface CartEntry { articleId: string; qty: number; }
 interface CheckoutForm { customerName: string; notes: string; }
-interface StoreSection { id: string; category: string; supplierId: string; supplierName: string; title: string; articles: Article[]; }
+interface StoreSection { id: string; category: string; supplierId: string; supplierName: string; title: string; articles: Article[]; smartDay: SmartDayWindow | null; }
 
 const LAST_CUSTOMER_KEY = 'plantarte_last_customer_name';
 const CART_KEY = 'plantarte_store_cart';
@@ -63,6 +64,11 @@ const StoreCard: React.FC<{
                 {inCart && (
                     <div className="absolute top-1.5 right-1.5 bg-primary text-white text-[11px] font-bold rounded-full w-6 h-6 flex items-center justify-center shadow">
                         {cartQty}
+                    </div>
+                )}
+                {article.smartDay && (
+                    <div className="absolute top-1.5 left-1.5 bg-amber-400 text-amber-900 rounded-full w-5 h-5 flex items-center justify-center shadow" title="Smart Day">
+                        <MIcon name="bolt" size={13} fill />
                     </div>
                 )}
                 <div className={`absolute inset-0 flex items-end justify-center pb-2 transition-opacity ${inCart ? 'opacity-0 group-hover:opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
@@ -229,6 +235,15 @@ const StoreView: React.FC<StoreViewProps> = ({ authToken, onAuthError }) => {
     }, [articles, supplierFilter, query]);
 
     const supplierNameMap = useMemo(() => Object.fromEntries(suppliers.map(s => [s.id, s.name])), [suppliers]);
+    const smartDayMap = useMemo(() => {
+        const today = new Date();
+        const m = new Map<string, SmartDayWindow>();
+        for (const s of suppliers) {
+            const win = smartDayWindow(s, today);
+            if (win.active) m.set(s.id, win);
+        }
+        return m;
+    }, [suppliers]);
     const sections = useMemo<StoreSection[]>(() => {
         const map = new Map<string, StoreSection>();
         filtered
@@ -242,11 +257,11 @@ const StoreView: React.FC<StoreViewProps> = ({ authToken, onAuthError }) => {
                 for (const { supplierId, supplierName } of supplierEntries) {
                     const existing = map.get(supplierId);
                     if (existing) existing.articles.push(article);
-                    else map.set(supplierId, { id: supplierId, category: '', supplierId, supplierName, title: supplierName, articles: [article] });
+                    else map.set(supplierId, { id: supplierId, category: '', supplierId, supplierName, title: supplierName, articles: [article], smartDay: smartDayMap.get(supplierId) ?? null });
                 }
             });
         return Array.from(map.values()).sort((a, b) => a.supplierName.localeCompare(b.supplierName, 'es'));
-    }, [filtered, supplierNameMap]);
+    }, [filtered, supplierNameMap, smartDayMap]);
 
     const cartMap = useMemo(() => Object.fromEntries(cart.map(e => [e.articleId, e.qty])), [cart]);
     const cartTotal = useMemo(() => cart.reduce((s, e) => {
@@ -489,11 +504,30 @@ const StoreView: React.FC<StoreViewProps> = ({ authToken, onAuthError }) => {
                                                 </span>
                                             </div>
                                         </div>
-                                        <div className="grid grid-cols-2 min-[430px]:grid-cols-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-2 sm:gap-2.5 md:gap-3">
-                                            {section.articles.map(a => (
+                                        {(() => {
+                                            const grid = 'grid grid-cols-2 min-[430px]:grid-cols-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-2 sm:gap-2.5 md:gap-3';
+                                            const smartItems = section.smartDay ? section.articles.filter(a => a.smartDay) : [];
+                                            const restItems = section.smartDay ? section.articles.filter(a => !a.smartDay) : section.articles;
+                                            const renderCards = (arts: Article[]) => arts.map(a => (
                                                 <StoreCard key={a.id} article={a} cartQty={cartMap[a.id] ?? 0} onAdd={addToCart} onIncrement={increment} onDecrement={decrement} onSetQty={setQty} />
-                                            ))}
-                                        </div>
+                                            ));
+                                            return (
+                                                <>
+                                                    {section.smartDay && smartItems.length > 0 && (
+                                                        <div className="mb-3 rounded-xl border border-amber-300 bg-amber-50 p-2.5">
+                                                            <div className="mb-2 flex items-center gap-1.5 text-amber-700">
+                                                                <MIcon name="bolt" size={16} fill />
+                                                                <span className="text-xs font-bold uppercase tracking-wide">
+                                                                    {smartDayBadgeLabel(section.smartDay.daysLeft)} — pronto en oferta
+                                                                </span>
+                                                            </div>
+                                                            <div className={grid}>{renderCards(smartItems)}</div>
+                                                        </div>
+                                                    )}
+                                                    {restItems.length > 0 && <div className={grid}>{renderCards(restItems)}</div>}
+                                                </>
+                                            );
+                                        })()}
                                     </section>
                                 ))}
                             </div>

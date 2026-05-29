@@ -29,6 +29,10 @@ model Supplier {
   website   String            @default("")
   notes     String            @default("")
   locations String            @default("[]")
+  smartDayEnabled  Boolean     @default(false)
+  smartDayWeekday  Int?        // 0=Dom … 6=Sáb
+  smartDayWeek     String?     // 'first' | 'second' | 'third' | 'fourth' | 'last'
+  smartDayLeadDays Int         @default(7)
   createdAt DateTime          @default(now())
   updatedAt DateTime          @updatedAt
   articles  ArticleSupplier[]
@@ -47,6 +51,7 @@ model Article {
   category     String            @default("")
   description  String            @default("")
   stockStatus  String            @default("")
+  smartDay     Boolean           @default(false)
   createdAt    DateTime          @default(now())
   updatedAt    DateTime          @updatedAt
   suppliers    ArticleSupplier[]

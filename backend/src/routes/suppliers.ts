@@ -12,6 +12,10 @@ const supplierSchema = z.object({
     website: z.string().default(''),
     notes: z.string().default(''),
     locations: z.array(z.string().min(1)).max(10, 'Máximo 10 ubicaciones').default([]),
+    smartDayEnabled: z.boolean().default(false),
+    smartDayWeekday: z.number().int().min(0).max(6).nullable().default(null),
+    smartDayWeek: z.enum(['first', 'second', 'third', 'fourth', 'last']).nullable().default(null),
+    smartDayLeadDays: z.number().int().min(0).max(31).default(7),
 });
 
 const ticketSchema = z.object({
@@ -27,7 +31,7 @@ const ticketSchema = z.object({
 
 // ---- Suppliers CRUD ----
 
-function formatSupplier(s: { id: string; name: string; contact: string; phone: string; zones: string; website: string; notes: string; locations: string; createdAt: Date }) {
+function formatSupplier(s: { id: string; name: string; contact: string; phone: string; zones: string; website: string; notes: string; locations: string; smartDayEnabled: boolean; smartDayWeekday: number | null; smartDayWeek: string | null; smartDayLeadDays: number; createdAt: Date }) {
     return {
         id: s.id,
         name: s.name,
@@ -37,6 +41,10 @@ function formatSupplier(s: { id: string; name: string; contact: string; phone: s
         website: s.website,
         notes: s.notes,
         locations: (() => { try { return JSON.parse(s.locations); } catch { return []; } })(),
+        smartDayEnabled: s.smartDayEnabled,
+        smartDayWeekday: s.smartDayWeekday,
+        smartDayWeek: s.smartDayWeek,
+        smartDayLeadDays: s.smartDayLeadDays,
         createdAt: s.createdAt,
     };
 }

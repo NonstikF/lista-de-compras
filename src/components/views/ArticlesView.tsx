@@ -49,7 +49,14 @@ const ArticleCard: React.FC<{
             </div>
             <div className="p-3 flex-1 flex flex-col gap-1">
                 <p className="font-epilogue font-semibold text-on-background text-sm leading-tight line-clamp-2">{article.name}</p>
-                <p className="text-primary font-bold text-base">{fmt(article.price)}</p>
+                <div className="flex items-center gap-2">
+                    <p className="text-primary font-bold text-base">{fmt(article.price)}</p>
+                    {article.smartDay && (
+                        <span className="inline-flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700">
+                            <MIcon name="bolt" size={12} fill /> Smart Day
+                        </span>
+                    )}
+                </div>
                 {article.description && (
                     <p className="text-[11px] leading-snug text-on-surface-variant line-clamp-2">{article.description}</p>
                 )}
@@ -96,6 +103,7 @@ interface ArticleForm {
     barcode: string;
     price: string;
     image: string | null;
+    smartDay: boolean;
     supplierIds: string[];
     supplierZones: Record<string, string>;
     locationSku: string;
@@ -106,12 +114,12 @@ const ArticleEditModal: React.FC<{
     suppliers: Supplier[];
     locationSuggestions: string[];
     onClose: () => void;
-    onSave: (data: { name: string; sku: string; barcode: string; price: number; image: string | null; supplierIds: string[]; supplierZones: Record<string, string>; locationSku: string }) => Promise<void>;
+    onSave: (data: { name: string; sku: string; barcode: string; price: number; image: string | null; smartDay: boolean; supplierIds: string[]; supplierZones: Record<string, string>; locationSku: string }) => Promise<void>;
 }> = ({ article, suppliers, locationSuggestions, onClose, onSave }) => {
     const isNew = article === 'new';
     const initial: ArticleForm = isNew
-        ? { name: '', barcode: '', price: '', image: null, supplierIds: [], supplierZones: {}, locationSku: '' }
-        : { name: (article as Article).name, barcode: (article as Article).barcode ?? '', price: String((article as Article).price), image: (article as Article).image, supplierIds: (article as Article).supplierIds, supplierZones: (article as Article).supplierZones ?? {}, locationSku: (article as Article).locationSku ?? '' };
+        ? { name: '', barcode: '', price: '', image: null, smartDay: false, supplierIds: [], supplierZones: {}, locationSku: '' }
+        : { name: (article as Article).name, barcode: (article as Article).barcode ?? '', price: String((article as Article).price), image: (article as Article).image, smartDay: (article as Article).smartDay ?? false, supplierIds: (article as Article).supplierIds, supplierZones: (article as Article).supplierZones ?? {}, locationSku: (article as Article).locationSku ?? '' };
 
     const [form, setForm] = useState<ArticleForm>(initial);
     const [errors, setErrors] = useState<Partial<Record<keyof ArticleForm, string>>>({});
@@ -179,6 +187,7 @@ const ArticleEditModal: React.FC<{
                 barcode: form.barcode.trim(),
                 price: parseFloat(form.price),
                 image: form.image,
+                smartDay: form.smartDay,
                 supplierIds: form.supplierIds,
                 supplierZones: form.supplierZones,
                 locationSku: form.locationSku.trim().toUpperCase(),
@@ -273,6 +282,22 @@ const ArticleEditModal: React.FC<{
                             placeholder="0.00"
                         />
                     </Field>
+
+                    <label className="flex items-center justify-between gap-3 rounded-xl border border-outline-variant bg-surface-container-low px-3 py-2.5 cursor-pointer">
+                        <span className="flex items-center gap-2 text-sm text-on-surface">
+                            <MIcon name="bolt" size={18} className="text-amber-500" fill />
+                            <span>
+                                Smart Day
+                                <span className="block text-xs text-on-surface-variant">Marcar como producto en oferta de Smart Day</span>
+                            </span>
+                        </span>
+                        <input
+                            type="checkbox"
+                            checked={form.smartDay}
+                            onChange={e => update('smartDay', e.target.checked)}
+                            className="h-5 w-5 accent-amber-500"
+                        />
+                    </label>
 
                     <div>
                         <span className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant block mb-2">Proveedores</span>
@@ -387,7 +412,7 @@ const ArticlesView: React.FC<ArticlesViewProps> = ({ authToken, onAuthError }) =
         return Array.from(set).sort();
     }, [articles]);
 
-    const handleSave = async (data: { name: string; sku: string; barcode: string; price: number; image: string | null; supplierIds: string[]; supplierZones: Record<string, string>; locationSku: string }) => {
+    const handleSave = async (data: { name: string; sku: string; barcode: string; price: number; image: string | null; smartDay: boolean; supplierIds: string[]; supplierZones: Record<string, string>; locationSku: string }) => {
         const isNew = editing === 'new';
         try {
             if (isNew) {

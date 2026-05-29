@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
-import type { Supplier, SupplierTicket, OrderTicket } from '../../types';
+import type { Supplier, SupplierTicket, OrderTicket, SmartDayWeek } from '../../types';
+import { weekdayLabel, weekLabel } from '../../utils/smartDay';
 import {
     AuthError, getSuppliers, createSupplier, updateSupplier, deleteSupplier,
     getSupplierTickets, getSupplierTicketContent, createSupplierTicket, deleteSupplierTicket,
@@ -32,6 +33,10 @@ interface SupplierForm {
     website: string;
     notes: string;
     locations: string[];
+    smartDayEnabled: boolean;
+    smartDayWeekday: number | null;
+    smartDayWeek: SmartDayWeek | null;
+    smartDayLeadDays: number;
 }
 
 const SupplierEditModal: React.FC<{
@@ -42,8 +47,8 @@ const SupplierEditModal: React.FC<{
     const isNew = supplier === 'new';
     const s = supplier as Supplier;
     const initial: SupplierForm = isNew
-        ? { name: '', contact: '', phone: '', zones: [], website: '', notes: '', locations: [] }
-        : { name: s.name, contact: s.contact, phone: s.phone, zones: s.zones ?? [], website: s.website ?? '', notes: s.notes ?? '', locations: s.locations ?? [] };
+        ? { name: '', contact: '', phone: '', zones: [], website: '', notes: '', locations: [], smartDayEnabled: false, smartDayWeekday: 3, smartDayWeek: 'last', smartDayLeadDays: 7 }
+        : { name: s.name, contact: s.contact, phone: s.phone, zones: s.zones ?? [], website: s.website ?? '', notes: s.notes ?? '', locations: s.locations ?? [], smartDayEnabled: s.smartDayEnabled ?? false, smartDayWeekday: s.smartDayWeekday ?? 3, smartDayWeek: s.smartDayWeek ?? 'last', smartDayLeadDays: s.smartDayLeadDays ?? 7 };
 
     const [form, setForm] = useState<SupplierForm>(initial);
     const [nameError, setNameError] = useState('');
@@ -54,6 +59,7 @@ const SupplierEditModal: React.FC<{
     const [locationError, setLocationError] = useState('');
 
     const update = (k: keyof SupplierForm, v: string) => setForm(f => ({ ...f, [k]: v }));
+    const setField = <K extends keyof SupplierForm>(k: K, v: SupplierForm[K]) => setForm(f => ({ ...f, [k]: v }));
 
     const addZone = () => {
         const z = newZone.trim();
@@ -83,7 +89,14 @@ const SupplierEditModal: React.FC<{
         if (!form.name.trim()) { setNameError('El nombre es requerido'); return; }
         setSaving(true);
         try {
-            await onSave({ name: form.name.trim(), contact: form.contact.trim(), phone: form.phone.trim(), zones: form.zones, website: form.website.trim(), notes: form.notes.trim(), locations: form.locations });
+            await onSave({
+                name: form.name.trim(), contact: form.contact.trim(), phone: form.phone.trim(),
+                zones: form.zones, website: form.website.trim(), notes: form.notes.trim(), locations: form.locations,
+                smartDayEnabled: form.smartDayEnabled,
+                smartDayWeekday: form.smartDayEnabled ? form.smartDayWeekday : null,
+                smartDayWeek: form.smartDayEnabled ? form.smartDayWeek : null,
+                smartDayLeadDays: form.smartDayLeadDays,
+            });
         } finally {
             setSaving(false);
         }
@@ -212,6 +225,62 @@ const SupplierEditModal: React.FC<{
                         </div>
                     )}
                     {zoneError && <p className="text-xs text-error mt-1">{zoneError}</p>}
+                </div>
+
+                {/* Smart Day */}
+                <div className="rounded-xl border border-surface-variant bg-surface-container-low p-3 space-y-3">
+                    <label className="flex items-center justify-between gap-3 cursor-pointer">
+                        <span className="flex items-center gap-2 text-sm font-medium text-on-surface">
+                            <MIcon name="bolt" size={18} className="text-amber-500" fill />
+                            Smart Day (oferta recurrente)
+                        </span>
+                        <input
+                            type="checkbox"
+                            checked={form.smartDayEnabled}
+                            onChange={e => setField('smartDayEnabled', e.target.checked)}
+                            className="h-5 w-5 accent-amber-500"
+                        />
+                    </label>
+                    {form.smartDayEnabled && (
+                        <>
+                            <div className="grid grid-cols-2 gap-2">
+                                <Field label="Semana del mes">
+                                    <select
+                                        value={form.smartDayWeek ?? 'last'}
+                                        onChange={e => setField('smartDayWeek', e.target.value as SmartDayWeek)}
+                                        className="w-full rounded-xl border border-surface-variant bg-surface px-3 py-2.5 text-sm text-on-background focus:outline-none focus:ring-2 focus:ring-primary/40"
+                                    >
+                                        {(['first', 'second', 'third', 'fourth', 'last'] as SmartDayWeek[]).map(w => (
+                                            <option key={w} value={w}>{weekLabel(w)}</option>
+                                        ))}
+                                    </select>
+                                </Field>
+                                <Field label="Día de la semana">
+                                    <select
+                                        value={form.smartDayWeekday ?? 3}
+                                        onChange={e => setField('smartDayWeekday', parseInt(e.target.value, 10))}
+                                        className="w-full rounded-xl border border-surface-variant bg-surface px-3 py-2.5 text-sm text-on-background focus:outline-none focus:ring-2 focus:ring-primary/40"
+                                    >
+                                        {[1, 2, 3, 4, 5, 6, 0].map(d => (
+                                            <option key={d} value={d}>{weekdayLabel(d)}</option>
+                                        ))}
+                                    </select>
+                                </Field>
+                            </div>
+                            <Field label="Avisar con anticipación (días)" hint="Días antes del Smart Day en que se separan los productos en la Tienda.">
+                                <Input
+                                    type="number"
+                                    min="0"
+                                    max="31"
+                                    value={String(form.smartDayLeadDays)}
+                                    onChange={e => setField('smartDayLeadDays', Math.max(0, Math.min(31, parseInt(e.target.value, 10) || 0)))}
+                                />
+                            </Field>
+                            <p className="text-xs text-on-surface-variant">
+                                Ej. {weekLabel(form.smartDayWeek ?? 'last')} {weekdayLabel(form.smartDayWeekday ?? 3).toLowerCase()} de cada mes.
+                            </p>
+                        </>
+                    )}
                 </div>
 
                 {/* Notas / credenciales */}
@@ -1187,7 +1256,7 @@ const SuppliersView: React.FC<SuppliersViewProps> = ({ authToken, onAuthError })
         if (ticketsSupplier === null) reloadPendingCounts();
     }, [ticketsSupplier]);
 
-    const handleSave = async (data: { name: string; contact: string; phone: string; zones: string[]; website: string; notes: string; locations: string[] }) => {
+    const handleSave = async (data: SupplierForm) => {
         const isNew = editing === 'new';
         try {
             if (isNew) {

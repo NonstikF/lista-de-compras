@@ -57,6 +57,8 @@ export interface User {
 }
 
 // ---------- Proveedores ----------
+export type SmartDayWeek = 'first' | 'second' | 'third' | 'fourth' | 'last';
+
 export interface Supplier {
   id: string;
   name: string;
@@ -66,6 +68,10 @@ export interface Supplier {
   website: string;
   notes: string;
   locations: string[];
+  smartDayEnabled: boolean;
+  smartDayWeekday: number | null; // 0=Dom … 6=Sáb
+  smartDayWeek: SmartDayWeek | null;
+  smartDayLeadDays: number;
   createdAt: string;
 }
 
@@ -123,6 +129,7 @@ export interface Article {
   category?: string;
   description?: string;
   stockStatus?: string;
+  smartDay?: boolean;
   supplierIds: string[];
   supplierZones: Record<string, string>;
   locationSku?: string;
