@@ -1896,6 +1896,7 @@ const OrdersView: React.FC<OrdersViewProps> = ({ authToken, onAuthError }) => {
     const [modalProductName, setModalProductName] = useState<string | null>(null);
     const [supplierLocations, setSupplierLocations] = useState<Record<string, string[]>>({});
     const [pendingRefreshKey, setPendingRefreshKey] = useState(0);
+    const [storeOrdersRefreshKey, setStoreOrdersRefreshKey] = useState(0);
 
     const handleViewImage = useCallback((imageUrl: string, productName: string) => {
         setModalImageUrl(imageUrl);
@@ -1967,7 +1968,7 @@ const OrdersView: React.FC<OrdersViewProps> = ({ authToken, onAuthError }) => {
         };
         load();
         return () => { cancelled = true; };
-    }, [authToken, onAuthError]);
+    }, [authToken, onAuthError, storeOrdersRefreshKey]);
 
     useEffect(() => {
         if (tabMode !== 'completed') return;
@@ -2093,7 +2094,7 @@ const OrdersView: React.FC<OrdersViewProps> = ({ authToken, onAuthError }) => {
                         authToken={authToken}
                         onAuthError={onAuthError}
                         refreshKey={pendingRefreshKey}
-                        onResolved={() => setPendingRefreshKey(k => k + 1)}
+                        onResolved={() => { setPendingRefreshKey(k => k + 1); setStoreOrdersRefreshKey(k => k + 1); }}
                     />
                     {loadingStoreOrders && <LoadingSpinner />}
                     {!loadingStoreOrders && pendingStoreOrders.length === 0 && <EmptyStoreOrders />}
