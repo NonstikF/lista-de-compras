@@ -101,7 +101,6 @@ export interface SupplierTicket {
   id: string;
   supplierId: string;
   orderRef: string;
-  barcode: string;
   invoiced: boolean;
   filename: string;
   mimeType: string;

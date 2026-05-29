@@ -3,11 +3,10 @@ import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import type { Supplier, SupplierTicket, OrderTicket, SmartDayWeek } from '../../types';
 import { weekdayLabel, weekLabel } from '../../utils/smartDay';
-import { scanTicketBarcode } from '../../utils/ticketScan';
 import {
     AuthError, getSuppliers, createSupplier, updateSupplier, deleteSupplier,
     getSupplierTickets, getSupplierTicketContent, createSupplierTicket, deleteSupplierTicket,
-    updateSupplierTicketInvoiced, updateSupplierTicketBarcode, getSupplierOrderTickets, getOrderTicketContent, updateOrderTicketInvoiced,
+    updateSupplierTicketInvoiced, getSupplierOrderTickets, getOrderTicketContent, updateOrderTicketInvoiced,
     getSupplierPendingInvoicedCounts,
 } from '../../services/api';
 import { Modal, Button, Field, Input, MIcon, useToast } from '../ui';
@@ -488,12 +487,6 @@ const SupplierTicketsModal: React.FC<{
     const [fileError, setFileError] = useState('');
     const [pendingFile, setPendingFile] = useState<{ file: File; content: string } | null>(null);
     const [orderRefInput, setOrderRefInput] = useState('');
-    // Escaneo de código de barras de un ticket ya subido
-    const [scanTicket, setScanTicket] = useState<SupplierTicket | null>(null);
-    const [scanning, setScanning] = useState(false);
-    const [scanMsg, setScanMsg] = useState('');
-    const [scanResult, setScanResult] = useState('');
-    const [savingBarcode, setSavingBarcode] = useState(false);
     const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
     const [deleting, setDeleting] = useState(false);
     const [viewingContent, setViewingContent] = useState<string | null>(null);
@@ -592,52 +585,6 @@ const SupplierTicketsModal: React.FC<{
             toast('error', 'No se pudo actualizar el estado');
         } finally {
             setTogglingId(null);
-        }
-    };
-
-    // Abre el diálogo de escaneo y decodifica el código del ticket ya subido
-    const handleOpenScan = async (ticket: SupplierTicket) => {
-        setScanTicket(ticket);
-        setScanResult(ticket.barcode ?? '');
-        setScanMsg('');
-        if (ticket.mimeType === 'application/pdf') {
-            setScanMsg('El escaneo solo funciona con imágenes (JPG/PNG).');
-            return;
-        }
-        setScanning(true);
-        try {
-            const full = await getSupplierTicketContent(authToken, supplier.id, ticket.id);
-            if (!full.content) { setScanMsg('No se pudo cargar la imagen del ticket.'); return; }
-            const code = await scanTicketBarcode(full.content);
-            if (code) {
-                setScanResult(code);
-                setScanMsg('Código detectado. Revisa y confirma.');
-            } else {
-                setScanMsg('No se detectó código de barras. Verifica que la foto sea nítida o escríbelo a mano.');
-            }
-        } catch (err) {
-            if (err instanceof AuthError) { onAuthError(); return; }
-            setScanMsg('No se pudo escanear la imagen.');
-        } finally {
-            setScanning(false);
-        }
-    };
-
-    const handleSaveBarcode = async () => {
-        if (!scanTicket) return;
-        setSavingBarcode(true);
-        try {
-            const updated = await updateSupplierTicketBarcode(authToken, supplier.id, scanTicket.id, scanResult.trim());
-            setTickets(prev => prev.map(t => t.id === updated.id ? { ...t, barcode: updated.barcode } : t));
-            toast('success', 'Código guardado');
-            setScanTicket(null);
-            setScanResult('');
-            setScanMsg('');
-        } catch (err) {
-            if (err instanceof AuthError) { onAuthError(); return; }
-            toast('error', err instanceof Error ? err.message : 'No se pudo guardar el código');
-        } finally {
-            setSavingBarcode(false);
         }
     };
 
@@ -1023,12 +970,6 @@ const SupplierTicketsModal: React.FC<{
                                                         </div>
                                                         <div className={`px-3 py-2 ${ticket.invoiced ? 'bg-success/5' : 'bg-white'}`}>
                                                             <p className="text-xs text-on-surface-variant">{new Date(ticket.createdAt).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
-                                                            {ticket.barcode && (
-                                                                <p className="mt-0.5 flex items-center gap-1 text-[11px] text-on-surface-variant font-mono truncate" title={ticket.barcode}>
-                                                                    <MIcon name="qr_code_2" size={13} className="flex-shrink-0" />
-                                                                    {ticket.barcode}
-                                                                </p>
-                                                            )}
                                                             <div className="flex items-center justify-between mt-1.5">
                                                                 <div className="flex items-center gap-1.5">
                                                                     <button
@@ -1045,26 +986,14 @@ const SupplierTicketsModal: React.FC<{
                                                                         {togglingId === ticket.id ? '…' : ticket.invoiced ? 'Facturado' : 'Sin factura'}
                                                                     </span>
                                                                 </div>
-                                                                <div className="flex items-center gap-0.5">
-                                                                    {ticket.mimeType !== 'application/pdf' && (
-                                                                        <button
-                                                                            type="button"
-                                                                            onClick={() => handleOpenScan(ticket)}
-                                                                            className="p-1 rounded-lg text-on-surface-variant hover:text-primary hover:bg-primary/8 transition-colors"
-                                                                            title="Escanear código de barras"
-                                                                        >
-                                                                            <MIcon name="qr_code_scanner" className="text-base leading-none" />
-                                                                        </button>
-                                                                    )}
-                                                                    <button
-                                                                        type="button"
-                                                                        onClick={() => setConfirmDeleteId(ticket.id)}
-                                                                        className="p-1 rounded-lg text-on-surface-variant hover:text-error hover:bg-error/8 transition-colors"
-                                                                        title="Eliminar"
-                                                                    >
-                                                                        <MIcon name="delete" className="text-base leading-none" />
-                                                                    </button>
-                                                                </div>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => setConfirmDeleteId(ticket.id)}
+                                                                    className="p-1 rounded-lg text-on-surface-variant hover:text-error hover:bg-error/8 transition-colors"
+                                                                    title="Eliminar"
+                                                                >
+                                                                    <MIcon name="delete" className="text-base leading-none" />
+                                                                </button>
                                                             </div>
                                                         </div>
                                                     </div>
@@ -1085,44 +1014,6 @@ const SupplierTicketsModal: React.FC<{
                     </div>
                 )}
             </Modal>
-
-            {scanTicket && (
-                <Modal
-                    open
-                    onClose={() => { if (!savingBarcode && !scanning) { setScanTicket(null); setScanResult(''); setScanMsg(''); } }}
-                    title="Código de barras del ticket"
-                    maxWidth="max-w-sm"
-                    footer={
-                        <>
-                            <Button variant="neutral" onClick={() => { setScanTicket(null); setScanResult(''); setScanMsg(''); }} disabled={savingBarcode || scanning}>
-                                Cancelar
-                            </Button>
-                            <Button variant="filled" icon="save" onClick={handleSaveBarcode} disabled={savingBarcode || scanning || !scanResult.trim()}>
-                                {savingBarcode ? 'Guardando…' : 'Guardar'}
-                            </Button>
-                        </>
-                    }
-                >
-                    <div className="p-6 space-y-4">
-                        {scanning ? (
-                            <div className="flex items-center gap-3 text-sm text-on-surface-variant">
-                                <div className="w-5 h-5 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
-                                Escaneando imagen…
-                            </div>
-                        ) : (
-                            <Field label="Código detectado (editable)">
-                                <Input
-                                    value={scanResult}
-                                    onChange={e => setScanResult(e.target.value)}
-                                    placeholder="Código de barras"
-                                    autoFocus
-                                />
-                            </Field>
-                        )}
-                        {scanMsg && <p className="text-xs text-on-surface-variant">{scanMsg}</p>}
-                    </div>
-                </Modal>
-            )}
 
             {pendingFile && (
                 <Modal

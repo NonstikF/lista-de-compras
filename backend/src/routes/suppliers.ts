@@ -133,7 +133,7 @@ router.get('/:id/tickets', async (req: Request, res: Response) => {
         if (!supplier) { res.status(404).json({ error: 'Proveedor no encontrado' }); return; }
         const tickets = await prisma.supplierTicket.findMany({
             where: { supplierId: req.params.id },
-            select: { id: true, supplierId: true, orderRef: true, barcode: true, invoiced: true, filename: true, mimeType: true, size: true, createdAt: true },
+            select: { id: true, supplierId: true, orderRef: true, invoiced: true, filename: true, mimeType: true, size: true, createdAt: true },
             orderBy: { createdAt: 'desc' },
         });
         res.json(tickets);
@@ -164,7 +164,7 @@ router.post('/:id/tickets', async (req: Request, res: Response) => {
         if (!supplier) { res.status(404).json({ error: 'Proveedor no encontrado' }); return; }
         const ticket = await prisma.supplierTicket.create({
             data: { supplierId: req.params.id, ...parsed.data },
-            select: { id: true, supplierId: true, orderRef: true, barcode: true, invoiced: true, filename: true, mimeType: true, size: true, createdAt: true },
+            select: { id: true, supplierId: true, orderRef: true, invoiced: true, filename: true, mimeType: true, size: true, createdAt: true },
         });
         res.status(201).json(ticket);
     } catch (err) {
@@ -204,20 +204,13 @@ router.get('/:id/order-tickets', async (req: Request, res: Response) => {
 });
 
 router.patch('/:id/tickets/:ticketId', async (req: Request, res: Response) => {
-    const parsed = z.object({
-        invoiced: z.boolean().optional(),
-        barcode: z.string().optional(),
-    }).refine(d => d.invoiced !== undefined || d.barcode !== undefined, { message: 'Nada que actualizar' })
-        .safeParse(req.body);
-    if (!parsed.success) { res.status(400).json({ error: parsed.error.issues[0].message }); return; }
-    const data: { invoiced?: boolean; barcode?: string } = {};
-    if (parsed.data.invoiced !== undefined) data.invoiced = parsed.data.invoiced;
-    if (parsed.data.barcode !== undefined) data.barcode = parsed.data.barcode;
+    const parsed = z.object({ invoiced: z.boolean() }).safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: 'invoiced debe ser boolean' }); return; }
     try {
         const ticket = await prisma.supplierTicket.update({
             where: { id: req.params.ticketId },
-            data,
-            select: { id: true, supplierId: true, orderRef: true, barcode: true, invoiced: true, filename: true, mimeType: true, size: true, createdAt: true },
+            data: { invoiced: parsed.data.invoiced },
+            select: { id: true, supplierId: true, orderRef: true, invoiced: true, filename: true, mimeType: true, size: true, createdAt: true },
         });
         res.json(ticket);
     } catch (err: unknown) {
