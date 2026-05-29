@@ -204,6 +204,12 @@ export async function updateSupplierTicketInvoiced(token: string, supplierId: st
   }));
 }
 
+export async function updateSupplierTicketBarcode(token: string, supplierId: string, ticketId: string, barcode: string): Promise<SupplierTicket> {
+  return handleResponse(await fetch(`${BASE}/api/suppliers/${supplierId}/tickets/${ticketId}`, {
+    method: 'PATCH', headers: authHeaders(token), body: JSON.stringify({ barcode }),
+  }));
+}
+
 // ---- Artículos ----
 
 export async function getArticles(token: string): Promise<Article[]> {

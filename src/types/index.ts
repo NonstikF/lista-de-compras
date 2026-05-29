@@ -116,7 +116,6 @@ export interface SupplierTicketUpload {
   size: number;
   content: string;
   orderRef?: string;
-  barcode?: string;
 }
 
 // ---------- Artículos ----------
