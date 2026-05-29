@@ -41,6 +41,7 @@ const ArticleCard: React.FC<{
     const articleSuppliers = suppliers.filter(s => article.supplierIds.includes(s.id));
     const visibleSuppliers = articleSuppliers.slice(0, 2);
     const extra = articleSuppliers.length - 2;
+    const showSmartDay = !!article.smartDay && articleSuppliers.some(s => s.smartDayEnabled);
 
     return (
         <div className="bg-white rounded-2xl border border-surface-variant shadow-sm overflow-hidden flex flex-col hover:shadow-md transition-shadow">
@@ -51,7 +52,7 @@ const ArticleCard: React.FC<{
                 <p className="font-epilogue font-semibold text-on-background text-sm leading-tight line-clamp-2">{article.name}</p>
                 <div className="flex items-center gap-2">
                     <p className="text-primary font-bold text-base">{fmt(article.price)}</p>
-                    {article.smartDay && (
+                    {showSmartDay && (
                         <span className="inline-flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700">
                             <MIcon name="bolt" size={12} fill /> Smart Day
                         </span>

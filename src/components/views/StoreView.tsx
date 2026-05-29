@@ -30,10 +30,10 @@ const ArticleThumb: React.FC<{ article: Article; className?: string }> = ({ arti
 
 // ─── Card ─────────────────────────────────────────────────────────────────────
 const StoreCard: React.FC<{
-    article: Article; cartQty: number;
+    article: Article; cartQty: number; smartDayActive?: boolean;
     onAdd: (id: string) => void; onIncrement: (id: string) => void; onDecrement: (id: string) => void;
     onSetQty: (id: string, qty: number) => void;
-}> = ({ article, cartQty, onAdd, onIncrement, onDecrement, onSetQty }) => {
+}> = ({ article, cartQty, smartDayActive = false, onAdd, onIncrement, onDecrement, onSetQty }) => {
     const inCart = cartQty > 0;
     const [editing, setEditing] = useState(false);
     const [draft, setDraft] = useState('');
@@ -66,7 +66,7 @@ const StoreCard: React.FC<{
                         {cartQty}
                     </div>
                 )}
-                {article.smartDay && (
+                {smartDayActive && article.smartDay && (
                     <div className="absolute top-1.5 left-1.5 bg-amber-400 text-amber-900 rounded-full w-5 h-5 flex items-center justify-center shadow" title="Smart Day">
                         <MIcon name="bolt" size={13} fill />
                     </div>
@@ -508,8 +508,8 @@ const StoreView: React.FC<StoreViewProps> = ({ authToken, onAuthError }) => {
                                             const grid = 'grid grid-cols-2 min-[430px]:grid-cols-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-2 sm:gap-2.5 md:gap-3';
                                             const smartItems = section.smartDay ? section.articles.filter(a => a.smartDay) : [];
                                             const restItems = section.smartDay ? section.articles.filter(a => !a.smartDay) : section.articles;
-                                            const renderCards = (arts: Article[]) => arts.map(a => (
-                                                <StoreCard key={a.id} article={a} cartQty={cartMap[a.id] ?? 0} onAdd={addToCart} onIncrement={increment} onDecrement={decrement} onSetQty={setQty} />
+                                            const renderCards = (arts: Article[], smartDayActive: boolean) => arts.map(a => (
+                                                <StoreCard key={a.id} article={a} cartQty={cartMap[a.id] ?? 0} smartDayActive={smartDayActive} onAdd={addToCart} onIncrement={increment} onDecrement={decrement} onSetQty={setQty} />
                                             ));
                                             return (
                                                 <>
@@ -521,10 +521,10 @@ const StoreView: React.FC<StoreViewProps> = ({ authToken, onAuthError }) => {
                                                                     {smartDayBadgeLabel(section.smartDay.daysLeft)} — pronto en oferta
                                                                 </span>
                                                             </div>
-                                                            <div className={grid}>{renderCards(smartItems)}</div>
+                                                            <div className={grid}>{renderCards(smartItems, true)}</div>
                                                         </div>
                                                     )}
-                                                    {restItems.length > 0 && <div className={grid}>{renderCards(restItems)}</div>}
+                                                    {restItems.length > 0 && <div className={grid}>{renderCards(restItems, false)}</div>}
                                                 </>
                                             );
                                         })()}
