@@ -168,6 +168,13 @@ const ArticleEditModal: React.FC<{
     const setZone = (supplierId: string, zone: string) =>
         setForm(f => ({ ...f, supplierZones: { ...f.supplierZones, [supplierId]: zone } }));
 
+    // Smart Day solo aplica si algún proveedor seleccionado tiene la regla activa
+    const smartDayAvailable = form.supplierIds.some(id => suppliers.find(s => s.id === id)?.smartDayEnabled);
+    // Si deja de haber proveedor con Smart Day, desmarcar para no guardar marca huérfana
+    useEffect(() => {
+        if (!smartDayAvailable && form.smartDay) setForm(f => ({ ...f, smartDay: false }));
+    }, [smartDayAvailable]);
+
     const validate = (): boolean => {
         const e: typeof errors = {};
         if (!form.name.trim()) e.name = 'El nombre es requerido';
@@ -284,21 +291,23 @@ const ArticleEditModal: React.FC<{
                         />
                     </Field>
 
-                    <label className="flex items-center justify-between gap-3 rounded-xl border border-outline-variant bg-surface-container-low px-3 py-2.5 cursor-pointer">
-                        <span className="flex items-center gap-2 text-sm text-on-surface">
-                            <MIcon name="bolt" size={18} className="text-amber-500" fill />
-                            <span>
-                                Smart Day
-                                <span className="block text-xs text-on-surface-variant">Marcar como producto en oferta de Smart Day</span>
+                    {smartDayAvailable && (
+                        <label className="flex items-center justify-between gap-3 rounded-xl border border-outline-variant bg-surface-container-low px-3 py-2.5 cursor-pointer">
+                            <span className="flex items-center gap-2 text-sm text-on-surface">
+                                <MIcon name="bolt" size={18} className="text-amber-500" fill />
+                                <span>
+                                    Smart Day
+                                    <span className="block text-xs text-on-surface-variant">Marcar como producto en oferta de Smart Day</span>
+                                </span>
                             </span>
-                        </span>
-                        <input
-                            type="checkbox"
-                            checked={form.smartDay}
-                            onChange={e => update('smartDay', e.target.checked)}
-                            className="h-5 w-5 accent-amber-500"
-                        />
-                    </label>
+                            <input
+                                type="checkbox"
+                                checked={form.smartDay}
+                                onChange={e => update('smartDay', e.target.checked)}
+                                className="h-5 w-5 accent-amber-500"
+                            />
+                        </label>
+                    )}
 
                     <div>
                         <span className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant block mb-2">Proveedores</span>
