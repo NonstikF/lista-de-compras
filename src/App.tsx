@@ -46,9 +46,15 @@ const App: React.FC = () => {
 
   const [scanCode, setScanCode] = useState<string | null>(() => readScanCodeFromUrl());
 
-  const [view, setView] = useState<AppView>(() =>
-    localStorage.getItem('authToken') ? 'dashboard' : 'login'
-  );
+  const [view, setView] = useState<AppView>(() => {
+    if (!localStorage.getItem('authToken')) return 'login';
+    const saved = localStorage.getItem('lastView') as AppView | null;
+    return saved && saved !== 'login' ? saved : 'dashboard';
+  });
+
+  useEffect(() => {
+    if (isAuthenticated && view !== 'login') localStorage.setItem('lastView', view);
+  }, [isAuthenticated, view]);
 
   const clearScanCode = () => {
     setScanCode(null);
@@ -90,6 +96,7 @@ const App: React.FC = () => {
   const handleLogout = () => {
     localStorage.removeItem('authToken');
     localStorage.removeItem('authUser');
+    localStorage.removeItem('lastView');
     setAuthToken(null);
     setAuthUser(null);
     setView('login');
