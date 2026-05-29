@@ -27,6 +27,7 @@ const ticketSchema = z.object({
     size: z.number().int().min(1).max(1_000_000, 'El archivo no puede superar 1 MB'),
     content: z.string().min(1, 'Contenido requerido'),
     orderRef: z.string().default(''),
+    barcode: z.string().default(''),
 });
 
 // ---- Suppliers CRUD ----
@@ -133,7 +134,7 @@ router.get('/:id/tickets', async (req: Request, res: Response) => {
         if (!supplier) { res.status(404).json({ error: 'Proveedor no encontrado' }); return; }
         const tickets = await prisma.supplierTicket.findMany({
             where: { supplierId: req.params.id },
-            select: { id: true, supplierId: true, orderRef: true, invoiced: true, filename: true, mimeType: true, size: true, createdAt: true },
+            select: { id: true, supplierId: true, orderRef: true, barcode: true, invoiced: true, filename: true, mimeType: true, size: true, createdAt: true },
             orderBy: { createdAt: 'desc' },
         });
         res.json(tickets);
@@ -164,7 +165,7 @@ router.post('/:id/tickets', async (req: Request, res: Response) => {
         if (!supplier) { res.status(404).json({ error: 'Proveedor no encontrado' }); return; }
         const ticket = await prisma.supplierTicket.create({
             data: { supplierId: req.params.id, ...parsed.data },
-            select: { id: true, supplierId: true, orderRef: true, invoiced: true, filename: true, mimeType: true, size: true, createdAt: true },
+            select: { id: true, supplierId: true, orderRef: true, barcode: true, invoiced: true, filename: true, mimeType: true, size: true, createdAt: true },
         });
         res.status(201).json(ticket);
     } catch (err) {
@@ -210,7 +211,7 @@ router.patch('/:id/tickets/:ticketId', async (req: Request, res: Response) => {
         const ticket = await prisma.supplierTicket.update({
             where: { id: req.params.ticketId },
             data: { invoiced: parsed.data.invoiced },
-            select: { id: true, supplierId: true, orderRef: true, invoiced: true, filename: true, mimeType: true, size: true, createdAt: true },
+            select: { id: true, supplierId: true, orderRef: true, barcode: true, invoiced: true, filename: true, mimeType: true, size: true, createdAt: true },
         });
         res.json(ticket);
     } catch (err: unknown) {

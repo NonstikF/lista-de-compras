@@ -219,6 +219,7 @@ model SupplierTicket {
   id         String   @id @default(cuid())
   supplierId String
   orderRef   String   @default("")
+  barcode    String   @default("")
   invoiced   Boolean  @default(false)
   filename   String
   mimeType   String

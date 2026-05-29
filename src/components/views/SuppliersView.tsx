@@ -3,6 +3,7 @@ import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import type { Supplier, SupplierTicket, OrderTicket, SmartDayWeek } from '../../types';
 import { weekdayLabel, weekLabel } from '../../utils/smartDay';
+import { scanTicketBarcode } from '../../utils/ticketScan';
 import {
     AuthError, getSuppliers, createSupplier, updateSupplier, deleteSupplier,
     getSupplierTickets, getSupplierTicketContent, createSupplierTicket, deleteSupplierTicket,
@@ -487,6 +488,9 @@ const SupplierTicketsModal: React.FC<{
     const [fileError, setFileError] = useState('');
     const [pendingFile, setPendingFile] = useState<{ file: File; content: string } | null>(null);
     const [orderRefInput, setOrderRefInput] = useState('');
+    const [barcodeInput, setBarcodeInput] = useState('');
+    const [scanning, setScanning] = useState(false);
+    const [scanMsg, setScanMsg] = useState('');
     const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
     const [deleting, setDeleting] = useState(false);
     const [viewingContent, setViewingContent] = useState<string | null>(null);
@@ -532,8 +536,30 @@ const SupplierTicketsModal: React.FC<{
         reader.onload = ev => {
             setPendingFile({ file, content: ev.target?.result as string });
             setOrderRefInput('');
+            setBarcodeInput('');
+            setScanMsg('');
         };
         reader.readAsDataURL(file);
+    };
+
+    const handleScanBarcode = async () => {
+        if (!pendingFile) return;
+        if (pendingFile.file.type === 'application/pdf') { setScanMsg('El escaneo solo funciona con imágenes (JPG/PNG).'); return; }
+        setScanning(true);
+        setScanMsg('');
+        try {
+            const code = await scanTicketBarcode(pendingFile.content);
+            if (code) {
+                setBarcodeInput(code);
+                setScanMsg('Código detectado.');
+            } else {
+                setScanMsg('No se detectó código de barras. Verifica que la foto sea nítida o escríbelo a mano.');
+            }
+        } catch {
+            setScanMsg('No se pudo escanear la imagen.');
+        } finally {
+            setScanning(false);
+        }
     };
 
     const handleUploadConfirm = async () => {
@@ -546,10 +572,13 @@ const SupplierTicketsModal: React.FC<{
                 size: pendingFile.file.size,
                 content: pendingFile.content,
                 orderRef: orderRefInput.trim(),
+                barcode: barcodeInput.trim(),
             });
             setTickets(prev => [ticket, ...prev]);
             setPendingFile(null);
             setOrderRefInput('');
+            setBarcodeInput('');
+            setScanMsg('');
             toast('success', 'Ticket subido correctamente');
         } catch (err) {
             if (err instanceof AuthError) { onAuthError(); return; }
@@ -970,6 +999,12 @@ const SupplierTicketsModal: React.FC<{
                                                         </div>
                                                         <div className={`px-3 py-2 ${ticket.invoiced ? 'bg-success/5' : 'bg-white'}`}>
                                                             <p className="text-xs text-on-surface-variant">{new Date(ticket.createdAt).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
+                                                            {ticket.barcode && (
+                                                                <p className="mt-0.5 flex items-center gap-1 text-[11px] text-on-surface-variant font-mono truncate" title={ticket.barcode}>
+                                                                    <MIcon name="qr_code_2" size={13} className="flex-shrink-0" />
+                                                                    {ticket.barcode}
+                                                                </p>
+                                                            )}
                                                             <div className="flex items-center justify-between mt-1.5">
                                                                 <div className="flex items-center gap-1.5">
                                                                     <button
@@ -1018,12 +1053,12 @@ const SupplierTicketsModal: React.FC<{
             {pendingFile && (
                 <Modal
                     open
-                    onClose={() => { setPendingFile(null); setOrderRefInput(''); }}
+                    onClose={() => { setPendingFile(null); setOrderRefInput(''); setBarcodeInput(''); setScanMsg(''); }}
                     title="Subir ticket"
                     maxWidth="max-w-sm"
                     footer={
                         <>
-                            <Button variant="neutral" onClick={() => { setPendingFile(null); setOrderRefInput(''); }} disabled={uploading}>
+                            <Button variant="neutral" onClick={() => { setPendingFile(null); setOrderRefInput(''); setBarcodeInput(''); setScanMsg(''); }} disabled={uploading}>
                                 Cancelar
                             </Button>
                             <Button variant="filled" icon="upload" onClick={handleUploadConfirm} disabled={uploading}>
@@ -1052,6 +1087,25 @@ const SupplierTicketsModal: React.FC<{
                                 placeholder="Ej. 1042, Sem-23, etc."
                                 autoFocus
                             />
+                        </Field>
+                        <Field label="Código de barras del ticket (opcional)">
+                            <div className="flex gap-2">
+                                <Input
+                                    value={barcodeInput}
+                                    onChange={e => setBarcodeInput(e.target.value)}
+                                    placeholder="Escanea o escribe el código"
+                                />
+                                <Button
+                                    type="button"
+                                    variant="tonal"
+                                    icon="qr_code_scanner"
+                                    onClick={handleScanBarcode}
+                                    disabled={scanning || uploading || pendingFile.file.type === 'application/pdf'}
+                                >
+                                    {scanning ? 'Escaneando…' : 'Escanear'}
+                                </Button>
+                            </div>
+                            {scanMsg && <p className="text-xs text-on-surface-variant mt-1">{scanMsg}</p>}
                         </Field>
                     </div>
                 </Modal>
