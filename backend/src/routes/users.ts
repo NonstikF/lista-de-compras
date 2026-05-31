@@ -65,7 +65,8 @@ router.post('/', async (req: Request, res: Response) => {
         res.status(400).json({ error: parsed.error.issues[0].message });
         return;
     }
-    const { username, nombre, password } = parsed.data;
+    const { nombre, password } = parsed.data;
+    const username = parsed.data.username.toLowerCase();
     const permissions = normalizePermissions(parsed.data.permissions ?? DEFAULT_PERMISSIONS);
     const existing = await prisma.user.findUnique({ where: { username } });
     if (existing) {

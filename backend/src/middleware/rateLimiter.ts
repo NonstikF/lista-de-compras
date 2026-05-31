@@ -9,9 +9,9 @@ export const generalLimiter = rateLimit({
 });
 
 export const loginLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000,
-    max: 5,
-    message: { error: 'Demasiados intentos de login. Intenta de nuevo en 15 minutos.' },
+    windowMs: 10 * 60 * 1000,
+    max: 20,
+    message: { error: 'Demasiados intentos de login. Intenta de nuevo en 10 minutos.' },
     standardHeaders: true,
     legacyHeaders: false,
 });

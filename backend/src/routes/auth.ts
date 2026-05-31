@@ -20,7 +20,8 @@ router.post('/login', loginLimiter, async (req: Request, res: Response) => {
         return;
     }
 
-    const { username, password } = parsed.data;
+    const { password } = parsed.data;
+    const username = parsed.data.username.toLowerCase();
 
     const jwtSecret = process.env.JWT_SECRET;
     if (!jwtSecret) {
