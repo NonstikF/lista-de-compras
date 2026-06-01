@@ -102,13 +102,19 @@ const ArticleCard: React.FC<{
                 )}
             </div>
             {!selectMode && (
-                <div className="flex gap-1 px-2 pb-3 border-t border-surface-variant pt-2">
+                <div className="flex gap-1.5 px-2 pb-3 border-t border-surface-variant pt-2">
                     <Button variant="tonal" size="sm" icon="edit" className="flex-1 min-w-0" onClick={() => onEdit(article)}>
                         Editar
                     </Button>
-                    <Button variant="text" size="sm" icon="delete" className="flex-shrink-0 text-error hover:bg-error/8" onClick={() => onDelete(article)}>
-                        <span className="hidden min-[400px]:inline">Eliminar</span>
-                    </Button>
+                    <button
+                        type="button"
+                        onClick={() => onDelete(article)}
+                        title="Eliminar"
+                        aria-label={`Eliminar ${article.name}`}
+                        className="flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center text-error hover:bg-error/8 transition"
+                    >
+                        <MIcon name="delete" size={20} />
+                    </button>
                 </div>
             )}
         </div>
@@ -615,22 +621,30 @@ const ArticlesView: React.FC<ArticlesViewProps> = ({ authToken, onAuthError }) =
                         </div>
                     </div>
                     {categories.length > 0 && (
-                        <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1 -mx-4 px-4 md:-mx-6 md:px-6">
-                            <button
-                                onClick={() => setCategoryFilter('')}
-                                className={`flex-shrink-0 px-3 py-1 rounded-full text-sm font-medium border transition ${!categoryFilter ? 'bg-primary text-on-primary border-primary' : 'bg-surface-container-low text-on-surface border-outline-variant hover:bg-surface-container'}`}
-                            >
-                                Todas
-                            </button>
-                            {categories.map(cat => (
-                                <button
-                                    key={cat}
-                                    onClick={() => setCategoryFilter(c => c === cat ? '' : cat)}
-                                    className={`flex-shrink-0 px-3 py-1 rounded-full text-sm font-medium border transition ${categoryFilter === cat ? 'bg-primary text-on-primary border-primary' : 'bg-surface-container-low text-on-surface border-outline-variant hover:bg-surface-container'}`}
+                        <div className="flex items-center gap-2">
+                            <div className="relative flex-1 sm:flex-none sm:min-w-[240px]">
+                                <MIcon name="storefront" size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant pointer-events-none" />
+                                <select
+                                    value={categoryFilter}
+                                    onChange={e => setCategoryFilter(e.target.value)}
+                                    className="w-full appearance-none pl-9 pr-9 py-2.5 rounded-xl border border-outline-variant bg-surface-container-low text-on-surface text-sm focus:outline-none focus:border-primary cursor-pointer"
                                 >
-                                    {cat}
+                                    <option value="">Todos los proveedores</option>
+                                    {categories.map(cat => (
+                                        <option key={cat} value={cat}>{cat}</option>
+                                    ))}
+                                </select>
+                                <MIcon name="expand_more" size={20} className="absolute right-3 top-1/2 -translate-y-1/2 text-on-surface-variant pointer-events-none" />
+                            </div>
+                            {categoryFilter && (
+                                <button
+                                    onClick={() => setCategoryFilter('')}
+                                    className="flex items-center gap-1 px-3 py-2 rounded-xl bg-primary/10 text-primary text-sm font-medium hover:bg-primary/15 transition"
+                                >
+                                    {categoryFilter}
+                                    <MIcon name="close" size={16} />
                                 </button>
-                            ))}
+                            )}
                         </div>
                     )}
                 </div>
