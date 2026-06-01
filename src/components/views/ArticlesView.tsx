@@ -102,12 +102,12 @@ const ArticleCard: React.FC<{
                 )}
             </div>
             {!selectMode && (
-                <div className="flex gap-1 px-3 pb-3 border-t border-surface-variant pt-2">
-                    <Button variant="tonal" size="sm" icon="edit" className="flex-1" onClick={() => onEdit(article)}>
+                <div className="flex gap-1 px-2 pb-3 border-t border-surface-variant pt-2">
+                    <Button variant="tonal" size="sm" icon="edit" className="flex-1 min-w-0" onClick={() => onEdit(article)}>
                         Editar
                     </Button>
-                    <Button variant="text" size="sm" icon="delete" className="text-error hover:bg-error/8" onClick={() => onDelete(article)}>
-                        Eliminar
+                    <Button variant="text" size="sm" icon="delete" className="flex-shrink-0 text-error hover:bg-error/8" onClick={() => onDelete(article)}>
+                        <span className="hidden min-[400px]:inline">Eliminar</span>
                     </Button>
                 </div>
             )}
@@ -560,27 +560,29 @@ const ArticlesView: React.FC<ArticlesViewProps> = ({ authToken, onAuthError }) =
 
     return (
         <main className="max-w-6xl mx-auto px-4 md:px-6 py-8 pb-28 md:pb-10">
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
                 <div>
-                    <h1 className="font-epilogue text-3xl font-bold text-on-background">Artículos</h1>
-                    <p className="text-on-surface-variant mt-0.5">
+                    <h1 className="font-epilogue text-2xl sm:text-3xl font-bold text-on-background">Artículos</h1>
+                    <p className="text-on-surface-variant mt-0.5 text-sm sm:text-base">
                         {isLoading ? 'Cargando…' : articles.length === 0 ? 'Sin artículos' : `${filtered.length} de ${articles.length} artículo${articles.length !== 1 ? 's' : ''}`}
                     </p>
                 </div>
-                <div className="flex flex-wrap items-center justify-end gap-2">
+                <div className="flex items-center gap-2">
                     {!isLoading && articles.length > 0 && (
                         selectMode ? (
-                            <Button variant="neutral" icon="close" onClick={exitSelectMode}>
-                                Cancelar selección
+                            <Button variant="neutral" icon="close" onClick={exitSelectMode} className="flex-1 sm:flex-none">
+                                <span className="hidden min-[400px]:inline">Cancelar selección</span>
+                                <span className="min-[400px]:hidden">Cancelar</span>
                             </Button>
                         ) : (
-                            <Button variant="tonal" icon="checklist" onClick={() => setSelectMode(true)}>
+                            <Button variant="tonal" icon="checklist" onClick={() => setSelectMode(true)} className="flex-1 sm:flex-none">
                                 Seleccionar
                             </Button>
                         )
                     )}
-                    <Button variant="filled" icon="add" onClick={() => setEditing('new')} disabled={selectMode}>
-                        Nuevo artículo
+                    <Button variant="filled" icon="add" onClick={() => setEditing('new')} disabled={selectMode} className="flex-1 sm:flex-none">
+                        <span className="hidden min-[400px]:inline">Nuevo artículo</span>
+                        <span className="min-[400px]:hidden">Nuevo</span>
                     </Button>
                 </div>
             </div>
@@ -613,10 +615,10 @@ const ArticlesView: React.FC<ArticlesViewProps> = ({ authToken, onAuthError }) =
                         </div>
                     </div>
                     {categories.length > 0 && (
-                        <div className="flex flex-wrap gap-2">
+                        <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1 -mx-4 px-4 md:-mx-6 md:px-6">
                             <button
                                 onClick={() => setCategoryFilter('')}
-                                className={`px-3 py-1 rounded-full text-sm font-medium border transition ${!categoryFilter ? 'bg-primary text-on-primary border-primary' : 'bg-surface-container-low text-on-surface border-outline-variant hover:bg-surface-container'}`}
+                                className={`flex-shrink-0 px-3 py-1 rounded-full text-sm font-medium border transition ${!categoryFilter ? 'bg-primary text-on-primary border-primary' : 'bg-surface-container-low text-on-surface border-outline-variant hover:bg-surface-container'}`}
                             >
                                 Todas
                             </button>
@@ -624,7 +626,7 @@ const ArticlesView: React.FC<ArticlesViewProps> = ({ authToken, onAuthError }) =
                                 <button
                                     key={cat}
                                     onClick={() => setCategoryFilter(c => c === cat ? '' : cat)}
-                                    className={`px-3 py-1 rounded-full text-sm font-medium border transition ${categoryFilter === cat ? 'bg-primary text-on-primary border-primary' : 'bg-surface-container-low text-on-surface border-outline-variant hover:bg-surface-container'}`}
+                                    className={`flex-shrink-0 px-3 py-1 rounded-full text-sm font-medium border transition ${categoryFilter === cat ? 'bg-primary text-on-primary border-primary' : 'bg-surface-container-low text-on-surface border-outline-variant hover:bg-surface-container'}`}
                                 >
                                     {cat}
                                 </button>
@@ -721,21 +723,23 @@ const ArticlesView: React.FC<ArticlesViewProps> = ({ authToken, onAuthError }) =
             )}
 
             {selectMode && (
-                <div className="fixed bottom-0 inset-x-0 z-40 bg-white border-t border-outline-variant shadow-[0_-4px_16px_rgba(0,0,0,0.08)]">
-                    <div className="max-w-6xl mx-auto px-4 md:px-6 py-3 flex flex-wrap items-center gap-3">
-                        <span className="text-sm font-semibold text-on-surface">
-                            {selectedIds.size} seleccionado{selectedIds.size !== 1 ? 's' : ''}
-                        </span>
-                        <button onClick={selectAllFiltered} className="text-sm text-primary hover:underline">
-                            Seleccionar todos ({filtered.length})
-                        </button>
-                        {selectedIds.size > 0 && (
-                            <button onClick={() => setSelectedIds(new Set())} className="text-sm text-on-surface-variant hover:underline">
-                                Limpiar
+                <div className="fixed bottom-16 md:bottom-0 inset-x-0 z-40 bg-white border-t border-outline-variant shadow-[0_-4px_16px_rgba(0,0,0,0.08)]">
+                    <div className="max-w-6xl mx-auto px-4 md:px-6 py-3 flex flex-col md:flex-row md:items-center gap-2 md:gap-3">
+                        <div className="flex items-center gap-3 flex-wrap">
+                            <span className="text-sm font-semibold text-on-surface">
+                                {selectedIds.size} seleccionado{selectedIds.size !== 1 ? 's' : ''}
+                            </span>
+                            <button onClick={selectAllFiltered} className="text-sm text-primary hover:underline">
+                                Todos ({filtered.length})
                             </button>
-                        )}
+                            {selectedIds.size > 0 && (
+                                <button onClick={() => setSelectedIds(new Set())} className="text-sm text-on-surface-variant hover:underline">
+                                    Limpiar
+                                </button>
+                            )}
+                        </div>
 
-                        <div className="flex flex-wrap items-center gap-2 ml-auto">
+                        <div className="flex flex-col min-[400px]:flex-row items-stretch min-[400px]:items-center gap-2 md:ml-auto">
                             <select
                                 value={bulkAction ?? ''}
                                 onChange={e => setBulkAction((e.target.value || null) as typeof bulkAction)}
@@ -765,6 +769,7 @@ const ArticlesView: React.FC<ArticlesViewProps> = ({ authToken, onAuthError }) =
                                 icon="done"
                                 onClick={runBulkAction}
                                 disabled={selectedIds.size === 0 || !bulkAction || bulkBusy || (bulkAction === 'addSupplier' && !bulkSupplierId)}
+                                className="min-[400px]:flex-none"
                             >
                                 {bulkBusy ? 'Aplicando…' : 'Aplicar'}
                             </Button>
