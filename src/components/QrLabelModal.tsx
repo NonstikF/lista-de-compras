@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import QRCode from 'qrcode';
 import { Modal, Button } from './ui';
 
-// Etiqueta QR de una ubicación. El QR codifica el deep link /l/{code}
-// que abre LocationScanView con la sesión iniciada.
+// Etiqueta QR de una ubicación. El QR codifica solo el código en texto plano
+// (ej. "E1"); al escanearlo se obtiene el texto, sin enlaces.
 const QrLabelModal: React.FC<{
     code: string;
     name: string;
@@ -11,16 +11,14 @@ const QrLabelModal: React.FC<{
 }> = ({ code, name, onClose }) => {
     const [qrDataUrl, setQrDataUrl] = useState<string>('');
 
-    const deepLink = useMemo(() => `${window.location.origin}/l/${code}`, [code]);
-
     useEffect(() => {
-        QRCode.toDataURL(deepLink, {
+        QRCode.toDataURL(code, {
             errorCorrectionLevel: 'M',
             margin: 0,
             scale: 8,
             color: { dark: '#000000', light: '#ffffff' },
         }).then(setQrDataUrl).catch(() => setQrDataUrl(''));
-    }, [deepLink]);
+    }, [code]);
 
     const handlePrint = () => {
         if (!qrDataUrl) return;
@@ -110,7 +108,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
         >
             <div className="px-6 py-5 space-y-4">
                 <p className="text-sm text-on-surface-variant">
-                    Vista previa de la etiqueta (2in × 1in). El QR abre la ubicación con sesión iniciada.
+                    Vista previa de la etiqueta (2in × 1in). El QR contiene el código de la ubicación en texto.
                 </p>
 
                 <div className="flex justify-center bg-surface-container-low rounded-xl p-6">
@@ -139,8 +137,8 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
                 </div>
 
                 <div className="bg-surface-container-low rounded-xl px-4 py-3 text-xs text-on-surface-variant break-all">
-                    <span className="font-semibold text-on-surface">URL del QR: </span>
-                    {deepLink}
+                    <span className="font-semibold text-on-surface">Contenido del QR: </span>
+                    {code}
                 </div>
             </div>
         </Modal>
