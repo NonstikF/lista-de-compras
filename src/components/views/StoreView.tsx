@@ -3,6 +3,7 @@ import type { Article, Supplier } from '../../types';
 import { AuthError, getArticles, getSuppliers, createStoreOrder } from '../../services/api';
 import { Modal, Button, Field, Input, Textarea, MIcon, fmt, useToast } from '../ui';
 import { smartDayWindow, smartDayBadgeLabel, type SmartDayWindow } from '../../utils/smartDay';
+import BarcodeScannerModal from '../BarcodeScannerModal';
 
 interface StoreViewProps { authToken: string; onAuthError: () => void; }
 interface CartEntry { articleId: string; qty: number; }
@@ -198,6 +199,7 @@ const StoreView: React.FC<StoreViewProps> = ({ authToken, onAuthError }) => {
         try { return JSON.parse(localStorage.getItem(CART_KEY) ?? '[]'); } catch { return []; }
     });
     const [query, setQuery] = useState('');
+    const [scanning, setScanning] = useState(false);
     const [supplierFilter, setSupplierFilter] = useState('todos');
     const [checkoutOpen, setCheckoutOpen] = useState(false);
     const [submitting, setSubmitting] = useState(false);
@@ -230,7 +232,7 @@ const StoreView: React.FC<StoreViewProps> = ({ authToken, onAuthError }) => {
     const filtered = useMemo(() => {
         let list = articles;
         if (supplierFilter !== 'todos') list = list.filter(a => a.supplierIds.includes(supplierFilter));
-        if (query.trim()) { const q = query.toLowerCase(); list = list.filter(a => a.name.toLowerCase().includes(q)); }
+        if (query.trim()) { const q = query.toLowerCase(); list = list.filter(a => a.name.toLowerCase().includes(q) || (a.barcode ?? '').toLowerCase().includes(q)); }
         return list;
     }, [articles, supplierFilter, query]);
 
@@ -423,13 +425,23 @@ const StoreView: React.FC<StoreViewProps> = ({ authToken, onAuthError }) => {
                                 value={query}
                                 onChange={e => setQuery(e.target.value)}
                                 placeholder="Buscar artículo…"
-                                className="w-full pl-10 pr-10 py-2.5 rounded-xl bg-neutral-100 border border-transparent focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/15 outline-none text-sm transition"
+                                className="w-full pl-10 pr-20 py-2.5 rounded-xl bg-neutral-100 border border-transparent focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/15 outline-none text-sm transition"
                             />
-                            {query && (
-                                <button onClick={() => setQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-600 transition">
-                                    <MIcon name="close" size={16} />
+                            <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                                {query && (
+                                    <button onClick={() => setQuery('')} aria-label="Limpiar búsqueda" className="text-neutral-400 hover:text-neutral-600 transition p-1">
+                                        <MIcon name="close" size={16} />
+                                    </button>
+                                )}
+                                <button
+                                    onClick={() => setScanning(true)}
+                                    title="Buscar escaneando código de barras"
+                                    aria-label="Buscar escaneando un código de barras con la cámara"
+                                    className="text-neutral-400 hover:text-primary transition p-1"
+                                >
+                                    <MIcon name="photo_camera" size={18} />
                                 </button>
-                            )}
+                            </div>
                         </div>
 
                         {/* chips de proveedor — scroll horizontal */}
@@ -575,6 +587,13 @@ const StoreView: React.FC<StoreViewProps> = ({ authToken, onAuthError }) => {
                 articles={articles}
                 onConfirm={handleConfirm}
             />
+
+            {scanning && (
+                <BarcodeScannerModal
+                    onClose={() => setScanning(false)}
+                    onDetected={code => { setQuery(code); setScanning(false); }}
+                />
+            )}
         </>
     );
 };

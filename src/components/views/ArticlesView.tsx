@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import type { Article, Supplier } from '../../types';
-import { AuthError, getArticles, createArticle, updateArticle, deleteArticle, getSuppliers } from '../../services/api';
+import { AuthError, getArticles, createArticle, updateArticle, deleteArticle, getSuppliers, bulkUpdateArticles } from '../../services/api';
+import type { BulkArticleAction } from '../../services/api';
 import { Modal, Button, Field, Input, MIcon, fmt, useToast } from '../ui';
+import BarcodeScannerModal from '../BarcodeScannerModal';
 
 interface ArticlesViewProps {
     authToken: string;
@@ -37,14 +39,27 @@ const ArticleCard: React.FC<{
     suppliers: Supplier[];
     onEdit: (a: Article) => void;
     onDelete: (a: Article) => void;
-}> = ({ article, suppliers, onEdit, onDelete }) => {
+    selectMode?: boolean;
+    selected?: boolean;
+    onToggleSelect?: (a: Article) => void;
+}> = ({ article, suppliers, onEdit, onDelete, selectMode = false, selected = false, onToggleSelect }) => {
     const articleSuppliers = suppliers.filter(s => article.supplierIds.includes(s.id));
     const visibleSuppliers = articleSuppliers.slice(0, 2);
     const extra = articleSuppliers.length - 2;
     const showSmartDay = !!article.smartDay && articleSuppliers.some(s => s.smartDayEnabled);
 
     return (
-        <div className="bg-white rounded-2xl border border-surface-variant shadow-sm overflow-hidden flex flex-col hover:shadow-md transition-shadow">
+        <div
+            className={`relative bg-white rounded-2xl border shadow-sm overflow-hidden flex flex-col transition-shadow ${selected ? 'border-primary ring-2 ring-primary/30' : 'border-surface-variant hover:shadow-md'} ${selectMode ? 'cursor-pointer' : ''}`}
+            onClick={selectMode && onToggleSelect ? () => onToggleSelect(article) : undefined}
+        >
+            {selectMode && (
+                <div className="absolute top-2 left-2 z-10">
+                    <span className={`w-6 h-6 rounded-md flex items-center justify-center border-2 transition ${selected ? 'bg-primary border-primary text-white' : 'bg-white/90 border-outline-variant text-transparent'}`}>
+                        <MIcon name="check" size={16} fill />
+                    </span>
+                </div>
+            )}
             <div className="rounded-t-2xl overflow-hidden">
                 <ArticleImage article={article} />
             </div>
@@ -86,109 +101,17 @@ const ArticleCard: React.FC<{
                     </div>
                 )}
             </div>
-            <div className="flex gap-1 px-3 pb-3 border-t border-surface-variant pt-2">
-                <Button variant="tonal" size="sm" icon="edit" className="flex-1" onClick={() => onEdit(article)}>
-                    Editar
-                </Button>
-                <Button variant="text" size="sm" icon="delete" className="text-error hover:bg-error/8" onClick={() => onDelete(article)}>
-                    Eliminar
-                </Button>
-            </div>
-        </div>
-    );
-};
-
-// ---------- Escáner de código de barras (cámara web) ----------
-// BarcodeDetector es API nativa del navegador (Chrome/Edge/Android). No está en los tipos de TS.
-interface DetectedBarcode { rawValue: string }
-interface BarcodeDetectorInstance { detect(source: CanvasImageSource): Promise<DetectedBarcode[]> }
-interface BarcodeDetectorCtor {
-    new (options?: { formats?: string[] }): BarcodeDetectorInstance;
-    getSupportedFormats(): Promise<string[]>;
-}
-const getBarcodeDetector = (): BarcodeDetectorCtor | undefined =>
-    (window as unknown as { BarcodeDetector?: BarcodeDetectorCtor }).BarcodeDetector;
-
-const BarcodeScannerModal: React.FC<{
-    onDetected: (code: string) => void;
-    onClose: () => void;
-}> = ({ onDetected, onClose }) => {
-    const videoRef = useRef<HTMLVideoElement>(null);
-    const [error, setError] = useState<string | null>(null);
-
-    useEffect(() => {
-        const Detector = getBarcodeDetector();
-        if (!Detector) {
-            setError('Tu navegador no soporta el escaneo con cámara. Usa Chrome o Edge, o escribe el código a mano.');
-            return;
-        }
-
-        let stream: MediaStream | null = null;
-        let raf = 0;
-        let stopped = false;
-        const detector = new Detector({
-            formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128', 'code_39', 'codabar', 'itf'],
-        });
-
-        const start = async () => {
-            try {
-                stream = await navigator.mediaDevices.getUserMedia({
-                    video: { facingMode: 'environment' },
-                });
-                if (stopped) { stream.getTracks().forEach(t => t.stop()); return; }
-                const video = videoRef.current;
-                if (!video) return;
-                video.srcObject = stream;
-                await video.play();
-                tick();
-            } catch {
-                setError('No se pudo acceder a la cámara. Revisa los permisos del navegador.');
-            }
-        };
-
-        const tick = async () => {
-            const video = videoRef.current;
-            if (!video || stopped) return;
-            if (video.readyState === video.HAVE_ENOUGH_DATA) {
-                try {
-                    const codes = await detector.detect(video);
-                    if (codes.length > 0 && codes[0].rawValue) {
-                        onDetected(codes[0].rawValue);
-                        return;
-                    }
-                } catch {
-                    // detect puede fallar entre frames; reintentar en el siguiente
-                }
-            }
-            raf = requestAnimationFrame(tick);
-        };
-
-        start();
-
-        return () => {
-            stopped = true;
-            cancelAnimationFrame(raf);
-            stream?.getTracks().forEach(t => t.stop());
-        };
-    }, [onDetected]);
-
-    return (
-        <Modal open onClose={onClose} title="Escanear código de barras" maxWidth="max-w-md"
-            footer={<Button variant="neutral" onClick={onClose}>Cancelar</Button>}>
-            {error ? (
-                <p className="text-sm text-error py-4">{error}</p>
-            ) : (
-                <div className="flex flex-col gap-3">
-                    <div className="relative rounded-xl overflow-hidden bg-black aspect-[4/3]">
-                        <video ref={videoRef} className="w-full h-full object-cover" muted playsInline />
-                        <div className="absolute inset-x-6 top-1/2 -translate-y-1/2 h-0.5 bg-error/80 shadow-[0_0_8px_2px_rgba(220,38,38,0.6)]" />
-                    </div>
-                    <p className="text-xs text-on-surface-variant text-center">
-                        Apunta la cámara al código de barras del artículo.
-                    </p>
+            {!selectMode && (
+                <div className="flex gap-1 px-3 pb-3 border-t border-surface-variant pt-2">
+                    <Button variant="tonal" size="sm" icon="edit" className="flex-1" onClick={() => onEdit(article)}>
+                        Editar
+                    </Button>
+                    <Button variant="text" size="sm" icon="delete" className="text-error hover:bg-error/8" onClick={() => onDelete(article)}>
+                        Eliminar
+                    </Button>
                 </div>
             )}
-        </Modal>
+        </div>
     );
 };
 
@@ -496,7 +419,13 @@ const ArticlesView: React.FC<ArticlesViewProps> = ({ authToken, onAuthError }) =
     const [confirmDelete, setConfirmDelete] = useState<Article | null>(null);
     const [deleting, setDeleting] = useState(false);
     const [search, setSearch] = useState('');
+    const [searchScanning, setSearchScanning] = useState(false);
     const [categoryFilter, setCategoryFilter] = useState('');
+    const [selectMode, setSelectMode] = useState(false);
+    const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+    const [bulkAction, setBulkAction] = useState<'smartDayOn' | 'smartDayOff' | 'addSupplier' | null>(null);
+    const [bulkSupplierId, setBulkSupplierId] = useState('');
+    const [bulkBusy, setBulkBusy] = useState(false);
     const toast = useToast();
 
     const categories = Array.from(new Set(articles.map(a => a.category ?? '').filter(c => c && c !== 'Sin categorizar'))).sort();
@@ -577,6 +506,58 @@ const ArticlesView: React.FC<ArticlesViewProps> = ({ authToken, onAuthError }) =
         }
     };
 
+    const exitSelectMode = () => {
+        setSelectMode(false);
+        setSelectedIds(new Set());
+        setBulkAction(null);
+        setBulkSupplierId('');
+    };
+
+    const toggleSelect = (a: Article) =>
+        setSelectedIds(prev => {
+            const next = new Set(prev);
+            if (next.has(a.id)) next.delete(a.id); else next.add(a.id);
+            return next;
+        });
+
+    const selectAllFiltered = () => setSelectedIds(new Set(filtered.map(a => a.id)));
+
+    const runBulkAction = async () => {
+        const ids = Array.from(selectedIds);
+        if (ids.length === 0 || !bulkAction) return;
+        let action: BulkArticleAction;
+        if (bulkAction === 'smartDayOn') action = { type: 'smartDay', value: true };
+        else if (bulkAction === 'smartDayOff') action = { type: 'smartDay', value: false };
+        else {
+            if (!bulkSupplierId) { toast('error', 'Selecciona un proveedor'); return; }
+            action = { type: 'addSupplier', supplierId: bulkSupplierId };
+        }
+        setBulkBusy(true);
+        try {
+            const { updated, skipped } = await bulkUpdateArticles(authToken, ids, action);
+            // Releer artículos para reflejar cambios (smartDay y relaciones de proveedor)
+            const fresh = await getArticles(authToken);
+            setArticles(fresh);
+            if (bulkAction === 'smartDayOn') {
+                toast('success', skipped > 0
+                    ? `${updated} marcados como Smart Day. ${skipped} omitidos (proveedor sin Smart Day).`
+                    : `${updated} marcados como Smart Day.`);
+            } else if (bulkAction === 'smartDayOff') {
+                toast('success', `${updated} desmarcados de Smart Day.`);
+            } else {
+                toast('success', skipped > 0
+                    ? `Proveedor agregado a ${updated}. ${skipped} ya lo tenían.`
+                    : `Proveedor agregado a ${updated} artículos.`);
+            }
+            exitSelectMode();
+        } catch (err) {
+            if (err instanceof AuthError) { onAuthError(); return; }
+            toast('error', err instanceof Error ? err.message : 'Error en la actualización masiva');
+        } finally {
+            setBulkBusy(false);
+        }
+    };
+
     return (
         <main className="max-w-6xl mx-auto px-4 md:px-6 py-8 pb-28 md:pb-10">
             <div className="flex items-center justify-between mb-4">
@@ -587,7 +568,18 @@ const ArticlesView: React.FC<ArticlesViewProps> = ({ authToken, onAuthError }) =
                     </p>
                 </div>
                 <div className="flex flex-wrap items-center justify-end gap-2">
-                    <Button variant="filled" icon="add" onClick={() => setEditing('new')}>
+                    {!isLoading && articles.length > 0 && (
+                        selectMode ? (
+                            <Button variant="neutral" icon="close" onClick={exitSelectMode}>
+                                Cancelar selección
+                            </Button>
+                        ) : (
+                            <Button variant="tonal" icon="checklist" onClick={() => setSelectMode(true)}>
+                                Seleccionar
+                            </Button>
+                        )
+                    )}
+                    <Button variant="filled" icon="add" onClick={() => setEditing('new')} disabled={selectMode}>
                         Nuevo artículo
                     </Button>
                 </div>
@@ -602,13 +594,23 @@ const ArticlesView: React.FC<ArticlesViewProps> = ({ authToken, onAuthError }) =
                             value={search}
                             onChange={e => setSearch(e.target.value)}
                             placeholder="Buscar por nombre, SKU o código de barras…"
-                            className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-outline-variant bg-surface-container-low text-on-surface text-sm focus:outline-none focus:border-primary"
+                            className="w-full pl-9 pr-20 py-2.5 rounded-xl border border-outline-variant bg-surface-container-low text-on-surface text-sm focus:outline-none focus:border-primary"
                         />
-                        {search && (
-                            <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-on-surface-variant hover:text-on-surface transition">
-                                <MIcon name="close" size={16} />
+                        <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                            {search && (
+                                <button onClick={() => setSearch('')} aria-label="Limpiar búsqueda" className="text-on-surface-variant hover:text-on-surface transition p-1">
+                                    <MIcon name="close" size={16} />
+                                </button>
+                            )}
+                            <button
+                                onClick={() => setSearchScanning(true)}
+                                title="Buscar escaneando código de barras"
+                                aria-label="Buscar escaneando un código de barras con la cámara"
+                                className="text-on-surface-variant hover:text-primary transition p-1"
+                            >
+                                <MIcon name="photo_camera" size={18} />
                             </button>
-                        )}
+                        </div>
                     </div>
                     {categories.length > 0 && (
                         <div className="flex flex-wrap gap-2">
@@ -672,6 +674,9 @@ const ArticlesView: React.FC<ArticlesViewProps> = ({ authToken, onAuthError }) =
                             suppliers={suppliers}
                             onEdit={setEditing}
                             onDelete={setConfirmDelete}
+                            selectMode={selectMode}
+                            selected={selectedIds.has(a.id)}
+                            onToggleSelect={toggleSelect}
                         />
                     ))}
                 </div>
@@ -706,6 +711,66 @@ const ArticlesView: React.FC<ArticlesViewProps> = ({ authToken, onAuthError }) =
                         ¿Eliminar <strong>{confirmDelete.name}</strong>? Esta acción no se puede deshacer.
                     </div>
                 </Modal>
+            )}
+
+            {searchScanning && (
+                <BarcodeScannerModal
+                    onClose={() => setSearchScanning(false)}
+                    onDetected={code => { setSearch(code); setSearchScanning(false); }}
+                />
+            )}
+
+            {selectMode && (
+                <div className="fixed bottom-0 inset-x-0 z-40 bg-white border-t border-outline-variant shadow-[0_-4px_16px_rgba(0,0,0,0.08)]">
+                    <div className="max-w-6xl mx-auto px-4 md:px-6 py-3 flex flex-wrap items-center gap-3">
+                        <span className="text-sm font-semibold text-on-surface">
+                            {selectedIds.size} seleccionado{selectedIds.size !== 1 ? 's' : ''}
+                        </span>
+                        <button onClick={selectAllFiltered} className="text-sm text-primary hover:underline">
+                            Seleccionar todos ({filtered.length})
+                        </button>
+                        {selectedIds.size > 0 && (
+                            <button onClick={() => setSelectedIds(new Set())} className="text-sm text-on-surface-variant hover:underline">
+                                Limpiar
+                            </button>
+                        )}
+
+                        <div className="flex flex-wrap items-center gap-2 ml-auto">
+                            <select
+                                value={bulkAction ?? ''}
+                                onChange={e => setBulkAction((e.target.value || null) as typeof bulkAction)}
+                                disabled={selectedIds.size === 0 || bulkBusy}
+                                className="text-sm rounded-xl border border-outline-variant bg-surface-container-low text-on-surface px-3 py-2 focus:outline-none focus:border-primary disabled:opacity-50"
+                            >
+                                <option value="">Elegir acción…</option>
+                                <option value="smartDayOn">Marcar como Smart Day</option>
+                                <option value="smartDayOff">Quitar Smart Day</option>
+                                <option value="addSupplier">Agregar proveedor</option>
+                            </select>
+
+                            {bulkAction === 'addSupplier' && (
+                                <select
+                                    value={bulkSupplierId}
+                                    onChange={e => setBulkSupplierId(e.target.value)}
+                                    disabled={bulkBusy}
+                                    className="text-sm rounded-xl border border-outline-variant bg-surface-container-low text-on-surface px-3 py-2 focus:outline-none focus:border-primary"
+                                >
+                                    <option value="">Proveedor…</option>
+                                    {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                                </select>
+                            )}
+
+                            <Button
+                                variant="filled"
+                                icon="done"
+                                onClick={runBulkAction}
+                                disabled={selectedIds.size === 0 || !bulkAction || bulkBusy || (bulkAction === 'addSupplier' && !bulkSupplierId)}
+                            >
+                                {bulkBusy ? 'Aplicando…' : 'Aplicar'}
+                            </Button>
+                        </div>
+                    </div>
+                </div>
             )}
         </main>
     );

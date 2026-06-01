@@ -228,6 +228,20 @@ export async function deleteArticle(token: string, id: string): Promise<void> {
   }));
 }
 
+export type BulkArticleAction =
+  | { type: 'smartDay'; value: boolean }
+  | { type: 'addSupplier'; supplierId: string; zone?: string };
+
+export async function bulkUpdateArticles(
+  token: string,
+  ids: string[],
+  action: BulkArticleAction,
+): Promise<{ updated: number; skipped: number }> {
+  return handleResponse(await fetch(`${BASE}/api/articles/bulk`, {
+    method: 'PATCH', headers: authHeaders(token), body: JSON.stringify({ ids, action }),
+  }));
+}
+
 // ---- Recetas ----
 
 export async function getRecipes(token: string): Promise<Recipe[]> {

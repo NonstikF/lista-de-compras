@@ -150,6 +150,62 @@ router.put('/:id', async (req: Request, res: Response) => {
     }
 });
 
+const bulkSchema = z.object({
+    ids: z.array(z.string().min(1)).min(1, 'Selecciona al menos un artículo'),
+    action: z.discriminatedUnion('type', [
+        z.object({ type: z.literal('smartDay'), value: z.boolean() }),
+        z.object({ type: z.literal('addSupplier'), supplierId: z.string().min(1), zone: z.string().default('') }),
+    ]),
+});
+
+router.patch('/bulk', async (req: Request, res: Response) => {
+    const parsed = bulkSchema.safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: parsed.error.issues[0].message }); return; }
+    const { ids, action } = parsed.data;
+
+    try {
+        if (action.type === 'smartDay') {
+            let targetIds = ids;
+            let skipped = 0;
+            // Al marcar SmartDay solo aplican artículos con algún proveedor que tenga SmartDay habilitado.
+            if (action.value) {
+                const articles = await prisma.article.findMany({
+                    where: { id: { in: ids } },
+                    select: { id: true, suppliers: { select: { supplier: { select: { smartDayEnabled: true } } } } },
+                });
+                const eligible = articles.filter((a) => a.suppliers.some((s) => s.supplier.smartDayEnabled));
+                targetIds = eligible.map((a) => a.id);
+                skipped = ids.length - targetIds.length;
+            }
+            if (targetIds.length > 0) {
+                await prisma.article.updateMany({
+                    where: { id: { in: targetIds } },
+                    data: { smartDay: action.value },
+                });
+            }
+            res.json({ updated: targetIds.length, skipped });
+            return;
+        }
+
+        // addSupplier: agrega el proveedor a los artículos que no lo tengan ya
+        const existing = await prisma.articleSupplier.findMany({
+            where: { articleId: { in: ids }, supplierId: action.supplierId },
+            select: { articleId: true },
+        });
+        const alreadyHas = new Set(existing.map((e) => e.articleId));
+        const toAdd = ids.filter((id) => !alreadyHas.has(id));
+        if (toAdd.length > 0) {
+            await prisma.articleSupplier.createMany({
+                data: toAdd.map((articleId) => ({ articleId, supplierId: action.supplierId, zone: action.zone })),
+            });
+        }
+        res.json({ updated: toAdd.length, skipped: ids.length - toAdd.length });
+    } catch (err) {
+        console.error('Error en actualización masiva de artículos:', err);
+        res.status(500).json({ error: 'Error en la actualización masiva' });
+    }
+});
+
 router.delete('/:id', async (req: Request, res: Response) => {
     try {
         await prisma.article.delete({ where: { id: req.params.id } });
