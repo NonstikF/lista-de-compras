@@ -4,6 +4,7 @@ import { AuthError, getArticles, createArticle, updateArticle, deleteArticle, ge
 import type { BulkArticleAction } from '../../services/api';
 import { Modal, Button, Field, Input, MIcon, fmt, useToast } from '../ui';
 import BarcodeScannerModal from '../BarcodeScannerModal';
+import QrLabelModal from '../QrLabelModal';
 
 interface ArticlesViewProps {
     authToken: string;
@@ -39,10 +40,11 @@ const ArticleCard: React.FC<{
     suppliers: Supplier[];
     onEdit: (a: Article) => void;
     onDelete: (a: Article) => void;
+    onPrintLabel: (a: Article) => void;
     selectMode?: boolean;
     selected?: boolean;
     onToggleSelect?: (a: Article) => void;
-}> = ({ article, suppliers, onEdit, onDelete, selectMode = false, selected = false, onToggleSelect }) => {
+}> = ({ article, suppliers, onEdit, onDelete, onPrintLabel, selectMode = false, selected = false, onToggleSelect }) => {
     const articleSuppliers = suppliers.filter(s => article.supplierIds.includes(s.id));
     const visibleSuppliers = articleSuppliers.slice(0, 2);
     const extra = articleSuppliers.length - 2;
@@ -106,6 +108,17 @@ const ArticleCard: React.FC<{
                     <Button variant="tonal" size="sm" icon="edit" className="flex-1 min-w-0" onClick={() => onEdit(article)}>
                         Editar
                     </Button>
+                    {article.locationSku && (
+                        <button
+                            type="button"
+                            onClick={() => onPrintLabel(article)}
+                            title={`Imprimir etiqueta QR de ${article.locationSku}`}
+                            aria-label={`Imprimir etiqueta QR de la ubicación ${article.locationSku}`}
+                            className="flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center text-on-surface-variant hover:bg-surface-container hover:text-primary transition"
+                        >
+                            <MIcon name="qr_code_2" size={20} />
+                        </button>
+                    )}
                     <button
                         type="button"
                         onClick={() => onDelete(article)}
@@ -423,6 +436,7 @@ const ArticlesView: React.FC<ArticlesViewProps> = ({ authToken, onAuthError }) =
     const [isLoading, setIsLoading] = useState(true);
     const [editing, setEditing] = useState<Article | 'new' | null>(null);
     const [confirmDelete, setConfirmDelete] = useState<Article | null>(null);
+    const [labelArticle, setLabelArticle] = useState<Article | null>(null);
     const [deleting, setDeleting] = useState(false);
     const [search, setSearch] = useState('');
     const [searchScanning, setSearchScanning] = useState(false);
@@ -690,6 +704,7 @@ const ArticlesView: React.FC<ArticlesViewProps> = ({ authToken, onAuthError }) =
                             suppliers={suppliers}
                             onEdit={setEditing}
                             onDelete={setConfirmDelete}
+                            onPrintLabel={setLabelArticle}
                             selectMode={selectMode}
                             selected={selectedIds.has(a.id)}
                             onToggleSelect={toggleSelect}
@@ -733,6 +748,14 @@ const ArticlesView: React.FC<ArticlesViewProps> = ({ authToken, onAuthError }) =
                 <BarcodeScannerModal
                     onClose={() => setSearchScanning(false)}
                     onDetected={code => { setSearch(code); setSearchScanning(false); }}
+                />
+            )}
+
+            {labelArticle && labelArticle.locationSku && (
+                <QrLabelModal
+                    code={labelArticle.locationSku}
+                    name={labelArticle.locationSku}
+                    onClose={() => setLabelArticle(null)}
                 />
             )}
 
