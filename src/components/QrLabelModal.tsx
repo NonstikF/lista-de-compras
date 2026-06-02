@@ -4,8 +4,9 @@ import { Modal, Button, Field, Input } from './ui';
 
 const LABEL_WIDTH_IN = 2.25;
 const LABEL_HEIGHT_IN = 1.25;
-const LABEL_PADDING_IN = 0.06;
-const QR_SIZE_IN = 1.1;
+const LABEL_PADDING_IN = 0.04;
+const LABEL_GAP_IN = 0.05;
+const QR_SIZE_IN = 1.17;
 
 // Location QR label. The QR encodes only the location code as plain text.
 const QrLabelModal: React.FC<{
@@ -19,6 +20,8 @@ const QrLabelModal: React.FC<{
 
     const printCode = labelCode.trim() || code;
     const printName = labelName.trim() || printCode;
+    const nameFontPt = printName.length <= 4 ? 30 : printName.length <= 8 ? 24 : printName.length <= 14 ? 18 : 13;
+    const codeFontPt = printCode.length <= 4 ? 13 : printCode.length <= 10 ? 10 : 8;
 
     useEffect(() => {
         setLabelName(name);
@@ -51,12 +54,12 @@ const QrLabelModal: React.FC<{
 @page { size: ${LABEL_WIDTH_IN}in ${LABEL_HEIGHT_IN}in; margin: 0; }
 html, body { margin: 0; padding: 0; }
 body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-.label { width: ${LABEL_WIDTH_IN}in; height: ${LABEL_HEIGHT_IN}in; box-sizing: border-box; padding: ${LABEL_PADDING_IN}in; display: flex; align-items: center; gap: 0.08in; overflow: hidden; }
+.label { width: ${LABEL_WIDTH_IN}in; height: ${LABEL_HEIGHT_IN}in; box-sizing: border-box; padding: ${LABEL_PADDING_IN}in; display: flex; align-items: center; gap: ${LABEL_GAP_IN}in; overflow: hidden; }
 .qr { width: ${QR_SIZE_IN}in; height: ${QR_SIZE_IN}in; flex-shrink: 0; }
 .qr img { width: 100%; height: 100%; display: block; }
-.txt { flex: 1; min-width: 0; overflow: hidden; }
-.name { font-size: 13pt; font-weight: 800; line-height: 1.05; margin: 0; word-wrap: break-word; overflow-wrap: break-word; max-height: 0.76in; overflow: hidden; color: #111; }
-.code { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 9pt; font-weight: 700; margin: 0.06in 0 0 0; color: #333; word-break: break-all; }
+.txt { flex: 1; min-width: 0; height: 100%; display: flex; flex-direction: column; justify-content: center; overflow: hidden; }
+.name { font-size: ${nameFontPt}pt; font-weight: 900; line-height: 0.95; margin: 0; word-wrap: break-word; overflow-wrap: break-word; max-height: 0.84in; overflow: hidden; color: #111; }
+.code { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: ${codeFontPt}pt; font-weight: 800; margin: 0.08in 0 0 0; color: #333; word-break: break-all; }
 @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
 `;
         doc.head.appendChild(style);
@@ -158,7 +161,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
                             height: `${LABEL_HEIGHT_IN * 2}in`,
                             maxWidth: '100%',
                             padding: `${LABEL_PADDING_IN * 2}in`,
-                            gap: '0.16in',
+                            gap: `${LABEL_GAP_IN * 2}in`,
                             boxSizing: 'border-box',
                         }}
                     >
@@ -171,11 +174,11 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
                                 </div>
                             )}
                         </div>
-                        <div className="flex-1 min-w-0 overflow-hidden">
-                            <div className="font-extrabold text-on-background leading-tight break-words" style={{ fontSize: '26pt', maxHeight: '1.52in', overflow: 'hidden' }}>
+                        <div className="flex-1 min-w-0 h-full flex flex-col justify-center overflow-hidden">
+                            <div className="font-black text-on-background leading-none break-words" style={{ fontSize: `${nameFontPt * 2}pt`, maxHeight: '1.68in', overflow: 'hidden' }}>
                                 {printName}
                             </div>
-                            <div className="font-mono font-bold text-on-surface-variant mt-2 break-all" style={{ fontSize: '18pt' }}>
+                            <div className="font-mono font-extrabold text-on-surface-variant mt-3 break-all" style={{ fontSize: `${codeFontPt * 2}pt` }}>
                                 {printCode}
                             </div>
                         </div>
