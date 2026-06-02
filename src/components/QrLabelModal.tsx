@@ -1,43 +1,62 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
-import { Modal, Button } from './ui';
+import { Modal, Button, Field, Input } from './ui';
 
-// Etiqueta QR de una ubicación. El QR codifica solo el código en texto plano
-// (ej. "E1"); al escanearlo se obtiene el texto, sin enlaces.
+const LABEL_WIDTH_IN = 2.25;
+const LABEL_HEIGHT_IN = 1.25;
+const LABEL_PADDING_IN = 0.06;
+const QR_SIZE_IN = 1.1;
+
+// Location QR label. The QR encodes only the location code as plain text.
 const QrLabelModal: React.FC<{
     code: string;
     name: string;
     onClose: () => void;
 }> = ({ code, name, onClose }) => {
+    const [labelName, setLabelName] = useState(name);
+    const [labelCode, setLabelCode] = useState(code);
     const [qrDataUrl, setQrDataUrl] = useState<string>('');
 
+    const printCode = labelCode.trim() || code;
+    const printName = labelName.trim() || printCode;
+
     useEffect(() => {
-        QRCode.toDataURL(code, {
+        setLabelName(name);
+        setLabelCode(code);
+    }, [code, name]);
+
+    useEffect(() => {
+        QRCode.toDataURL(printCode, {
             errorCorrectionLevel: 'M',
             margin: 0,
             scale: 8,
             color: { dark: '#000000', light: '#ffffff' },
         }).then(setQrDataUrl).catch(() => setQrDataUrl(''));
-    }, [code]);
+    }, [printCode]);
+
+    const resetLabel = () => {
+        setLabelName(name);
+        setLabelCode(code);
+    };
 
     const handlePrint = () => {
         if (!qrDataUrl) return;
-        const w = window.open('', '_blank', 'width=400,height=300');
+        const w = window.open('', '_blank', 'width=450,height=300');
         if (!w) return;
         const doc = w.document;
-        doc.title = `Etiqueta ${code}`;
+        doc.title = `Etiqueta ${printCode}`;
 
         const style = doc.createElement('style');
         style.textContent = `
-@page { size: 2in 1in; margin: 0; }
+@page { size: ${LABEL_WIDTH_IN}in ${LABEL_HEIGHT_IN}in; margin: 0; }
 html, body { margin: 0; padding: 0; }
 body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-.label { width: 2in; height: 1in; box-sizing: border-box; padding: 0.04in; display: flex; align-items: center; gap: 0.06in; }
-.qr { width: 0.92in; height: 0.92in; flex-shrink: 0; }
+.label { width: ${LABEL_WIDTH_IN}in; height: ${LABEL_HEIGHT_IN}in; box-sizing: border-box; padding: ${LABEL_PADDING_IN}in; display: flex; align-items: center; gap: 0.08in; overflow: hidden; }
+.qr { width: ${QR_SIZE_IN}in; height: ${QR_SIZE_IN}in; flex-shrink: 0; }
 .qr img { width: 100%; height: 100%; display: block; }
 .txt { flex: 1; min-width: 0; overflow: hidden; }
-.name { font-size: 11pt; font-weight: 700; line-height: 1.1; margin: 0; word-wrap: break-word; overflow-wrap: break-word; max-height: 0.55in; overflow: hidden; }
-.code { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 8pt; font-weight: 600; margin: 0.04in 0 0 0; color: #333; }
+.name { font-size: 13pt; font-weight: 800; line-height: 1.05; margin: 0; word-wrap: break-word; overflow-wrap: break-word; max-height: 0.76in; overflow: hidden; color: #111; }
+.code { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 9pt; font-weight: 700; margin: 0.06in 0 0 0; color: #333; word-break: break-all; }
 @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
 `;
         doc.head.appendChild(style);
@@ -56,10 +75,10 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
         txt.className = 'txt';
         const nameEl = doc.createElement('div');
         nameEl.className = 'name';
-        nameEl.textContent = name;
+        nameEl.textContent = printName;
         const codeEl = doc.createElement('div');
         codeEl.className = 'code';
-        codeEl.textContent = code;
+        codeEl.textContent = printCode;
         txt.appendChild(nameEl);
         txt.appendChild(codeEl);
 
@@ -84,7 +103,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
         if (!qrDataUrl) return;
         const a = document.createElement('a');
         a.href = qrDataUrl;
-        a.download = `qr-${code}.png`;
+        a.download = `qr-${printCode}.png`;
         a.click();
     };
 
@@ -92,8 +111,8 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
         <Modal
             open
             onClose={onClose}
-            title={`Etiqueta: ${name}`}
-            maxWidth="max-w-md"
+            title={`Etiqueta: ${printName}`}
+            maxWidth="max-w-2xl"
             footer={
                 <>
                     <Button variant="neutral" onClick={onClose}>Cerrar</Button>
@@ -106,39 +125,68 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
                 </>
             }
         >
-            <div className="px-6 py-5 space-y-4">
-                <p className="text-sm text-on-surface-variant">
-                    Vista previa de la etiqueta (2in × 1in). El QR contiene el código de la ubicación en texto.
-                </p>
+            <div className="px-6 py-5 space-y-5">
+                <div className="space-y-3">
+                    <div className="grid sm:grid-cols-2 gap-3">
+                        <Field label="Nombre en etiqueta">
+                            <Input
+                                value={labelName}
+                                onChange={e => setLabelName(e.target.value)}
+                                placeholder={name || code}
+                                maxLength={80}
+                            />
+                        </Field>
+                        <Field label="Codigo QR / SKU">
+                            <Input
+                                value={labelCode}
+                                onChange={e => setLabelCode(e.target.value.toUpperCase())}
+                                placeholder={code}
+                                maxLength={40}
+                            />
+                        </Field>
+                    </div>
+                    <Button variant="text" size="sm" icon="restart_alt" onClick={resetLabel} className="px-2">
+                        Restaurar datos originales
+                    </Button>
+                </div>
 
-                <div className="flex justify-center bg-surface-container-low rounded-xl p-6">
+                <div className="flex justify-center bg-surface-container-low rounded-xl p-4 overflow-auto">
                     <div
-                        className="bg-white border border-outline-variant shadow-sm flex items-center gap-2 p-1"
-                        style={{ width: '4in', height: '2in' }}
+                        className="bg-white border border-outline-variant shadow-sm flex items-center"
+                        style={{
+                            width: `${LABEL_WIDTH_IN * 2}in`,
+                            height: `${LABEL_HEIGHT_IN * 2}in`,
+                            maxWidth: '100%',
+                            padding: `${LABEL_PADDING_IN * 2}in`,
+                            gap: '0.16in',
+                            boxSizing: 'border-box',
+                        }}
                     >
-                        <div style={{ width: '1.84in', height: '1.84in', flexShrink: 0 }}>
+                        <div style={{ width: `${QR_SIZE_IN * 2}in`, height: `${QR_SIZE_IN * 2}in`, flexShrink: 0 }}>
                             {qrDataUrl ? (
                                 <img src={qrDataUrl} alt="QR" style={{ width: '100%', height: '100%', display: 'block' }} />
                             ) : (
                                 <div className="w-full h-full flex items-center justify-center text-on-surface-variant text-xs">
-                                    Generando…
+                                    Generando...
                                 </div>
                             )}
                         </div>
                         <div className="flex-1 min-w-0 overflow-hidden">
-                            <div className="font-bold text-on-background leading-tight break-words" style={{ fontSize: '22pt', maxHeight: '1.1in', overflow: 'hidden' }}>
-                                {name}
+                            <div className="font-extrabold text-on-background leading-tight break-words" style={{ fontSize: '26pt', maxHeight: '1.52in', overflow: 'hidden' }}>
+                                {printName}
                             </div>
-                            <div className="font-mono font-semibold text-on-surface-variant mt-1" style={{ fontSize: '16pt' }}>
-                                {code}
+                            <div className="font-mono font-bold text-on-surface-variant mt-2 break-all" style={{ fontSize: '18pt' }}>
+                                {printCode}
                             </div>
                         </div>
                     </div>
                 </div>
 
                 <div className="bg-surface-container-low rounded-xl px-4 py-3 text-xs text-on-surface-variant break-all">
-                    <span className="font-semibold text-on-surface">Contenido del QR: </span>
-                    {code}
+                    <span className="font-semibold text-on-surface">Tamano: </span>
+                    {LABEL_WIDTH_IN} x {LABEL_HEIGHT_IN}in
+                    <span className="font-semibold text-on-surface ml-3">Contenido del QR: </span>
+                    {printCode}
                 </div>
             </div>
         </Modal>
