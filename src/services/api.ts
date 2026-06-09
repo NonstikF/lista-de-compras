@@ -288,8 +288,9 @@ export async function resolvePendingStoreItems(token: string, itemIds: number[])
   }));
 }
 
-export async function getStoreOrders(token: string): Promise<StoreOrder[]> {
-  return handleResponse(await fetch(`${BASE}/api/store-orders`, { headers: authHeaders(token) }));
+export async function getStoreOrders(token: string, status?: 'pending' | 'completed'): Promise<StoreOrder[]> {
+  const qs = status ? `?status=${status}` : '';
+  return handleResponse(await fetch(`${BASE}/api/store-orders${qs}`, { headers: authHeaders(token) }));
 }
 
 export async function createStoreOrder(

@@ -149,11 +149,18 @@ router.post('/pending-items/resolve', async (req: Request, res: Response) => {
     }
 });
 
-router.get('/', async (_req: Request, res: Response) => {
+router.get('/', async (req: Request, res: Response) => {
     try {
+        const statusFilter = typeof req.query.status === 'string' ? req.query.status : undefined;
+        // Completed history can grow without bound — cap it. Pending stays unbounded (small, actively worked).
+        const take = statusFilter === 'completed'
+            ? Math.min(parseInt(String(req.query.limit ?? '100'), 10) || 100, 500)
+            : undefined;
         const orders = await prisma.storeOrder.findMany({
+            where: statusFilter ? { status: statusFilter } : undefined,
             include: { items: true },
             orderBy: { dateCreated: 'desc' },
+            take,
         });
         const allIds = [...new Set(orders.flatMap(o => o.items.map(i => i.articleId)))];
         const articleMap = await getArticleInfoMap(allIds);

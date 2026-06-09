@@ -1952,13 +1952,16 @@ const OrdersView: React.FC<OrdersViewProps> = ({ authToken, onAuthError }) => {
         setStoreOrders(prev => prev.map(o => o.id === updatedOrder.id ? updatedOrder : o));
     }, []);
 
+    // Pending store orders load immediately — small, actively worked set.
     useEffect(() => {
         let cancelled = false;
         const load = async () => {
             setLoadingStoreOrders(true);
             try {
-                const data = await getStoreOrders(authToken);
-                if (!cancelled) setStoreOrders(data);
+                const data = await getStoreOrders(authToken, 'pending');
+                if (!cancelled) {
+                    setStoreOrders(prev => [...data, ...prev.filter(o => o.status !== 'pending')]);
+                }
             } catch (err) {
                 if (err instanceof AuthError) { onAuthError(); return; }
                 if (!cancelled) showToast('error', 'Error al cargar pedidos de Tienda');
@@ -1970,25 +1973,34 @@ const OrdersView: React.FC<OrdersViewProps> = ({ authToken, onAuthError }) => {
         return () => { cancelled = true; };
     }, [authToken, onAuthError, storeOrdersRefreshKey]);
 
+    // Completed orders (legacy + store) load only when the Completados tab is opened.
     useEffect(() => {
         if (tabMode !== 'completed') return;
+        let cancelled = false;
         const fetchOrders = async () => {
             try {
                 setIsLoading(true);
                 setError(null);
                 setOrders([]);
-                const fetchedOrders = await getOrders('completed', authToken);
+                const [fetchedOrders, completedStore] = await Promise.all([
+                    getOrders('completed', authToken),
+                    getStoreOrders(authToken, 'completed'),
+                ]);
+                if (cancelled) return;
                 setOrders(fetchedOrders.sort((a, b) => new Date(b.dateCreated).getTime() - new Date(a.dateCreated).getTime()));
+                setStoreOrders(prev => [...prev.filter(o => o.status !== 'completed'), ...completedStore]);
             } catch (err) {
                 if (err instanceof AuthError) { onAuthError(); return; }
+                if (cancelled) return;
                 setError(err instanceof Error ? `Error al obtener pedidos: ${err.message}` : 'Error desconocido al obtener pedidos.');
                 showToast('error', err instanceof Error ? err.message : 'Error desconocido');
             } finally {
-                setIsLoading(false);
+                if (!cancelled) setIsLoading(false);
             }
         };
         fetchOrders();
-    }, [tabMode, authToken, onAuthError]);
+        return () => { cancelled = true; };
+    }, [tabMode, authToken, onAuthError, storeOrdersRefreshKey]);
 
     const handleQuantityChange = useCallback((itemId: number, newQuantity: number, supplierId: string | null) => {
         setOrders(prevOrders => {

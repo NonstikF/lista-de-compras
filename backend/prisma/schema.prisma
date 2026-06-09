@@ -127,6 +127,7 @@ model StoreOrder {
   tickets          OrderTicket[]
 
   @@index([legacyWooOrderId])
+  @@index([status, dateCreated])
 }
 
 model StoreOrderItem {
