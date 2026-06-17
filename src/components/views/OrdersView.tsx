@@ -1,7 +1,7 @@
 ﻿import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import type { Order, LineItem, StoreOrder, StoreOrderItem, OrderTicket, Supplier, Article } from '../../types';
 import { getOrders, saveItemStatus, completeOrder, AuthError, type OrderStatusType, getSuppliers, getArticles } from '../../services/api';
-import { getStoreOrders, completeStoreOrder, getOrderTickets, getOrderTicketContent, createOrderTicket, deleteOrderTicket, getOrderTicketCounts, updateStoreItemStatus, getStoreOrderTickets, getStoreOrderTicketContent, createStoreOrderTicket, deleteStoreOrderTicket, addStoreOrderItem, deleteStoreOrderItem, editStoreOrderItem, getPendingStoreItems, resolvePendingStoreItems, type PendingItemGroup } from '../../services/api';
+import { getStoreOrders, completeStoreOrder, getOrderTickets, getOrderTicketContent, createOrderTicket, deleteOrderTicket, getOrderTicketCounts, updateStoreItemStatus, getStoreOrderTickets, getStoreOrderTicketContent, createStoreOrderTicket, deleteStoreOrderTicket, getStoreOrderTicketCounts, addStoreOrderItem, deleteStoreOrderItem, editStoreOrderItem, getPendingStoreItems, resolvePendingStoreItems, type PendingItemGroup } from '../../services/api';
 import { Modal, Input, Button } from '../ui';
 import { CheckCircleIcon, ChevronDownIcon, XMarkIcon, EyeIcon } from '../ui/icons';
 import { showToast } from '../ui/Toast';
@@ -161,15 +161,19 @@ const StoreItem = React.memo<{
     );
 });
 
+// Bucket "General" — donde viven los tickets de pedido antiguos (no asociados a un proveedor)
+const GENERAL_TICKET_SUPPLIER = 'Tienda';
+
 // --- StoreOrderTicketModal ---
 const StoreOrderTicketModal: React.FC<{
     orderId: string;
+    supplierName: string;
     authToken: string;
     onAuthError: () => void;
     onClose: () => void;
-    onTicketUploaded: () => void;
-    onTicketDeleted: () => void;
-}> = ({ orderId, authToken, onAuthError, onClose, onTicketUploaded, onTicketDeleted }) => {
+    onTicketUploaded: (supplierName: string) => void;
+    onTicketDeleted: (supplierName: string) => void;
+}> = ({ orderId, supplierName, authToken, onAuthError, onClose, onTicketUploaded, onTicketDeleted }) => {
     const [tickets, setTickets] = useState<OrderTicket[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [uploading, setUploading] = useState(false);
@@ -186,7 +190,7 @@ const StoreOrderTicketModal: React.FC<{
         const load = async () => {
             setIsLoading(true);
             try {
-                const data = await getStoreOrderTickets(authToken, orderId);
+                const data = await getStoreOrderTickets(authToken, orderId, supplierName);
                 if (!cancelled) setTickets(data);
             } catch (err) {
                 if (err instanceof AuthError) { onAuthError(); return; }
@@ -197,7 +201,7 @@ const StoreOrderTicketModal: React.FC<{
         };
         load();
         return () => { cancelled = true; };
-    }, [orderId]);
+    }, [orderId, supplierName]);
 
     useEffect(() => {
         const toLoad = tickets.filter(t => t.mimeType !== 'application/pdf' && !contentCache[t.id]);
@@ -248,13 +252,14 @@ const StoreOrderTicketModal: React.FC<{
         const approxSize = Math.round((content.length * 3) / 4);
         try {
             const ticket = await createStoreOrderTicket(authToken, orderId, {
+                supplierName,
                 filename: mimeType === 'image/jpeg' && !file.name.match(/\.jpe?g$/i) ? file.name.replace(/\.[^.]+$/, '.jpg') : file.name,
                 mimeType,
                 size: approxSize,
                 content,
             });
             setTickets(prev => [ticket, ...prev]);
-            onTicketUploaded();
+            onTicketUploaded(supplierName);
             showToast('success', 'Ticket subido');
         } catch (err) {
             if (err instanceof AuthError) { onAuthError(); return; }
@@ -282,7 +287,7 @@ const StoreOrderTicketModal: React.FC<{
         try {
             await deleteStoreOrderTicket(authToken, orderId, confirmDeleteId);
             setTickets(prev => prev.filter(t => t.id !== confirmDeleteId));
-            onTicketDeleted();
+            onTicketDeleted(supplierName);
             showToast('success', 'Ticket eliminado');
             setConfirmDeleteId(null);
         } catch (err) {
@@ -299,7 +304,7 @@ const StoreOrderTicketModal: React.FC<{
                 <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col border border-surface-variant" onClick={e => e.stopPropagation()}>
                     <div className="flex items-center justify-between px-6 py-4 border-b border-surface-variant">
                         <div>
-                            <h3 className="font-epilogue font-bold text-on-background text-lg">Tickets — Tienda</h3>
+                            <h3 className="font-epilogue font-bold text-on-background text-lg">Tickets — {supplierName}</h3>
                             <p className="text-xs text-on-surface-variant">Pedido {orderId}</p>
                         </div>
                         <button onClick={onClose} className="p-2 rounded-full hover:bg-surface-container-low text-on-surface-variant transition">
@@ -905,9 +910,20 @@ const StoreOrderCard: React.FC<{
     onOrderEdited: (updated: StoreOrder) => void;
 }> = ({ order, authToken, onAuthError, onComplete, onItemUpdate, onViewImage, onOrderEdited }) => {
     const [isExpanded, setIsExpanded] = useState(false);
-    const [ticketModal, setTicketModal] = useState(false);
+    const [ticketModalSupplier, setTicketModalSupplier] = useState<string | null>(null);
     const [editModal, setEditModal] = useState(false);
-    const [ticketCount, setTicketCount] = useState(0);
+    const [ticketCounts, setTicketCounts] = useState<Record<string, number>>({});
+    const bumpTicketCount = useCallback((supplierName: string, delta: number) => {
+        setTicketCounts(prev => ({ ...prev, [supplierName]: Math.max(0, (prev[supplierName] ?? 0) + delta) }));
+    }, []);
+    useEffect(() => {
+        if (!isExpanded) return;
+        let cancelled = false;
+        getStoreOrderTicketCounts(authToken, order.id)
+            .then(counts => { if (!cancelled) setTicketCounts(counts); })
+            .catch(err => { if (err instanceof AuthError) onAuthError(); });
+        return () => { cancelled = true; };
+    }, [isExpanded, authToken, order.id, onAuthError]);
     const [confirmNotFound, setConfirmNotFound] = useState(false);
     const isPending = order.status === 'pending';
     const date = new Date(order.dateCreated).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' });
@@ -1030,13 +1046,15 @@ const StoreOrderCard: React.FC<{
                                 Editar
                             </button>
                         )}
-                        <button
-                            onClick={() => setTicketModal(true)}
-                            className="flex items-center gap-1.5 px-3 py-1 text-xs font-semibold rounded-full bg-surface-container hover:bg-surface-container-high text-on-surface-variant transition"
-                        >
-                            <span className="material-symbols-outlined text-sm">receipt_long</span>
-                            Tickets{ticketCount > 0 ? ` (${ticketCount})` : ''}
-                        </button>
+                        {(ticketCounts[GENERAL_TICKET_SUPPLIER] ?? 0) > 0 && (
+                            <button
+                                onClick={() => setTicketModalSupplier(GENERAL_TICKET_SUPPLIER)}
+                                className="flex items-center gap-1.5 px-3 py-1 text-xs font-semibold rounded-full bg-surface-container hover:bg-surface-container-high text-on-surface-variant transition"
+                            >
+                                <span className="material-symbols-outlined text-sm">receipt_long</span>
+                                Tickets generales ({ticketCounts[GENERAL_TICKET_SUPPLIER]})
+                            </button>
+                        )}
                     </div>
                     {Object.entries(order.items.reduce<Record<string, StoreOrderItem[]>>((acc, item) => {
                         const key = item.supplierName || 'Sin proveedor';
@@ -1057,6 +1075,14 @@ const StoreOrderCard: React.FC<{
                                             <span className={`text-xs font-semibold px-2 py-1 rounded-full ${complete ? 'bg-primary/15 text-primary' : 'bg-surface-container-high text-on-surface-variant'}`}>
                                                 {purchased} / {items.length}
                                             </span>
+                                            <button
+                                                onClick={() => setTicketModalSupplier(supplierName)}
+                                                title={`Tickets de ${supplierName}`}
+                                                className="flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded-full bg-surface-container hover:bg-surface-container-high text-on-surface-variant transition"
+                                            >
+                                                <span className={`material-symbols-outlined text-sm ${(ticketCounts[supplierName] ?? 0) > 0 ? 'text-primary' : ''}`}>receipt_long</span>
+                                                {(ticketCounts[supplierName] ?? 0) > 0 ? ticketCounts[supplierName] : ''}
+                                            </button>
                                         </div>
                                     </div>
                                     <div className="divide-y divide-surface-variant">
@@ -1076,14 +1102,15 @@ const StoreOrderCard: React.FC<{
                 </div>
             )}
 
-            {ticketModal && (
+            {ticketModalSupplier !== null && (
                 <StoreOrderTicketModal
                     orderId={order.id}
+                    supplierName={ticketModalSupplier}
                     authToken={authToken}
                     onAuthError={onAuthError}
-                    onClose={() => setTicketModal(false)}
-                    onTicketUploaded={() => setTicketCount(c => c + 1)}
-                    onTicketDeleted={() => setTicketCount(c => Math.max(0, c - 1))}
+                    onClose={() => setTicketModalSupplier(null)}
+                    onTicketUploaded={(s) => bumpTicketCount(s, 1)}
+                    onTicketDeleted={(s) => bumpTicketCount(s, -1)}
                 />
             )}
             {editModal && (

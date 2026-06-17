@@ -2,9 +2,8 @@ import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma';
 
-const TICKET_SUPPLIER = 'Tienda';
-
 const storeTicketSchema = z.object({
+    supplierName: z.string().min(1, 'Proveedor requerido'),
     filename: z.string().min(1),
     mimeType: z.enum(['image/jpeg', 'image/png', 'application/pdf']),
     size: z.number().int().min(0),
@@ -430,13 +429,33 @@ router.delete('/:id/items/:itemId', async (req: Request, res: Response) => {
     }
 });
 
-// GET /api/store-orders/:id/tickets
-router.get('/:id/tickets', async (req: Request, res: Response) => {
+// GET /api/store-orders/:id/ticket-counts — conteo de tickets por proveedor
+router.get('/:id/ticket-counts', async (req: Request, res: Response) => {
     const rawId = req.params.id.startsWith('T-') ? parseInt(req.params.id.slice(2), 10) : parseInt(req.params.id, 10);
     if (!Number.isFinite(rawId)) { res.status(400).json({ error: 'ID inválido' }); return; }
     try {
+        const rows = await prisma.orderTicket.groupBy({
+            by: ['supplierName'],
+            where: { orderId: rawId },
+            _count: { id: true },
+        });
+        const counts: Record<string, number> = {};
+        for (const row of rows) counts[row.supplierName] = row._count.id;
+        res.json(counts);
+    } catch (err) {
+        console.error('Error al obtener conteos de tickets de tienda:', err);
+        res.status(500).json({ error: 'Error al obtener conteos' });
+    }
+});
+
+// GET /api/store-orders/:id/tickets — opcionalmente filtrado por proveedor
+router.get('/:id/tickets', async (req: Request, res: Response) => {
+    const rawId = req.params.id.startsWith('T-') ? parseInt(req.params.id.slice(2), 10) : parseInt(req.params.id, 10);
+    if (!Number.isFinite(rawId)) { res.status(400).json({ error: 'ID inválido' }); return; }
+    const { supplierName } = req.query;
+    try {
         const tickets = await prisma.orderTicket.findMany({
-            where: { orderId: rawId, supplierName: TICKET_SUPPLIER },
+            where: { orderId: rawId, ...(supplierName ? { supplierName: String(supplierName) } : {}) },
             select: { id: true, orderId: true, supplierName: true, invoiced: true, filename: true, mimeType: true, size: true, createdAt: true },
             orderBy: { createdAt: 'desc' },
         });
@@ -468,7 +487,7 @@ router.post('/:id/tickets', async (req: Request, res: Response) => {
     const parsed = storeTicketSchema.safeParse(req.body);
     if (!parsed.success) { res.status(400).json({ error: parsed.error.issues[0].message }); return; }
     try {
-        const ticket = await prisma.orderTicket.create({ data: { orderId: rawId, supplierName: TICKET_SUPPLIER, ...parsed.data } });
+        const ticket = await prisma.orderTicket.create({ data: { orderId: rawId, ...parsed.data } });
         res.status(201).json(ticket);
     } catch (err) {
         console.error('Error al crear ticket de tienda:', err);
