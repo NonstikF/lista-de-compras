@@ -226,7 +226,9 @@ const StoreView: React.FC<StoreViewProps> = ({ authToken, onAuthError }) => {
 
     const activeSuppliers = useMemo(() => {
         const usedIds = new Set(articles.flatMap(a => a.supplierIds));
-        return suppliers.filter(s => usedIds.has(s.id));
+        return suppliers
+            .filter(s => usedIds.has(s.id))
+            .sort((a, b) => a.name.localeCompare(b.name, 'es'));
     }, [articles, suppliers]);
 
     const filtered = useMemo(() => {
@@ -444,9 +446,9 @@ const StoreView: React.FC<StoreViewProps> = ({ authToken, onAuthError }) => {
                             </div>
                         </div>
 
-                        {/* chips de proveedor — scroll horizontal */}
+                        {/* chips de proveedor — scroll horizontal en móvil, multilínea en escritorio */}
                         {!isLoading && activeSuppliers.length > 0 && (
-                            <div className="flex gap-1.5 overflow-x-auto scrollbar-hide pb-0.5 -mx-3 sm:-mx-4 px-3 sm:px-4">
+                            <div className="flex flex-nowrap md:flex-wrap gap-1.5 overflow-x-auto md:overflow-visible scrollbar-hide pb-0.5 -mx-3 sm:-mx-4 px-3 sm:px-4">
                                 {[{ id: 'todos', name: 'Todos' }, ...activeSuppliers].map(s => {
                                     const active = supplierFilter === s.id;
                                     return (
