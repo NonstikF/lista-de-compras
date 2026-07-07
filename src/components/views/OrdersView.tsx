@@ -72,6 +72,10 @@ const StoreItem = React.memo<{
     const pendingQty = Math.max(0, item.qty - displayQty - purchasedByOthers);
     const maxPurchasable = item.qty - purchasedByOthers;
     const isInProgress = displayQty > 0 && !isPurchased;
+    // Multi-proveedor: si otro proveedor ya surtió todas las unidades, este item
+    // no tiene nada pendiente. Antes quedaba con el toggle deshabilitado y el
+    // spinner oculto → fila totalmente inerte (parecía "no hacer nada").
+    const fullyCoveredByOthers = maxPurchasable <= 0 && !isPurchased;
 
     const handleToggle = () => {
         const newQty = isPurchased ? 0 : maxPurchasable;
@@ -100,11 +104,11 @@ const StoreItem = React.memo<{
                 : 'bg-white hover:bg-surface-container-low';
 
     return (
-        <div className={`flex items-center justify-between p-3 transition-all duration-300 ${bgClass}`}>
-            <div className="flex items-center gap-4 flex-grow">
+        <div className={`flex items-center justify-between gap-2 p-3 transition-all duration-300 ${bgClass}`}>
+            <div className="flex items-center gap-3 flex-grow min-w-0">
                 <span className="text-primary font-bold text-lg shrink-0">{item.qty}x</span>
-                <div>
-                    <p className={`font-semibold text-on-background ${isPurchased || isNotFound ? 'line-through opacity-60' : ''}`}>
+                <div className="min-w-0">
+                    <p className={`text-sm font-semibold text-on-background leading-snug ${isPurchased || isNotFound ? 'line-through opacity-60' : ''}`}>
                         {item.name}
                     </p>
                     <p className="text-xs text-on-surface-variant">{fmt(item.price)} c/u</p>
@@ -121,11 +125,11 @@ const StoreItem = React.memo<{
                     )}
                 </div>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 shrink-0">
                 {maxPurchasable > 1 && !isNotFound && (
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5">
                         <button onClick={handleDecrement} disabled={displayQty === 0} className="w-7 h-7 flex items-center justify-center rounded-full bg-surface-container text-on-surface hover:bg-surface-container-high disabled:opacity-40 transition">-</button>
-                        <span className="font-mono text-base font-semibold text-on-background w-8 text-center">{displayQty}</span>
+                        <span className="font-mono text-base font-semibold text-on-background w-7 text-center">{displayQty}</span>
                         <button onClick={handleIncrement} disabled={displayQty >= maxPurchasable} className="w-7 h-7 flex items-center justify-center rounded-full bg-surface-container text-on-surface hover:bg-surface-container-high disabled:opacity-40 transition">+</button>
                     </div>
                 )}
@@ -138,24 +142,35 @@ const StoreItem = React.memo<{
                         <EyeIcon className="w-5 h-5" />
                     </button>
                 )}
-                {!isPurchased && (
-                    <button
-                        onClick={handleToggleNotFound}
-                        aria-label={isNotFound ? 'Marcar como pendiente' : 'Marcar como no encontrado'}
-                        title={isNotFound ? 'Marcar como pendiente' : 'No se encontró'}
-                        className={`p-1.5 rounded-full transition-colors ${isNotFound ? 'bg-amber-200 text-amber-800 hover:bg-amber-300' : 'text-on-surface-variant hover:bg-amber-100 hover:text-amber-700'}`}
-                    >
-                        <span className="material-symbols-outlined text-[20px] leading-none">search_off</span>
-                    </button>
+                {fullyCoveredByOthers ? (
+                    // Ya cubierto por otro proveedor: no hay acción posible, mostramos
+                    // estado claro en lugar de un toggle deshabilitado que confunde.
+                    <span className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-primary/10 text-primary text-xs font-semibold whitespace-nowrap">
+                        <span className="material-symbols-outlined text-[16px] leading-none">check_circle</span>
+                        Surtido por otro
+                    </span>
+                ) : (
+                    <>
+                        {!isPurchased && (
+                            <button
+                                onClick={handleToggleNotFound}
+                                aria-label={isNotFound ? 'Marcar como pendiente' : 'Marcar como no encontrado'}
+                                title={isNotFound ? 'Marcar como pendiente' : 'No se encontró'}
+                                className={`p-1.5 rounded-full transition-colors ${isNotFound ? 'bg-amber-200 text-amber-800 hover:bg-amber-300' : 'text-on-surface-variant hover:bg-amber-100 hover:text-amber-700'}`}
+                            >
+                                <span className="material-symbols-outlined text-[20px] leading-none">search_off</span>
+                            </button>
+                        )}
+                        <button
+                            onClick={handleToggle}
+                            disabled={isNotFound}
+                            aria-label={isPurchased ? 'Marcar como pendiente' : 'Marcar como comprado'}
+                            className={`relative w-14 h-8 rounded-full flex items-center transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-40 ${isPurchased ? 'bg-success-purchased focus:ring-success-purchased' : 'bg-surface-container-high focus:ring-primary'}`}
+                        >
+                            <span className={`inline-block w-6 h-6 bg-white rounded-full shadow transform transition-transform duration-300 ${isPurchased ? 'translate-x-7' : 'translate-x-1'}`} />
+                        </button>
+                    </>
                 )}
-                <button
-                    onClick={handleToggle}
-                    disabled={(!isPurchased && maxPurchasable === 0) || isNotFound}
-                    aria-label={isPurchased ? 'Marcar como pendiente' : 'Marcar como comprado'}
-                    className={`relative w-14 h-8 rounded-full flex items-center transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-40 ${isPurchased ? 'bg-success-purchased focus:ring-success-purchased' : 'bg-surface-container-high focus:ring-primary'}`}
-                >
-                    <span className={`inline-block w-6 h-6 bg-white rounded-full shadow transform transition-transform duration-300 ${isPurchased ? 'translate-x-7' : 'translate-x-1'}`} />
-                </button>
             </div>
         </div>
     );
