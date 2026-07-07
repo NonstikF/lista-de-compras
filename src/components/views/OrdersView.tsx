@@ -104,8 +104,8 @@ const StoreItem = React.memo<{
                 : 'bg-white hover:bg-surface-container-low';
 
     return (
-        <div className={`flex items-center justify-between gap-2 p-3 transition-all duration-300 ${bgClass}`}>
-            <div className="flex items-center gap-3 flex-grow min-w-0">
+        <div className={`flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 transition-all duration-300 ${bgClass}`}>
+            <div className="flex items-start sm:items-center gap-3 flex-grow min-w-0">
                 <span className="text-primary font-bold text-lg shrink-0">{item.qty}x</span>
                 <div className="min-w-0">
                     <p className={`text-sm font-semibold text-on-background leading-snug ${isPurchased || isNotFound ? 'line-through opacity-60' : ''}`}>
@@ -125,7 +125,7 @@ const StoreItem = React.memo<{
                     )}
                 </div>
             </div>
-            <div className="flex items-center gap-2 shrink-0">
+            <div className="flex items-center justify-end gap-2 shrink-0 w-full sm:w-auto">
                 {maxPurchasable > 1 && !isNotFound && (
                     <div className="flex items-center gap-1.5">
                         <button onClick={handleDecrement} disabled={displayQty === 0} className="w-7 h-7 flex items-center justify-center rounded-full bg-surface-container text-on-surface hover:bg-surface-container-high disabled:opacity-40 transition">-</button>
