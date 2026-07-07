@@ -64,7 +64,9 @@ const StoreItem = React.memo<{
     onQuantityChange: (itemId: number, newQty: number, isPurchased: boolean, isToggle: boolean) => void;
     onToggleNotFound: (itemId: number, notFound: boolean) => void;
     onViewImage: (url: string, name: string) => void;
-}>(({ item, onQuantityChange, onToggleNotFound, onViewImage }) => {
+    onEditPrice: (itemId: number, price: number) => Promise<void>;
+    editable: boolean;
+}>(({ item, onQuantityChange, onToggleNotFound, onViewImage, onEditPrice, editable }) => {
     const isPurchased = item.isPurchased;
     const isNotFound = item.notFound;
     const displayQty = item.quantityPurchased;
@@ -76,6 +78,29 @@ const StoreItem = React.memo<{
     // no tiene nada pendiente. Antes quedaba con el toggle deshabilitado y el
     // spinner oculto → fila totalmente inerte (parecía "no hacer nada").
     const fullyCoveredByOthers = maxPurchasable <= 0 && !isPurchased;
+
+    // Precio editable en línea — para artículos que se pidieron sin precio ($0.00)
+    const [editingPrice, setEditingPrice] = useState(false);
+    const [priceDraft, setPriceDraft] = useState('');
+    const [savingPrice, setSavingPrice] = useState(false);
+    const needsPrice = item.price <= 0;
+
+    const startPriceEdit = () => {
+        setPriceDraft(item.price > 0 ? String(item.price) : '');
+        setEditingPrice(true);
+    };
+    const commitPrice = async () => {
+        const n = parseFloat(priceDraft.replace(',', '.'));
+        if (isNaN(n) || n < 0) { setEditingPrice(false); return; }
+        if (n === item.price) { setEditingPrice(false); return; }
+        setSavingPrice(true);
+        try {
+            await onEditPrice(item.id, n);
+            setEditingPrice(false);
+        } finally {
+            setSavingPrice(false);
+        }
+    };
 
     const handleToggle = () => {
         const newQty = isPurchased ? 0 : maxPurchasable;
@@ -111,7 +136,46 @@ const StoreItem = React.memo<{
                     <p className={`text-sm font-semibold text-on-background leading-snug ${isPurchased || isNotFound ? 'line-through opacity-60' : ''}`}>
                         {item.name}
                     </p>
-                    <p className="text-xs text-on-surface-variant">{fmt(item.price)} c/u</p>
+                    {editingPrice ? (
+                        <div className="flex items-center gap-1.5 mt-0.5" onClick={e => e.stopPropagation()}>
+                            <div className="relative">
+                                <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-on-surface-variant">$</span>
+                                <input
+                                    type="number"
+                                    inputMode="decimal"
+                                    min={0}
+                                    step="0.01"
+                                    autoFocus
+                                    value={priceDraft}
+                                    disabled={savingPrice}
+                                    onChange={e => setPriceDraft(e.target.value)}
+                                    onKeyDown={e => { if (e.key === 'Enter') commitPrice(); if (e.key === 'Escape') setEditingPrice(false); }}
+                                    onBlur={commitPrice}
+                                    placeholder="0.00"
+                                    className="w-24 pl-5 pr-2 py-1 text-xs rounded-lg border border-primary bg-white text-on-background outline-none focus:ring-2 focus:ring-primary/20 disabled:opacity-50"
+                                />
+                            </div>
+                            <span className="text-xs text-on-surface-variant">c/u</span>
+                            {savingPrice && <span className="material-symbols-outlined text-primary text-[16px] animate-spin leading-none">progress_activity</span>}
+                        </div>
+                    ) : needsPrice && editable ? (
+                        <button
+                            onClick={startPriceEdit}
+                            className="mt-0.5 flex items-center gap-1 text-xs font-semibold text-amber-700 bg-amber-100 hover:bg-amber-200 px-2 py-0.5 rounded-full transition"
+                        >
+                            <span className="material-symbols-outlined text-[14px] leading-none">edit</span>
+                            Agregar precio
+                        </button>
+                    ) : (
+                        <button
+                            onClick={editable ? startPriceEdit : undefined}
+                            disabled={!editable}
+                            className={`text-xs text-on-surface-variant text-left ${editable ? 'hover:text-primary hover:underline cursor-pointer' : 'cursor-default'}`}
+                            title={editable ? 'Editar precio' : undefined}
+                        >
+                            {fmt(item.price)} c/u
+                        </button>
+                    )}
                     {isNotFound && (
                         <p className="text-xs text-amber-700 font-semibold mt-0.5 flex items-center gap-1">
                             <span className="material-symbols-outlined text-[14px] leading-none">search_off</span>
@@ -996,6 +1060,23 @@ const StoreOrderCard: React.FC<{
             });
     }, [authToken, order.id, onItemUpdate, onAuthError]);
 
+    // Editar precio en línea. El precio pertenece al artículo, así que lo
+    // propagamos a todos los items del mismo articleId (proveedores hermanos).
+    const handleEditPrice = useCallback(async (itemId: number, price: number) => {
+        const target = order.items.find(i => i.id === itemId);
+        if (!target) return;
+        try {
+            const siblings = order.items.filter(i => i.articleId === target.articleId);
+            await Promise.all(siblings.map(s => editStoreOrderItem(authToken, order.id, s.id, { price })));
+            const updatedItems = order.items.map(i => i.articleId === target.articleId ? { ...i, price } : i);
+            onOrderEdited({ ...order, items: updatedItems });
+            showToast('success', 'Precio actualizado');
+        } catch (err) {
+            if (err instanceof AuthError) { onAuthError(); return; }
+            showToast('error', 'No se pudo guardar el precio');
+        }
+    }, [authToken, order, onOrderEdited, onAuthError]);
+
     const handleCompleteClick = (e: React.MouseEvent) => {
         e.stopPropagation();
         if (notFoundCount > 0) setConfirmNotFound(true);
@@ -1108,6 +1189,8 @@ const StoreOrderCard: React.FC<{
                                                 onQuantityChange={handleQuantityChange}
                                                 onToggleNotFound={handleToggleNotFound}
                                                 onViewImage={onViewImage}
+                                                onEditPrice={handleEditPrice}
+                                                editable={isPending}
                                             />
                                         ))}
                                     </div>
