@@ -38,21 +38,24 @@ router.get('/:id/image', async (req: Request, res: Response) => {
         }
 
         const [, mimeType, base64] = match;
-        const buffer = Buffer.from(base64, 'base64');
         const etag = `W/"${createHash('sha1').update(article.image).digest('hex')}"`;
+
+        // helmet() defaults this to same-origin, which would stop the frontend
+        // on its own domain from loading the image. Set on every response,
+        // including the 304, or a revalidation would be blocked.
+        res.set({
+            'Cache-Control': 'public, max-age=31536000, immutable',
+            'Cross-Origin-Resource-Policy': 'cross-origin',
+            ETag: etag,
+        });
 
         if (req.headers['if-none-match'] === etag) {
             res.status(304).end();
             return;
         }
 
-        res.set({
-            'Content-Type': mimeType,
-            'Cache-Control': 'public, max-age=31536000, immutable',
-            'Cross-Origin-Resource-Policy': 'cross-origin',
-            ETag: etag,
-        });
-        res.send(buffer);
+        res.set('Content-Type', mimeType);
+        res.send(Buffer.from(base64, 'base64'));
     } catch (err) {
         console.error('Error al servir imagen de articulo:', err);
         res.status(500).json({ error: 'Error al servir imagen' });
