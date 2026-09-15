@@ -45,6 +45,15 @@ app.use((err: unknown, _req: Request, res: Response, next: NextFunction) => {
     next(err);
 });
 
+// API responses are authenticated and change constantly — never let a browser
+// or proxy cache them. Without this the browser applies its own heuristic and
+// may try to write them to its disk cache, which can fail the whole request
+// (Chrome: ERR_CACHE_WRITE_FAILURE).
+app.use('/api/', (_req: Request, res: Response, next: NextFunction) => {
+    res.set('Cache-Control', 'no-store');
+    next();
+});
+
 app.use('/api/', generalLimiter);
 
 // Public routes

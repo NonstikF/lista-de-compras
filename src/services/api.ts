@@ -35,6 +35,11 @@ function authHeaders(token: string): Record<string, string> {
   };
 }
 
+// API data is authenticated and always fresh — keep it out of the HTTP cache.
+// A failed disk-cache write otherwise rejects the whole request in Chrome
+// (ERR_CACHE_WRITE_FAILURE).
+const NO_STORE: RequestCache = 'no-store';
+
 async function handleResponse<T>(res: Response): Promise<T> {
   if (res.status === 401) throw new AuthError('Sesion expirada. Inicia sesion de nuevo.');
   if (!res.ok) {
@@ -49,6 +54,7 @@ async function handleResponse<T>(res: Response): Promise<T> {
 export const getOrders = async (status: OrderStatusType, token: string): Promise<Order[]> => {
   return handleResponse(await fetch(`${BASE}/api/orders?status=${status}`, {
     headers: authHeaders(token),
+    cache: NO_STORE,
   }));
 };
 
@@ -73,7 +79,7 @@ export const completeOrder = async (token: string, orderId: number): Promise<{ s
 // ---- Usuarios ----
 
 export async function getUsers(token: string): Promise<User[]> {
-  return handleResponse(await fetch(`${BASE}/api/users`, { headers: authHeaders(token) }));
+  return handleResponse(await fetch(`${BASE}/api/users`, { headers: authHeaders(token), cache: NO_STORE }));
 }
 
 export async function createUser(token: string, data: { username: string; nombre: string; password: string; permissions: UserPermissions }): Promise<User> {
@@ -100,7 +106,7 @@ export async function deleteUser(token: string, id: string): Promise<void> {
 // ---- Proveedores ----
 
 export async function getSuppliers(token: string): Promise<Supplier[]> {
-  return handleResponse(await fetch(`${BASE}/api/suppliers`, { headers: authHeaders(token) }));
+  return handleResponse(await fetch(`${BASE}/api/suppliers`, { headers: authHeaders(token), cache: NO_STORE }));
 }
 
 export async function createSupplier(token: string, data: Omit<Supplier, 'id' | 'createdAt'>): Promise<Supplier> {
@@ -126,6 +132,7 @@ export async function deleteSupplier(token: string, id: string): Promise<void> {
 export async function getOrderTicketCounts(token: string, orderId: number): Promise<Record<string, number>> {
   return handleResponse(await fetch(`${BASE}/api/orders/${orderId}/ticket-counts`, {
     headers: authHeaders(token),
+    cache: NO_STORE,
   }));
 }
 
@@ -133,12 +140,14 @@ export async function getOrderTickets(token: string, orderId: number, supplierNa
   const params = supplierName ? `?supplierName=${encodeURIComponent(supplierName)}` : '';
   return handleResponse(await fetch(`${BASE}/api/orders/${orderId}/tickets${params}`, {
     headers: authHeaders(token),
+    cache: NO_STORE,
   }));
 }
 
 export async function getOrderTicketContent(token: string, orderId: number, ticketId: string): Promise<OrderTicket> {
   return handleResponse(await fetch(`${BASE}/api/orders/${orderId}/tickets/${ticketId}`, {
     headers: authHeaders(token),
+    cache: NO_STORE,
   }));
 }
 
@@ -165,12 +174,14 @@ export async function updateOrderTicketInvoiced(token: string, orderId: number, 
 export async function getSupplierTickets(token: string, supplierId: string): Promise<SupplierTicket[]> {
   return handleResponse(await fetch(`${BASE}/api/suppliers/${supplierId}/tickets`, {
     headers: authHeaders(token),
+    cache: NO_STORE,
   }));
 }
 
 export async function getSupplierTicketContent(token: string, supplierId: string, ticketId: string): Promise<SupplierTicket> {
   return handleResponse(await fetch(`${BASE}/api/suppliers/${supplierId}/tickets/${ticketId}`, {
     headers: authHeaders(token),
+    cache: NO_STORE,
   }));
 }
 
@@ -189,12 +200,14 @@ export async function deleteSupplierTicket(token: string, supplierId: string, ti
 export async function getSupplierOrderTickets(token: string, supplierId: string): Promise<OrderTicket[]> {
   return handleResponse(await fetch(`${BASE}/api/suppliers/${supplierId}/order-tickets`, {
     headers: authHeaders(token),
+    cache: NO_STORE,
   }));
 }
 
 export async function getSupplierPendingInvoicedCounts(token: string): Promise<Record<string, number>> {
   return handleResponse(await fetch(`${BASE}/api/suppliers/pending-invoiced-counts`, {
     headers: authHeaders(token),
+    cache: NO_STORE,
   }));
 }
 
@@ -207,7 +220,7 @@ export async function updateSupplierTicketInvoiced(token: string, supplierId: st
 // ---- Artículos ----
 
 export async function getArticles(token: string): Promise<Article[]> {
-  return handleResponse(await fetch(`${BASE}/api/articles`, { headers: authHeaders(token) }));
+  return handleResponse(await fetch(`${BASE}/api/articles`, { headers: authHeaders(token), cache: NO_STORE }));
 }
 
 export async function createArticle(token: string, data: Omit<Article, 'id'>): Promise<Article> {
@@ -245,7 +258,7 @@ export async function bulkUpdateArticles(
 // ---- Recetas ----
 
 export async function getRecipes(token: string): Promise<Recipe[]> {
-  return handleResponse(await fetch(`${BASE}/api/recipes`, { headers: authHeaders(token) }));
+  return handleResponse(await fetch(`${BASE}/api/recipes`, { headers: authHeaders(token), cache: NO_STORE }));
 }
 
 export async function createRecipe(token: string, data: Omit<Recipe, 'id'>): Promise<Recipe> {
@@ -279,7 +292,7 @@ export interface PendingItemGroup {
 }
 
 export async function getPendingStoreItems(token: string): Promise<PendingItemGroup[]> {
-  return handleResponse(await fetch(`${BASE}/api/store-orders/pending-items`, { headers: authHeaders(token) }));
+  return handleResponse(await fetch(`${BASE}/api/store-orders/pending-items`, { headers: authHeaders(token), cache: NO_STORE }));
 }
 
 export async function resolvePendingStoreItems(token: string, itemIds: number[]): Promise<{ success: boolean }> {
@@ -290,7 +303,7 @@ export async function resolvePendingStoreItems(token: string, itemIds: number[])
 
 export async function getStoreOrders(token: string, status?: 'pending' | 'completed'): Promise<StoreOrder[]> {
   const qs = status ? `?status=${status}` : '';
-  return handleResponse(await fetch(`${BASE}/api/store-orders${qs}`, { headers: authHeaders(token) }));
+  return handleResponse(await fetch(`${BASE}/api/store-orders${qs}`, { headers: authHeaders(token), cache: NO_STORE }));
 }
 
 export interface PaginatedStoreOrders {
@@ -308,7 +321,7 @@ export async function getStoreOrdersPaged(
   pageSize = 20,
 ): Promise<PaginatedStoreOrders> {
   const qs = `?status=${status}&page=${page}&pageSize=${pageSize}`;
-  return handleResponse(await fetch(`${BASE}/api/store-orders${qs}`, { headers: authHeaders(token) }));
+  return handleResponse(await fetch(`${BASE}/api/store-orders${qs}`, { headers: authHeaders(token), cache: NO_STORE }));
 }
 
 export async function createStoreOrder(
@@ -339,15 +352,15 @@ export async function updateStoreItemStatus(
 
 export async function getStoreOrderTickets(token: string, orderId: string, supplierName?: string): Promise<OrderTicket[]> {
   const params = supplierName ? `?supplierName=${encodeURIComponent(supplierName)}` : '';
-  return handleResponse(await fetch(`${BASE}/api/store-orders/${orderId}/tickets${params}`, { headers: authHeaders(token) }));
+  return handleResponse(await fetch(`${BASE}/api/store-orders/${orderId}/tickets${params}`, { headers: authHeaders(token), cache: NO_STORE }));
 }
 
 export async function getStoreOrderTicketCounts(token: string, orderId: string): Promise<Record<string, number>> {
-  return handleResponse(await fetch(`${BASE}/api/store-orders/${orderId}/ticket-counts`, { headers: authHeaders(token) }));
+  return handleResponse(await fetch(`${BASE}/api/store-orders/${orderId}/ticket-counts`, { headers: authHeaders(token), cache: NO_STORE }));
 }
 
 export async function getStoreOrderTicketContent(token: string, orderId: string, ticketId: string): Promise<OrderTicket> {
-  return handleResponse(await fetch(`${BASE}/api/store-orders/${orderId}/tickets/${ticketId}`, { headers: authHeaders(token) }));
+  return handleResponse(await fetch(`${BASE}/api/store-orders/${orderId}/tickets/${ticketId}`, { headers: authHeaders(token), cache: NO_STORE }));
 }
 
 export async function createStoreOrderTicket(token: string, orderId: string, data: { supplierName: string; filename: string; mimeType: string; size: number; content: string }): Promise<OrderTicket> {
@@ -396,7 +409,7 @@ export async function editStoreOrderItem(
 // ---- Configuración de empresa ----
 
 export async function getSettings(token: string): Promise<CompanySettings> {
-  return handleResponse(await fetch(`${BASE}/api/settings`, { headers: authHeaders(token) }));
+  return handleResponse(await fetch(`${BASE}/api/settings`, { headers: authHeaders(token), cache: NO_STORE }));
 }
 
 export async function updateSettings(token: string, data: { name?: string; logo?: string | null }): Promise<CompanySettings> {
@@ -408,7 +421,7 @@ export async function updateSettings(token: string, data: { name?: string; logo?
 // ---- Inventario ----
 
 export async function getInventory(token: string): Promise<InventoryItem[]> {
-  return handleResponse(await fetch(`${BASE}/api/inventory`, { headers: authHeaders(token) }));
+  return handleResponse(await fetch(`${BASE}/api/inventory`, { headers: authHeaders(token), cache: NO_STORE }));
 }
 
 export async function updateInventoryItem(
@@ -424,15 +437,15 @@ export async function updateInventoryItem(
 // ---- Ubicaciones ----
 
 export async function getLocations(token: string): Promise<Location[]> {
-  return handleResponse(await fetch(`${BASE}/api/locations`, { headers: authHeaders(token) }));
+  return handleResponse(await fetch(`${BASE}/api/locations`, { headers: authHeaders(token), cache: NO_STORE }));
 }
 
 export async function getLocation(token: string, id: string): Promise<Location & { items: InventoryItem[] }> {
-  return handleResponse(await fetch(`${BASE}/api/locations/${id}`, { headers: authHeaders(token) }));
+  return handleResponse(await fetch(`${BASE}/api/locations/${id}`, { headers: authHeaders(token), cache: NO_STORE }));
 }
 
 export async function getLocationByCode(token: string, code: string): Promise<Location & { items: InventoryItem[] }> {
-  return handleResponse(await fetch(`${BASE}/api/locations/by-code/${encodeURIComponent(code)}`, { headers: authHeaders(token) }));
+  return handleResponse(await fetch(`${BASE}/api/locations/by-code/${encodeURIComponent(code)}`, { headers: authHeaders(token), cache: NO_STORE }));
 }
 
 export async function createLocation(token: string, data: { name: string; code?: string; description?: string; active?: boolean }): Promise<Location> {
@@ -466,5 +479,6 @@ export async function addInventoryMovement(
 export async function getInventoryMovements(token: string, itemId: string): Promise<InventoryMovement[]> {
   return handleResponse(await fetch(`${BASE}/api/inventory/${itemId}/movements`, {
     headers: authHeaders(token),
+    cache: NO_STORE,
   }));
 }
