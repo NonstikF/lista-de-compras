@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
+import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 
 const storeTicketSchema = z.object({
@@ -40,13 +41,30 @@ function recalcOrderTotal(items: { articleId: string; price: number; qty: number
 
 type ArticleInfo = { image: string | null };
 
+// Images are base64 data URIs in the database. Sending them inline bloated
+// every order payload, so orders carry a URL to routes/articleImages.ts
+// instead. updatedAt busts the cache when the picture changes.
+//
+// The base64 column is never selected here — a raw query asks Postgres whether
+// the column is non-empty so the blob itself never leaves the database.
+// A StoreOrderItem's own imageUrl may hold a legacy base64 data URI. Drop those
+// so they never reach the payload; the article's URL is used instead.
+function safeItemImage(imageUrl: string | null): string | null {
+    if (!imageUrl || imageUrl.startsWith('data:')) return null;
+    return imageUrl;
+}
+
 async function getArticleInfoMap(articleIds: string[]): Promise<Record<string, ArticleInfo>> {
     if (articleIds.length === 0) return {};
-    const articles = await prisma.article.findMany({
-        where: { id: { in: articleIds } },
-        select: { id: true, image: true },
-    });
-    return Object.fromEntries(articles.map(a => [a.id, { image: a.image }]));
+    const rows = await prisma.$queryRaw<{ id: string; hasImage: boolean; updatedAt: Date }[]>`
+        SELECT "id", ("image" IS NOT NULL AND "image" <> '') AS "hasImage", "updatedAt"
+        FROM "Article"
+        WHERE "id" IN (${Prisma.join(articleIds)})
+    `;
+    return Object.fromEntries(rows.map(r => [
+        r.id,
+        { image: r.hasImage ? `/api/articles/${r.id}/image?v=${r.updatedAt.getTime()}` : null },
+    ]));
 }
 
 // For each item, compute how many units were purchased by other suppliers of the same article in the same order.
@@ -81,7 +99,7 @@ function formatStoreOrder(o: RawOrder, articleMap: Record<string, ArticleInfo> =
             const info = articleMap[item.articleId];
             return {
                 ...item,
-                imageUrl: info?.image ?? item.imageUrl,
+                imageUrl: info?.image ?? safeItemImage(item.imageUrl),
                 supplierName: item.supplierName || 'Sin proveedor',
             };
         }),
@@ -118,7 +136,7 @@ router.get('/pending-items', async (_req: Request, res: Response) => {
                     articleId: it.articleId,
                     name: it.name,
                     supplierName: it.supplierName,
-                    imageUrl: articleMap[it.articleId]?.image ?? it.imageUrl,
+                    imageUrl: articleMap[it.articleId]?.image ?? safeItemImage(it.imageUrl),
                     totalQty: it.qty,
                     itemIds: [it.id],
                     orders: [orderInfo],
@@ -422,7 +440,7 @@ router.post('/:id/items', async (req: Request, res: Response) => {
         const crossItem = itemsWithCross.find(i => i.id === newItem.id)!;
         const totalByOthers = itemsWithCross.filter(i => i.articleId === newItem.articleId && i.id !== newItem.id).reduce((s, i) => s + i.quantityPurchased, 0);
         res.status(201).json({
-            item: { ...crossItem, imageUrl: articleMap[newItem.articleId]?.image ?? newItem.imageUrl, quantityPurchasedByOthers: totalByOthers },
+            item: { ...crossItem, imageUrl: articleMap[newItem.articleId]?.image ?? safeItemImage(newItem.imageUrl), quantityPurchasedByOthers: totalByOthers },
             order: { total: newTotal },
         });
     } catch (err) {

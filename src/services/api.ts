@@ -40,6 +40,23 @@ function authHeaders(token: string): Record<string, string> {
 // (ERR_CACHE_WRITE_FAILURE).
 const NO_STORE: RequestCache = 'no-store';
 
+// The API returns article images as root-relative paths (/api/articles/:id/image)
+// because the backend does not know its own public URL. Resolve them against
+// BASE here. Absolute URLs and legacy data URIs are passed through untouched.
+export function resolveImageUrl(url: string | null | undefined): string | null {
+  if (!url) return null;
+  if (url.startsWith('/api/')) return `${BASE}${url}`;
+  return url;
+}
+
+function resolveItemImage(item: StoreOrderItem): StoreOrderItem {
+  return { ...item, imageUrl: resolveImageUrl(item.imageUrl) };
+}
+
+function resolveStoreOrderImages(order: StoreOrder): StoreOrder {
+  return { ...order, items: order.items.map(resolveItemImage) };
+}
+
 async function handleResponse<T>(res: Response): Promise<T> {
   if (res.status === 401) throw new AuthError('Sesion expirada. Inicia sesion de nuevo.');
   if (!res.ok) {
@@ -292,7 +309,10 @@ export interface PendingItemGroup {
 }
 
 export async function getPendingStoreItems(token: string): Promise<PendingItemGroup[]> {
-  return handleResponse(await fetch(`${BASE}/api/store-orders/pending-items`, { headers: authHeaders(token), cache: NO_STORE }));
+  const groups = await handleResponse<PendingItemGroup[]>(
+    await fetch(`${BASE}/api/store-orders/pending-items`, { headers: authHeaders(token), cache: NO_STORE }),
+  );
+  return groups.map(g => ({ ...g, imageUrl: resolveImageUrl(g.imageUrl) }));
 }
 
 export async function resolvePendingStoreItems(token: string, itemIds: number[]): Promise<{ success: boolean }> {
@@ -303,7 +323,10 @@ export async function resolvePendingStoreItems(token: string, itemIds: number[])
 
 export async function getStoreOrders(token: string, status?: 'pending' | 'completed'): Promise<StoreOrder[]> {
   const qs = status ? `?status=${status}` : '';
-  return handleResponse(await fetch(`${BASE}/api/store-orders${qs}`, { headers: authHeaders(token), cache: NO_STORE }));
+  const orders = await handleResponse<StoreOrder[]>(
+    await fetch(`${BASE}/api/store-orders${qs}`, { headers: authHeaders(token), cache: NO_STORE }),
+  );
+  return orders.map(resolveStoreOrderImages);
 }
 
 export interface PaginatedStoreOrders {
@@ -321,7 +344,10 @@ export async function getStoreOrdersPaged(
   pageSize = 20,
 ): Promise<PaginatedStoreOrders> {
   const qs = `?status=${status}&page=${page}&pageSize=${pageSize}`;
-  return handleResponse(await fetch(`${BASE}/api/store-orders${qs}`, { headers: authHeaders(token), cache: NO_STORE }));
+  const data = await handleResponse<PaginatedStoreOrders>(
+    await fetch(`${BASE}/api/store-orders${qs}`, { headers: authHeaders(token), cache: NO_STORE }),
+  );
+  return { ...data, orders: data.orders.map(resolveStoreOrderImages) };
 }
 
 export async function createStoreOrder(
@@ -345,9 +371,12 @@ export async function updateStoreItemStatus(
   itemId: number,
   data: { isPurchased?: boolean; notFound?: boolean; quantityPurchased?: number },
 ): Promise<{ item: StoreOrderItem; siblingUpdates: StoreOrderItem[] }> {
-  return handleResponse(await fetch(`${BASE}/api/store-orders/${orderId}/items/${itemId}`, {
-    method: 'PATCH', headers: authHeaders(token), body: JSON.stringify(data),
-  }));
+  const res = await handleResponse<{ item: StoreOrderItem; siblingUpdates: StoreOrderItem[] }>(
+    await fetch(`${BASE}/api/store-orders/${orderId}/items/${itemId}`, {
+      method: 'PATCH', headers: authHeaders(token), body: JSON.stringify(data),
+    }),
+  );
+  return { item: resolveItemImage(res.item), siblingUpdates: res.siblingUpdates.map(resolveItemImage) };
 }
 
 export async function getStoreOrderTickets(token: string, orderId: string, supplierName?: string): Promise<OrderTicket[]> {
@@ -380,9 +409,12 @@ export async function addStoreOrderItem(
   orderId: string,
   data: { articleId: string; name: string; price: number; qty: number; imageUrl?: string | null; supplierName?: string; supplierId?: string },
 ): Promise<{ item: StoreOrderItem; order: { total: number } }> {
-  return handleResponse(await fetch(`${BASE}/api/store-orders/${orderId}/items`, {
-    method: 'POST', headers: authHeaders(token), body: JSON.stringify(data),
-  }));
+  const res = await handleResponse<{ item: StoreOrderItem; order: { total: number } }>(
+    await fetch(`${BASE}/api/store-orders/${orderId}/items`, {
+      method: 'POST', headers: authHeaders(token), body: JSON.stringify(data),
+    }),
+  );
+  return { ...res, item: resolveItemImage(res.item) };
 }
 
 export async function deleteStoreOrderItem(
@@ -401,9 +433,12 @@ export async function editStoreOrderItem(
   itemId: number,
   data: { qty?: number; price?: number; supplierName?: string },
 ): Promise<{ item: StoreOrderItem; order: { total: number } }> {
-  return handleResponse(await fetch(`${BASE}/api/store-orders/${orderId}/items/${itemId}`, {
-    method: 'PATCH', headers: authHeaders(token), body: JSON.stringify(data),
-  }));
+  const res = await handleResponse<{ item: StoreOrderItem; order: { total: number } }>(
+    await fetch(`${BASE}/api/store-orders/${orderId}/items/${itemId}`, {
+      method: 'PATCH', headers: authHeaders(token), body: JSON.stringify(data),
+    }),
+  );
+  return { ...res, item: resolveItemImage(res.item) };
 }
 
 // ---- Configuración de empresa ----

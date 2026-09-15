@@ -1,8 +1,23 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
+import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 
 const router = Router();
+
+// Article images live behind routes/articleImages.ts rather than being inlined
+// as base64 in this payload. A data URI stored on the item itself is legacy
+// data and is dropped. Articles without a picture return null so the UI keeps
+// rendering its placeholder instead of a broken image.
+function articleImageUrl(
+    itemImageUrl: string | null,
+    article: { id: string; updatedAt: Date } | undefined,
+    withImage: Set<string>,
+): string | null {
+    if (itemImageUrl && !itemImageUrl.startsWith('data:')) return itemImageUrl;
+    if (!article || !withImage.has(article.id)) return null;
+    return `/api/articles/${article.id}/image?v=${article.updatedAt.getTime()}`;
+}
 
 const orderTicketSchema = z.object({
     supplierName: z.string().min(1, 'Nombre de proveedor requerido'),
@@ -32,12 +47,22 @@ router.get('/', async (req: Request, res: Response) => {
         const articles = articleIds.length > 0
             ? await prisma.article.findMany({
                 where: { id: { in: articleIds } },
+                // `image` holds a base64 blob and is deliberately not selected.
                 select: {
-                    id: true, image: true, category: true,
+                    id: true, updatedAt: true, category: true,
                     suppliers: { select: { supplierId: true, supplier: { select: { id: true, name: true } } } },
                 },
             })
             : [];
+        // Ask Postgres which articles actually have a picture, without reading it.
+        const imageRows = articleIds.length > 0
+            ? await prisma.$queryRaw<{ id: string }[]>`
+                SELECT "id" FROM "Article"
+                WHERE "id" IN (${Prisma.join(articleIds)})
+                  AND "image" IS NOT NULL AND "image" <> ''
+            `
+            : [];
+        const withImage = new Set(imageRows.map(r => r.id));
         const articleMap = new Map(articles.map(a => [a.id, a]));
 
         const result = orders.map(o => {
@@ -65,7 +90,7 @@ router.get('/', async (req: Request, res: Response) => {
                         isPurchased: item.isPurchased,
                         quantityPurchased: item.quantityPurchased,
                         category: art?.category || 'Sin Categoria',
-                        imageUrl: item.imageUrl ?? art?.image ?? null,
+                        imageUrl: articleImageUrl(item.imageUrl, art, withImage),
                         suppliers,
                         quantityBySupplier,
                     };

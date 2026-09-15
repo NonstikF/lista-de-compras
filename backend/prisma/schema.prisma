@@ -147,6 +147,8 @@ model StoreOrderItem {
   order               StoreOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
   @@index([orderId, articleId])
+  // Drives the pending-items lookup, which would otherwise scan every item row.
+  @@index([notFound])
 }
 
 // ---------- Tickets de pedido ----------
