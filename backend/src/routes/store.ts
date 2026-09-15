@@ -151,19 +151,45 @@ router.post('/pending-items/resolve', async (req: Request, res: Response) => {
 router.get('/', async (req: Request, res: Response) => {
     try {
         const statusFilter = typeof req.query.status === 'string' ? req.query.status : undefined;
-        // Completed history can grow without bound — cap it. Pending stays unbounded (small, actively worked).
-        const take = statusFilter === 'completed'
-            ? Math.min(parseInt(String(req.query.limit ?? '100'), 10) || 100, 500)
-            : undefined;
-        const orders = await prisma.storeOrder.findMany({
-            where: statusFilter ? { status: statusFilter } : undefined,
-            include: { items: true },
-            orderBy: { dateCreated: 'desc' },
-            take,
-        });
+        const where = statusFilter ? { status: statusFilter } : undefined;
+
+        // Completed history grows without bound — paginate it. Pending stays unbounded (small, actively worked).
+        const paginated = statusFilter === 'completed' || req.query.page !== undefined;
+        if (!paginated) {
+            const orders = await prisma.storeOrder.findMany({
+                where,
+                include: { items: true },
+                orderBy: { dateCreated: 'desc' },
+            });
+            const allIds = [...new Set(orders.flatMap(o => o.items.map(i => i.articleId)))];
+            const articleMap = await getArticleInfoMap(allIds);
+            res.json(orders.map(o => formatStoreOrder(o, articleMap)));
+            return;
+        }
+
+        const pageSize = Math.min(Math.max(parseInt(String(req.query.pageSize ?? '20'), 10) || 20, 1), 100);
+        const page = Math.max(parseInt(String(req.query.page ?? '1'), 10) || 1, 1);
+
+        const [total, orders] = await Promise.all([
+            prisma.storeOrder.count({ where }),
+            prisma.storeOrder.findMany({
+                where,
+                include: { items: true },
+                orderBy: { dateCreated: 'desc' },
+                skip: (page - 1) * pageSize,
+                take: pageSize,
+            }),
+        ]);
+
         const allIds = [...new Set(orders.flatMap(o => o.items.map(i => i.articleId)))];
         const articleMap = await getArticleInfoMap(allIds);
-        res.json(orders.map(o => formatStoreOrder(o, articleMap)));
+        res.json({
+            orders: orders.map(o => formatStoreOrder(o, articleMap)),
+            page,
+            pageSize,
+            total,
+            totalPages: Math.max(Math.ceil(total / pageSize), 1),
+        });
     } catch (err) {
         console.error('Error al obtener pedidos de tienda:', err);
         res.status(500).json({ error: 'Error al obtener pedidos de tienda' });

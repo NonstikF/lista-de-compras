@@ -1,13 +1,32 @@
 ﻿import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import type { Order, LineItem, StoreOrder, StoreOrderItem, OrderTicket, Supplier, Article } from '../../types';
 import { getOrders, saveItemStatus, completeOrder, AuthError, type OrderStatusType, getSuppliers, getArticles } from '../../services/api';
-import { getStoreOrders, completeStoreOrder, getOrderTickets, getOrderTicketContent, createOrderTicket, deleteOrderTicket, getOrderTicketCounts, updateStoreItemStatus, getStoreOrderTickets, getStoreOrderTicketContent, createStoreOrderTicket, deleteStoreOrderTicket, getStoreOrderTicketCounts, addStoreOrderItem, deleteStoreOrderItem, editStoreOrderItem, getPendingStoreItems, resolvePendingStoreItems, type PendingItemGroup } from '../../services/api';
+import { getStoreOrders, completeStoreOrder, getOrderTickets, getOrderTicketContent, createOrderTicket, deleteOrderTicket, getOrderTicketCounts, updateStoreItemStatus, getStoreOrderTickets, getStoreOrderTicketContent, createStoreOrderTicket, deleteStoreOrderTicket, getStoreOrderTicketCounts, addStoreOrderItem, deleteStoreOrderItem, editStoreOrderItem, getPendingStoreItems, resolvePendingStoreItems, getStoreOrdersPaged, type PendingItemGroup } from '../../services/api';
 import { Modal, Input, Button } from '../ui';
 import { CheckCircleIcon, ChevronDownIcon, XMarkIcon, EyeIcon } from '../ui/icons';
 import { showToast } from '../ui/Toast';
 import { fmt } from '../ui';
 
 type TabMode = 'store' | 'completed';
+
+const COMPLETED_PAGE_SIZE = 20;
+
+// Page buttons around the current page: 1 … 4 [5] 6 … 20. null renders an ellipsis.
+function buildPageRange(current: number, total: number): (number | null)[] {
+    if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+    const pages = new Set<number>([1, total, current, current - 1, current + 1]);
+    if (current <= 3) { pages.add(2); pages.add(3); pages.add(4); }
+    if (current >= total - 2) { pages.add(total - 1); pages.add(total - 2); pages.add(total - 3); }
+    const sorted = [...pages].filter(n => n >= 1 && n <= total).sort((a, b) => a - b);
+    const out: (number | null)[] = [];
+    let prev = 0;
+    for (const n of sorted) {
+        if (prev && n - prev > 1) out.push(null);
+        out.push(n);
+        prev = n;
+    }
+    return out;
+}
 
 
 interface OrdersViewProps {
@@ -2010,16 +2029,18 @@ const PendingItemsSection: React.FC<{
 
 // --- COMPONENTE PRINCIPAL ---
 const OrdersView: React.FC<OrdersViewProps> = ({ authToken, onAuthError }) => {
-    const [orders, setOrders] = useState<Order[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [tabMode, setTabMode] = useState<TabMode>('store');
     const [storeOrders, setStoreOrders] = useState<StoreOrder[]>([]);
     const [loadingStoreOrders, setLoadingStoreOrders] = useState(false);
-    const [completingOrderId, setCompletingOrderId] = useState<number | null>(null);
+    // Completed orders live in their own paginated slice — the history grows without bound.
+    const [completedOrders, setCompletedOrders] = useState<StoreOrder[]>([]);
+    const [completedLoading, setCompletedLoading] = useState(false);
+    const [completedPage, setCompletedPage] = useState(1);
+    const [completedTotalPages, setCompletedTotalPages] = useState(1);
+    const [completedTotal, setCompletedTotal] = useState(0);
     const [modalImageUrl, setModalImageUrl] = useState<string | null>(null);
     const [modalProductName, setModalProductName] = useState<string | null>(null);
-    const [supplierLocations, setSupplierLocations] = useState<Record<string, string[]>>({});
     const [pendingRefreshKey, setPendingRefreshKey] = useState(0);
     const [storeOrdersRefreshKey, setStoreOrdersRefreshKey] = useState(0);
 
@@ -2029,20 +2050,11 @@ const OrdersView: React.FC<OrdersViewProps> = ({ authToken, onAuthError }) => {
     }, []);
     const handleCloseModal = () => { setModalImageUrl(null); setModalProductName(null); };
 
-    useEffect(() => {
-        getSuppliers(authToken)
-            .then((suppliers: Supplier[]) => {
-                const map: Record<string, string[]> = {};
-                for (const s of suppliers) map[s.id] = s.locations ?? [];
-                setSupplierLocations(map);
-            })
-            .catch(() => {});
-    }, [authToken]);
-
     const handleCompleteStoreOrder = useCallback(async (orderId: string) => {
         try {
             const updated = await completeStoreOrder(authToken, orderId);
             setStoreOrders(prev => prev.map(o => o.id === orderId ? updated : o));
+            setCompletedOrders(prev => prev.map(o => o.id === orderId ? updated : o));
             setPendingRefreshKey(k => k + 1);
             showToast('success', `Pedido ${orderId} completado`);
         } catch (err) {
@@ -2052,7 +2064,7 @@ const OrdersView: React.FC<OrdersViewProps> = ({ authToken, onAuthError }) => {
     }, [authToken, onAuthError]);
 
     const handleStoreItemUpdate = useCallback((orderId: string, itemId: number, isPurchased: boolean, quantityPurchased: number, quantityPurchasedByOthers?: number, notFound?: boolean) => {
-        setStoreOrders(prev => prev.map(o => {
+        const applyUpdate = (prev: StoreOrder[]) => prev.map(o => {
             if (o.id !== orderId) return o;
             // Update the changed item; also refresh siblings' quantityPurchasedByOthers
             const updatedItems = o.items.map(i => {
@@ -2070,11 +2082,14 @@ const OrdersView: React.FC<OrdersViewProps> = ({ authToken, onAuthError }) => {
                 return i;
             });
             return { ...o, items: updatedItems };
-        }));
+        });
+        setStoreOrders(applyUpdate);
+        setCompletedOrders(applyUpdate);
     }, []);
 
     const handleStoreOrderEdited = useCallback((updatedOrder: StoreOrder) => {
         setStoreOrders(prev => prev.map(o => o.id === updatedOrder.id ? updatedOrder : o));
+        setCompletedOrders(prev => prev.map(o => o.id === updatedOrder.id ? updatedOrder : o));
     }, []);
 
     // Pending store orders load immediately — small, actively worked set.
@@ -2098,98 +2113,33 @@ const OrdersView: React.FC<OrdersViewProps> = ({ authToken, onAuthError }) => {
         return () => { cancelled = true; };
     }, [authToken, onAuthError, storeOrdersRefreshKey]);
 
-    // Completed orders (legacy + store) load only when the Completados tab is opened.
+    // Completed orders load one page at a time, only when the Completados tab is opened.
     useEffect(() => {
         if (tabMode !== 'completed') return;
         let cancelled = false;
         const fetchOrders = async () => {
             try {
-                setIsLoading(true);
+                setCompletedLoading(true);
                 setError(null);
-                setOrders([]);
-                const [fetchedOrders, completedStore] = await Promise.all([
-                    getOrders('completed', authToken),
-                    getStoreOrders(authToken, 'completed'),
-                ]);
+                const data = await getStoreOrdersPaged(authToken, 'completed', completedPage, COMPLETED_PAGE_SIZE);
                 if (cancelled) return;
-                setOrders(fetchedOrders.sort((a, b) => new Date(b.dateCreated).getTime() - new Date(a.dateCreated).getTime()));
-                setStoreOrders(prev => [...prev.filter(o => o.status !== 'completed'), ...completedStore]);
+                setCompletedOrders(data.orders);
+                setCompletedTotal(data.total);
+                setCompletedTotalPages(data.totalPages);
+                // Clamp if the page vanished (orders removed while browsing).
+                if (data.page > data.totalPages) setCompletedPage(data.totalPages);
             } catch (err) {
                 if (err instanceof AuthError) { onAuthError(); return; }
                 if (cancelled) return;
                 setError(err instanceof Error ? `Error al obtener pedidos: ${err.message}` : 'Error desconocido al obtener pedidos.');
                 showToast('error', err instanceof Error ? err.message : 'Error desconocido');
             } finally {
-                if (!cancelled) setIsLoading(false);
+                if (!cancelled) setCompletedLoading(false);
             }
         };
         fetchOrders();
         return () => { cancelled = true; };
-    }, [tabMode, authToken, onAuthError, storeOrdersRefreshKey]);
-
-    const handleQuantityChange = useCallback((itemId: number, newQuantity: number, supplierId: string | null) => {
-        setOrders(prevOrders => {
-            const foundOrder = prevOrders.find(o => o.lineItems.some(i => i.id === itemId));
-            if (!foundOrder) return prevOrders;
-            const foundItem = foundOrder.lineItems.find(i => i.id === itemId);
-            if (!foundItem) return prevOrders;
-
-            let updatedQtyBySupplier = { ...foundItem.quantityBySupplier };
-            let totalPurchased: number;
-
-            if (supplierId) {
-                updatedQtyBySupplier[supplierId] = newQuantity;
-                totalPurchased = Object.values(updatedQtyBySupplier).reduce((s, v) => s + v, 0);
-            } else {
-                totalPurchased = newQuantity;
-            }
-
-            const isPurchased = totalPurchased >= foundItem.quantity;
-            const itemToSave: LineItem = {
-                ...foundItem,
-                quantityPurchased: totalPurchased,
-                isPurchased,
-                quantityBySupplier: updatedQtyBySupplier,
-            };
-
-            const updatedOrders = prevOrders.map(order => {
-                if (order.id !== foundOrder.id) return order;
-                return { ...order, lineItems: order.lineItems.map(item => item.id === itemId ? itemToSave : item) };
-            });
-
-            saveItemStatus(authToken, {
-                lineItemId: itemToSave.id,
-                orderId: foundOrder.id,
-                isPurchased: itemToSave.isPurchased,
-                quantityPurchased: itemToSave.quantityPurchased,
-                supplierId: supplierId ?? undefined,
-                totalQuantity: foundItem.quantity,
-            })
-                .then(data => { if (data.success) showToast('success', 'Progreso guardado'); })
-                .catch(err => { if (err instanceof AuthError) onAuthError(); else showToast('error', 'Error al guardar el progreso'); });
-
-            return updatedOrders;
-        });
-    }, [authToken, onAuthError]);
-
-    const handleDeleteItem = useCallback((itemId: number) => {
-        setOrders(prev => prev.map(order => ({ ...order, lineItems: order.lineItems.filter(i => i.id !== itemId) })));
-        showToast('success', 'Artículo eliminado');
-    }, []);
-
-    const handleCompleteOrder = useCallback(async (orderId: number) => {
-        setCompletingOrderId(orderId);
-        try {
-            await completeOrder(authToken, orderId);
-            showToast('success', `Pedido #${orderId} completado`);
-            setOrders(prev => prev.filter(order => order.id !== orderId));
-        } catch (err) {
-            if (err instanceof AuthError) { onAuthError(); return; }
-            showToast('error', `No se pudo completar el pedido #${orderId}`);
-        } finally {
-            setCompletingOrderId(null);
-        }
-    }, [authToken, onAuthError]);
+    }, [tabMode, authToken, onAuthError, storeOrdersRefreshKey, completedPage]);
 
     const tabs: { key: TabMode; label: string }[] = [
         { key: 'store', label: 'Tienda' },
@@ -2197,7 +2147,8 @@ const OrdersView: React.FC<OrdersViewProps> = ({ authToken, onAuthError }) => {
     ];
 
     const pendingStoreOrders = storeOrders.filter(o => o.status === 'pending');
-    const completedStoreOrders = storeOrders.filter(o => o.status === 'completed');
+
+    const pageNumbers = buildPageRange(completedPage, completedTotalPages);
 
     return (
         <div className="space-y-6">
@@ -2250,20 +2201,20 @@ const OrdersView: React.FC<OrdersViewProps> = ({ authToken, onAuthError }) => {
                 </div>
             )}
 
-            {/* Tab Completados (legacy + tienda) */}
+            {/* Tab Completados */}
             {tabMode === 'completed' && (
                 <>
-                    {(isLoading || loadingStoreOrders) && <LoadingSpinner />}
-                    {!isLoading && !loadingStoreOrders && error && (
+                    {completedLoading && <LoadingSpinner />}
+                    {!completedLoading && error && (
                         <div className="flex items-center gap-2 p-4 bg-error-container/30 text-error rounded-xl text-sm">
                             <span className="material-symbols-outlined text-base">error</span>
                             {error}
                         </div>
                     )}
-                    {!isLoading && !loadingStoreOrders && !error && orders.length === 0 && completedStoreOrders.length === 0 && <EmptyState />}
-                    {!isLoading && !loadingStoreOrders && !error && (orders.length > 0 || completedStoreOrders.length > 0) && (
+                    {!completedLoading && !error && completedOrders.length === 0 && <EmptyState />}
+                    {!completedLoading && !error && completedOrders.length > 0 && (
                         <div className="space-y-4">
-                            {completedStoreOrders.map(order => (
+                            {completedOrders.map(order => (
                                 <StoreOrderCard
                                     key={`store-${order.id}`}
                                     order={order}
@@ -2275,21 +2226,52 @@ const OrdersView: React.FC<OrdersViewProps> = ({ authToken, onAuthError }) => {
                                     onOrderEdited={handleStoreOrderEdited}
                                 />
                             ))}
-                            {orders.map(order => (
-                                <OrderCard
-                                    key={`legacy-${order.id}`}
-                                    order={order}
-                                    viewMode="completed"
-                                    completingOrderId={completingOrderId}
-                                    authToken={authToken}
-                                    onAuthError={onAuthError}
-                                    onQuantityChange={handleQuantityChange}
-                                    onCompleteOrder={handleCompleteOrder}
-                                    onViewImage={handleViewImage}
-                                    onDelete={handleDeleteItem}
-                                    supplierLocations={supplierLocations}
-                                  />
-                            ))}
+                        </div>
+                    )}
+                    {!error && completedTotal > 0 && (
+                        <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+                            <span className="text-xs text-on-surface-variant">
+                                {`Mostrando ${(completedPage - 1) * COMPLETED_PAGE_SIZE + 1}–${Math.min(completedPage * COMPLETED_PAGE_SIZE, completedTotal)} de ${completedTotal}`}
+                            </span>
+                            {completedTotalPages > 1 && (
+                                <nav className="flex items-center gap-1" aria-label="Paginación de pedidos completados">
+                                    <button
+                                        onClick={() => setCompletedPage(p => Math.max(p - 1, 1))}
+                                        disabled={completedPage === 1 || completedLoading}
+                                        aria-label="Página anterior"
+                                        className="w-9 h-9 flex items-center justify-center rounded-lg border border-surface-variant text-on-surface-variant hover:text-primary hover:bg-primary/8 disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-on-surface-variant transition"
+                                    >
+                                        <span className="material-symbols-outlined text-base">chevron_left</span>
+                                    </button>
+                                    {pageNumbers.map((n, idx) => (
+                                        n === null ? (
+                                            <span key={`gap-${idx}`} className="w-9 h-9 flex items-center justify-center text-on-surface-variant text-sm">…</span>
+                                        ) : (
+                                            <button
+                                                key={n}
+                                                onClick={() => setCompletedPage(n)}
+                                                disabled={completedLoading}
+                                                aria-current={n === completedPage ? 'page' : undefined}
+                                                className={`w-9 h-9 text-sm font-semibold rounded-lg transition disabled:opacity-60 ${
+                                                    n === completedPage
+                                                        ? 'bg-primary text-on-primary shadow-sm'
+                                                        : 'border border-surface-variant text-on-surface-variant hover:text-primary hover:bg-primary/8'
+                                                }`}
+                                            >
+                                                {n}
+                                            </button>
+                                        )
+                                    ))}
+                                    <button
+                                        onClick={() => setCompletedPage(p => Math.min(p + 1, completedTotalPages))}
+                                        disabled={completedPage === completedTotalPages || completedLoading}
+                                        aria-label="Página siguiente"
+                                        className="w-9 h-9 flex items-center justify-center rounded-lg border border-surface-variant text-on-surface-variant hover:text-primary hover:bg-primary/8 disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-on-surface-variant transition"
+                                    >
+                                        <span className="material-symbols-outlined text-base">chevron_right</span>
+                                    </button>
+                                </nav>
+                            )}
                         </div>
                     )}
                 </>

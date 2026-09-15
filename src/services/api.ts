@@ -293,6 +293,24 @@ export async function getStoreOrders(token: string, status?: 'pending' | 'comple
   return handleResponse(await fetch(`${BASE}/api/store-orders${qs}`, { headers: authHeaders(token) }));
 }
 
+export interface PaginatedStoreOrders {
+  orders: StoreOrder[];
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+}
+
+export async function getStoreOrdersPaged(
+  token: string,
+  status: 'pending' | 'completed',
+  page = 1,
+  pageSize = 20,
+): Promise<PaginatedStoreOrders> {
+  const qs = `?status=${status}&page=${page}&pageSize=${pageSize}`;
+  return handleResponse(await fetch(`${BASE}/api/store-orders${qs}`, { headers: authHeaders(token) }));
+}
+
 export async function createStoreOrder(
   token: string,
   data: { customerName: string; customerPhone?: string; notes: string; items: Pick<StoreOrderItem, 'articleId' | 'name' | 'price' | 'qty' | 'imageUrl' | 'supplierName'>[] },
