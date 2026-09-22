@@ -6,17 +6,24 @@ import { prisma } from '../lib/prisma';
 const router = Router();
 
 // Article images live behind routes/articleImages.ts rather than being inlined
-// as base64 in this payload. A data URI stored on the item itself is legacy
-// data and is dropped. Articles without a picture return null so the UI keeps
-// rendering its placeholder instead of a broken image.
+// as base64 in this payload. Articles without a picture return null so the UI
+// keeps rendering its placeholder instead of a broken image.
+//
+// The article's own URL wins over the one stored on the item, the same way
+// routes/store.ts resolves it. An item's imageUrl is a snapshot taken when the
+// order was placed and is stale: a legacy base64 data URI, or a WooCommerce
+// link that no longer resolves. Only fall back to it when the article has no
+// picture of its own.
 function articleImageUrl(
     itemImageUrl: string | null,
     article: { id: string; updatedAt: Date } | undefined,
     withImage: Set<string>,
 ): string | null {
+    if (article && withImage.has(article.id)) {
+        return `/api/articles/${article.id}/image?v=${article.updatedAt.getTime()}`;
+    }
     if (itemImageUrl && !itemImageUrl.startsWith('data:')) return itemImageUrl;
-    if (!article || !withImage.has(article.id)) return null;
-    return `/api/articles/${article.id}/image?v=${article.updatedAt.getTime()}`;
+    return null;
 }
 
 const orderTicketSchema = z.object({
