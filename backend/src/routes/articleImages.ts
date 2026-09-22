@@ -16,6 +16,13 @@ const DATA_URI = /^data:(image\/[a-zA-Z0-9.+-]+);base64,([\s\S]+)$/;
 
 router.get('/:id/image', async (req: Request, res: Response) => {
     try {
+        // helmet() defaults Cross-Origin-Resource-Policy to same-origin, which
+        // stops the frontend on its own domain from loading anything served
+        // here. Set it before the first response leaves, so every path carries
+        // it — the 304 revalidation and the legacy redirect included. A
+        // redirect without it is blocked as ERR_BLOCKED_BY_RESPONSE.NotSameOrigin.
+        res.set('Cross-Origin-Resource-Policy', 'cross-origin');
+
         const article = await prisma.article.findUnique({
             where: { id: req.params.id },
             select: { image: true, updatedAt: true },
@@ -40,12 +47,9 @@ router.get('/:id/image', async (req: Request, res: Response) => {
         const [, mimeType, base64] = match;
         const etag = `W/"${createHash('sha1').update(article.image).digest('hex')}"`;
 
-        // helmet() defaults this to same-origin, which would stop the frontend
-        // on its own domain from loading the image. Set on every response,
-        // including the 304, or a revalidation would be blocked.
+        // Set before the conditional so the 304 carries them too.
         res.set({
             'Cache-Control': 'public, max-age=31536000, immutable',
-            'Cross-Origin-Resource-Policy': 'cross-origin',
             ETag: etag,
         });
 
