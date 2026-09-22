@@ -69,9 +69,13 @@ async function handleResponse<T>(res: Response): Promise<T> {
 // ---- Pedidos (adapter sobre StoreOrder, formato legacy) ----
 
 export const getOrders = async (status: OrderStatusType, token: string): Promise<Order[]> => {
-  return handleResponse(await fetch(`${BASE}/api/orders?status=${status}`, {
+  const orders = await handleResponse<Order[]>(await fetch(`${BASE}/api/orders?status=${status}`, {
     headers: authHeaders(token),
     cache: NO_STORE,
+  }));
+  return orders.map(o => ({
+    ...o,
+    lineItems: o.lineItems.map(li => ({ ...li, imageUrl: resolveImageUrl(li.imageUrl) })),
   }));
 };
 
