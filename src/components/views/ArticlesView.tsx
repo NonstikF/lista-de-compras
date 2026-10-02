@@ -11,6 +11,10 @@ interface ArticlesViewProps {
     onAuthError: () => void;
 }
 
+// Valor del filtro para artículos que quedaron con la categoría por defecto (sin proveedor)
+const NO_CATEGORY_FILTER = '__sin_proveedor__';
+const isDefaultCategory = (c: string | null | undefined) => !c || c === 'Sin categorizar';
+
 // ---------- Placeholder con iniciales ----------
 const ArticleImage: React.FC<{ article: Article; className?: string }> = ({ article, className = '' }) => {
     const colors = ['#3b6934', '#7d562d', '#60233e', '#2d5a27', '#42493e', '#7c3a55'];
@@ -448,12 +452,14 @@ const ArticlesView: React.FC<ArticlesViewProps> = ({ authToken, onAuthError }) =
     const [bulkBusy, setBulkBusy] = useState(false);
     const toast = useToast();
 
-    const categories = Array.from(new Set(articles.map(a => a.category ?? '').filter(c => c && c !== 'Sin categorizar'))).sort();
+    const categories = Array.from(new Set(articles.map(a => a.category ?? '').filter(c => !isDefaultCategory(c)))).sort();
+    const noCategoryCount = articles.filter(a => isDefaultCategory(a.category)).length;
 
     const filtered = articles.filter(a => {
         const q = search.toLowerCase();
         const matchSearch = !q || a.name.toLowerCase().includes(q) || (a.locationSku ?? '').toLowerCase().includes(q) || (a.barcode ?? '').toLowerCase().includes(q);
-        const matchCat = !categoryFilter || a.category === categoryFilter;
+        const matchCat = !categoryFilter
+            || (categoryFilter === NO_CATEGORY_FILTER ? isDefaultCategory(a.category) : a.category === categoryFilter);
         return matchSearch && matchCat;
     });
 
@@ -634,7 +640,7 @@ const ArticlesView: React.FC<ArticlesViewProps> = ({ authToken, onAuthError }) =
                             </button>
                         </div>
                     </div>
-                    {categories.length > 0 && (
+                    {(categories.length > 0 || noCategoryCount > 0) && (
                         <div className="flex items-center gap-2">
                             <div className="relative flex-1 sm:flex-none sm:min-w-[240px]">
                                 <MIcon name="storefront" size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant pointer-events-none" />
@@ -644,6 +650,9 @@ const ArticlesView: React.FC<ArticlesViewProps> = ({ authToken, onAuthError }) =
                                     className="w-full appearance-none pl-9 pr-9 py-2.5 rounded-xl border border-outline-variant bg-surface-container-low text-on-surface text-sm focus:outline-none focus:border-primary cursor-pointer"
                                 >
                                     <option value="">Todos los proveedores</option>
+                                    {noCategoryCount > 0 && (
+                                        <option value={NO_CATEGORY_FILTER}>Sin proveedor asignado ({noCategoryCount})</option>
+                                    )}
                                     {categories.map(cat => (
                                         <option key={cat} value={cat}>{cat}</option>
                                     ))}
@@ -655,7 +664,7 @@ const ArticlesView: React.FC<ArticlesViewProps> = ({ authToken, onAuthError }) =
                                     onClick={() => setCategoryFilter('')}
                                     className="flex items-center gap-1 px-3 py-2 rounded-xl bg-primary/10 text-primary text-sm font-medium hover:bg-primary/15 transition"
                                 >
-                                    {categoryFilter}
+                                    {categoryFilter === NO_CATEGORY_FILTER ? 'Sin proveedor asignado' : categoryFilter}
                                     <MIcon name="close" size={16} />
                                 </button>
                             )}
