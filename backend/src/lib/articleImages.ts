@@ -23,19 +23,34 @@ export function isArticleImageUrl(value: string): boolean {
     return /\/api\/articles\/[^/]+\/image(\?|$)/.test(value);
 }
 
-// Asks Postgres which articles have a picture without reading the blob.
-export async function articleIdsWithImage(ids: string[]): Promise<Set<string>> {
-    if (ids.length === 0) return new Set();
-    const rows = await prisma.$queryRaw<{ id: string }[]>`
-        SELECT "id" FROM "Article"
+// Which articles have a picture, and where it lives. Postgres answers without
+// the blob ever leaving the database.
+//
+// Articles imported from WooCommerce store a plain https link instead of a
+// data URI. Those are sent as-is: going through the image route meant a 302
+// to another site, and on phones the pictures stopped loading after the hop.
+// Only base64 pictures are served by routes/articleImages.ts.
+export type ArticleImageSources = Map<string, string | null>;
+
+export async function articleImageSources(ids: string[]): Promise<ArticleImageSources> {
+    if (ids.length === 0) return new Map();
+    const rows = await prisma.$queryRaw<{ id: string; external: string | null }[]>`
+        SELECT "id", CASE WHEN "image" ~ '^https?://' THEN "image" END AS "external"
+        FROM "Article"
         WHERE "id" IN (${Prisma.join(ids)})
           AND "image" IS NOT NULL AND "image" <> ''
     `;
-    return new Set(rows.map(r => r.id));
+    return new Map(rows.map(r => [r.id, r.external]));
+}
+
+// The URL to send for an article's picture, or null when it has none.
+export function articleImageUrl(article: ArticleRef, sources: ArticleImageSources): string | null {
+    if (!sources.has(article.id)) return null;
+    return sources.get(article.id) ?? articleImagePath(article);
 }
 
 // Swaps updatedAt for an `image` URL (null when the article has no picture).
-export function withImageUrl<T extends ArticleRef>(article: T, withImage: Set<string>): Omit<T, 'updatedAt'> & { image: string | null } {
+export function withImageUrl<T extends ArticleRef>(article: T, sources: ArticleImageSources): Omit<T, 'updatedAt'> & { image: string | null } {
     const { updatedAt: _updatedAt, ...rest } = article;
-    return { ...rest, image: withImage.has(article.id) ? articleImagePath(article) : null };
+    return { ...rest, image: articleImageUrl(article, sources) };
 }

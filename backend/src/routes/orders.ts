@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
-import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
+import { articleImageSources, articleImageUrl as articlePictureUrl, type ArticleImageSources } from '../lib/articleImages';
 
 const router = Router();
 
@@ -17,11 +17,10 @@ const router = Router();
 function articleImageUrl(
     itemImageUrl: string | null,
     article: { id: string; updatedAt: Date } | undefined,
-    withImage: Set<string>,
+    imageSources: ArticleImageSources,
 ): string | null {
-    if (article && withImage.has(article.id)) {
-        return `/api/articles/${article.id}/image?v=${article.updatedAt.getTime()}`;
-    }
+    const own = article ? articlePictureUrl(article, imageSources) : null;
+    if (own) return own;
     if (itemImageUrl && !itemImageUrl.startsWith('data:')) return itemImageUrl;
     return null;
 }
@@ -62,14 +61,7 @@ router.get('/', async (req: Request, res: Response) => {
             })
             : [];
         // Ask Postgres which articles actually have a picture, without reading it.
-        const imageRows = articleIds.length > 0
-            ? await prisma.$queryRaw<{ id: string }[]>`
-                SELECT "id" FROM "Article"
-                WHERE "id" IN (${Prisma.join(articleIds)})
-                  AND "image" IS NOT NULL AND "image" <> ''
-            `
-            : [];
-        const withImage = new Set(imageRows.map(r => r.id));
+        const imageSources = await articleImageSources(articleIds);
         const articleMap = new Map(articles.map(a => [a.id, a]));
 
         const result = orders.map(o => {
@@ -97,7 +89,7 @@ router.get('/', async (req: Request, res: Response) => {
                         isPurchased: item.isPurchased,
                         quantityPurchased: item.quantityPurchased,
                         category: art?.category || 'Sin Categoria',
-                        imageUrl: articleImageUrl(item.imageUrl, art, withImage),
+                        imageUrl: articleImageUrl(item.imageUrl, art, imageSources),
                         suppliers,
                         quantityBySupplier,
                     };

@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma';
 import { resolveLocationSkuToId } from '../lib/locations';
-import { articleIdsWithImage, articleImagePath, isArticleImageUrl } from '../lib/articleImages';
+import { articleImageSources, articleImageUrl, isArticleImageUrl, type ArticleImageSources } from '../lib/articleImages';
 
 const router = Router();
 
@@ -39,12 +39,12 @@ type ArticleRow = {
     inventory: { location: { code: string } | null } | null;
 };
 
-function formatArticle(a: ArticleRow, withImage: Set<string>) {
+function formatArticle(a: ArticleRow, imageSources: ArticleImageSources) {
     return {
         id: a.id,
         legacyWooProductId: a.legacyWooProductId,
         name: a.name,
-        image: withImage.has(a.id) ? articleImagePath(a) : null,
+        image: articleImageUrl(a, imageSources),
         price: a.price,
         sku: a.sku,
         barcode: a.barcode,
@@ -69,8 +69,8 @@ const articleSelect = {
 } as const;
 
 async function formatArticles(rows: ArticleRow[]) {
-    const withImage = await articleIdsWithImage(rows.map(a => a.id));
-    return rows.map(a => formatArticle(a, withImage));
+    const imageSources = await articleImageSources(rows.map(a => a.id));
+    return rows.map(a => formatArticle(a, imageSources));
 }
 
 async function formatOne(row: ArticleRow) {

@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma';
-import { articleIdsWithImage, articleSummarySelect, withImageUrl } from '../lib/articleImages';
+import { articleImageSources, articleSummarySelect, withImageUrl } from '../lib/articleImages';
 
 const router = Router();
 
@@ -21,8 +21,8 @@ const updateSchema = z.object({
 
 // Location items embed their article; swap its timestamp for an image URL.
 async function withItemImageUrls<L extends { items: { articleId: string; article: { id: string; updatedAt: Date } }[] }>(location: L) {
-    const withImage = await articleIdsWithImage(location.items.map(i => i.articleId));
-    return { ...location, items: location.items.map(i => ({ ...i, article: withImageUrl(i.article, withImage) })) };
+    const imageSources = await articleImageSources(location.items.map(i => i.articleId));
+    return { ...location, items: location.items.map(i => ({ ...i, article: withImageUrl(i.article, imageSources) })) };
 }
 
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';

@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
-import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
+import { articleImageSources, articleImageUrl } from '../lib/articleImages';
 
 const storeTicketSchema = z.object({
     supplierName: z.string().min(1, 'Proveedor requerido'),
@@ -45,8 +45,8 @@ type ArticleInfo = { image: string | null };
 // every order payload, so orders carry a URL to routes/articleImages.ts
 // instead. updatedAt busts the cache when the picture changes.
 //
-// The base64 column is never selected here — a raw query asks Postgres whether
-// the column is non-empty so the blob itself never leaves the database.
+// The base64 column is never selected here — lib/articleImages.ts asks Postgres
+// whether the column is non-empty so the blob itself never leaves the database.
 // A StoreOrderItem's own imageUrl may hold a legacy base64 data URI. Drop those
 // so they never reach the payload; the article's URL is used instead.
 function safeItemImage(imageUrl: string | null): string | null {
@@ -56,15 +56,11 @@ function safeItemImage(imageUrl: string | null): string | null {
 
 async function getArticleInfoMap(articleIds: string[]): Promise<Record<string, ArticleInfo>> {
     if (articleIds.length === 0) return {};
-    const rows = await prisma.$queryRaw<{ id: string; hasImage: boolean; updatedAt: Date }[]>`
-        SELECT "id", ("image" IS NOT NULL AND "image" <> '') AS "hasImage", "updatedAt"
-        FROM "Article"
-        WHERE "id" IN (${Prisma.join(articleIds)})
-    `;
-    return Object.fromEntries(rows.map(r => [
-        r.id,
-        { image: r.hasImage ? `/api/articles/${r.id}/image?v=${r.updatedAt.getTime()}` : null },
-    ]));
+    const [rows, imageSources] = await Promise.all([
+        prisma.article.findMany({ where: { id: { in: articleIds } }, select: { id: true, updatedAt: true } }),
+        articleImageSources(articleIds),
+    ]);
+    return Object.fromEntries(rows.map(r => [r.id, { image: articleImageUrl(r, imageSources) }]));
 }
 
 // For each item, compute how many units were purchased by other suppliers of the same article in the same order.
