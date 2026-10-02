@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma';
+import { articleIdsWithImage, articleSummarySelect, withImageUrl } from '../lib/articleImages';
 
 const router = Router();
 
@@ -17,6 +18,12 @@ const updateSchema = z.object({
     description: z.string().optional(),
     active: z.boolean().optional(),
 });
+
+// Location items embed their article; swap its timestamp for an image URL.
+async function withItemImageUrls<L extends { items: { articleId: string; article: { id: string; updatedAt: Date } }[] }>(location: L) {
+    const withImage = await articleIdsWithImage(location.items.map(i => i.articleId));
+    return { ...location, items: location.items.map(i => ({ ...i, article: withImageUrl(i.article, withImage) })) };
+}
 
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
@@ -54,13 +61,13 @@ router.get('/by-code/:code', async (req: Request, res: Response) => {
             where: { code: req.params.code },
             include: {
                 items: {
-                    include: { article: { select: { id: true, name: true, image: true, category: true } } },
+                    include: { article: { select: articleSummarySelect } },
                     orderBy: { article: { name: 'asc' } },
                 },
             },
         });
         if (!location) { res.status(404).json({ error: 'Ubicación no encontrada' }); return; }
-        res.json(location);
+        res.json(await withItemImageUrls(location));
     } catch (err) {
         console.error('Error al obtener ubicación por código:', err);
         res.status(500).json({ error: 'Error al obtener ubicación' });
@@ -73,13 +80,13 @@ router.get('/:id', async (req: Request, res: Response) => {
             where: { id: req.params.id },
             include: {
                 items: {
-                    include: { article: { select: { id: true, name: true, image: true, category: true } } },
+                    include: { article: { select: articleSummarySelect } },
                     orderBy: { article: { name: 'asc' } },
                 },
             },
         });
         if (!location) { res.status(404).json({ error: 'Ubicación no encontrada' }); return; }
-        res.json(location);
+        res.json(await withItemImageUrls(location));
     } catch (err) {
         console.error('Error al obtener ubicación:', err);
         res.status(500).json({ error: 'Error al obtener ubicación' });

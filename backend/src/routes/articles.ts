@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma';
 import { resolveLocationSkuToId } from '../lib/locations';
+import { articleIdsWithImage, articleImagePath, isArticleImageUrl } from '../lib/articleImages';
 
 const router = Router();
 
@@ -25,7 +26,6 @@ type ArticleRow = {
     id: string;
     legacyWooProductId: number | null;
     name: string;
-    image: string | null;
     price: number;
     sku: string;
     barcode: string;
@@ -39,12 +39,12 @@ type ArticleRow = {
     inventory: { location: { code: string } | null } | null;
 };
 
-function formatArticle(a: ArticleRow) {
+function formatArticle(a: ArticleRow, withImage: Set<string>) {
     return {
         id: a.id,
         legacyWooProductId: a.legacyWooProductId,
         name: a.name,
-        image: a.image,
+        image: withImage.has(a.id) ? articleImagePath(a) : null,
         price: a.price,
         sku: a.sku,
         barcode: a.barcode,
@@ -59,18 +59,31 @@ function formatArticle(a: ArticleRow) {
     };
 }
 
-const articleInclude = {
+// `image` holds a base64 blob and is deliberately not selected — articles carry
+// a URL to routes/articleImages.ts instead. See lib/articleImages.ts.
+const articleSelect = {
+    id: true, legacyWooProductId: true, name: true, price: true, sku: true, barcode: true,
+    category: true, description: true, stockStatus: true, smartDay: true, createdAt: true, updatedAt: true,
     suppliers: { select: { supplierId: true, zone: true } },
     inventory: { select: { location: { select: { code: true } } } },
 } as const;
 
+async function formatArticles(rows: ArticleRow[]) {
+    const withImage = await articleIdsWithImage(rows.map(a => a.id));
+    return rows.map(a => formatArticle(a, withImage));
+}
+
+async function formatOne(row: ArticleRow) {
+    return (await formatArticles([row]))[0];
+}
+
 router.get('/', async (_req: Request, res: Response) => {
     try {
         const articles = await prisma.article.findMany({
-            include: articleInclude,
+            select: articleSelect,
             orderBy: { createdAt: 'asc' },
         });
-        res.json(articles.map(formatArticle));
+        res.json(await formatArticles(articles));
     } catch (err) {
         console.error('Error al obtener artículos:', err);
         res.status(500).json({ error: 'Error al obtener artículos' });
@@ -80,7 +93,8 @@ router.get('/', async (_req: Request, res: Response) => {
 router.post('/', async (req: Request, res: Response) => {
     const parsed = articleSchema.safeParse(req.body);
     if (!parsed.success) { res.status(400).json({ error: parsed.error.issues[0].message }); return; }
-    const { legacyWooProductId, name, image, price, sku, barcode, category, description, stockStatus, smartDay, supplierIds, supplierZones, locationSku } = parsed.data;
+    const { legacyWooProductId, name, price, sku, barcode, category, description, stockStatus, smartDay, supplierIds, supplierZones, locationSku } = parsed.data;
+    const image = parsed.data.image && isArticleImageUrl(parsed.data.image) ? null : parsed.data.image;
     let locationId: string | null = null;
     if (locationSku !== undefined) {
         try {
@@ -98,9 +112,9 @@ router.post('/', async (req: Request, res: Response) => {
                 suppliers: { create: supplierIds.map((sid: string) => ({ supplierId: sid, zone: supplierZones[sid] ?? '' })) },
                 inventory: { create: { locationId } },
             },
-            include: articleInclude,
+            select: articleSelect,
         });
-        res.status(201).json(formatArticle(article));
+        res.status(201).json(await formatOne(article));
     } catch (err) {
         console.error('Error al crear artículo:', err);
         res.status(500).json({ error: 'Error al crear artículo' });
@@ -111,14 +125,18 @@ router.put('/:id', async (req: Request, res: Response) => {
     const parsed = articleSchema.safeParse(req.body);
     if (!parsed.success) { res.status(400).json({ error: parsed.error.issues[0].message }); return; }
     const { legacyWooProductId, name, image, price, sku, barcode, category, description, stockStatus, smartDay, supplierIds, supplierZones, locationSku } = parsed.data;
+    // The form sends the picture back as the URL it received. Writing that would
+    // replace the image with a link to itself, so leave the column untouched.
+    const imageUpdate = image && isArticleImageUrl(image) ? {} : { image };
     try {
         const article = await prisma.article.update({
             where: { id: req.params.id },
             data: {
-                legacyWooProductId, name, image, price, sku, barcode, category, description, stockStatus, smartDay,
+                ...imageUpdate,
+                legacyWooProductId, name, price, sku, barcode, category, description, stockStatus, smartDay,
                 suppliers: { deleteMany: {}, create: supplierIds.map((sid: string) => ({ supplierId: sid, zone: supplierZones[sid] ?? '' })) },
             },
-            include: articleInclude,
+            select: articleSelect,
         });
 
         if (locationSku !== undefined) {
@@ -137,13 +155,13 @@ router.put('/:id', async (req: Request, res: Response) => {
             });
             const refreshed = await prisma.article.findUniqueOrThrow({
                 where: { id: article.id },
-                include: articleInclude,
+                select: articleSelect,
             });
-            res.json(formatArticle(refreshed));
+            res.json(await formatOne(refreshed));
             return;
         }
 
-        res.json(formatArticle(article));
+        res.json(await formatOne(article));
     } catch (err) {
         console.error('Error al actualizar artículo:', err);
         res.status(500).json({ error: 'Error al actualizar artículo' });

@@ -240,20 +240,29 @@ export async function updateSupplierTicketInvoiced(token: string, supplierId: st
 
 // ---- Artículos ----
 
+function resolveArticleImage<T extends { image: string | null }>(article: T): T {
+  return { ...article, image: resolveImageUrl(article.image) };
+}
+
+function resolveInventoryItemImage(item: InventoryItem): InventoryItem {
+  return { ...item, article: resolveArticleImage(item.article) };
+}
+
 export async function getArticles(token: string): Promise<Article[]> {
-  return handleResponse(await fetch(`${BASE}/api/articles`, { headers: authHeaders(token), cache: NO_STORE }));
+  const articles: Article[] = await handleResponse(await fetch(`${BASE}/api/articles`, { headers: authHeaders(token), cache: NO_STORE }));
+  return articles.map(resolveArticleImage);
 }
 
 export async function createArticle(token: string, data: Omit<Article, 'id'>): Promise<Article> {
-  return handleResponse(await fetch(`${BASE}/api/articles`, {
+  return resolveArticleImage(await handleResponse<Article>(await fetch(`${BASE}/api/articles`, {
     method: 'POST', headers: authHeaders(token), body: JSON.stringify(data),
-  }));
+  })));
 }
 
 export async function updateArticle(token: string, id: string, data: Omit<Article, 'id'>): Promise<Article> {
-  return handleResponse(await fetch(`${BASE}/api/articles/${id}`, {
+  return resolveArticleImage(await handleResponse<Article>(await fetch(`${BASE}/api/articles/${id}`, {
     method: 'PUT', headers: authHeaders(token), body: JSON.stringify(data),
-  }));
+  })));
 }
 
 export async function deleteArticle(token: string, id: string): Promise<void> {
@@ -460,7 +469,8 @@ export async function updateSettings(token: string, data: { name?: string; logo?
 // ---- Inventario ----
 
 export async function getInventory(token: string): Promise<InventoryItem[]> {
-  return handleResponse(await fetch(`${BASE}/api/inventory`, { headers: authHeaders(token), cache: NO_STORE }));
+  const items: InventoryItem[] = await handleResponse(await fetch(`${BASE}/api/inventory`, { headers: authHeaders(token), cache: NO_STORE }));
+  return items.map(resolveInventoryItemImage);
 }
 
 export async function updateInventoryItem(
@@ -468,9 +478,9 @@ export async function updateInventoryItem(
   id: string,
   data: { stockMin?: number; unit?: string; locationId?: string | null; locationSku?: string | null },
 ): Promise<InventoryItem> {
-  return handleResponse(await fetch(`${BASE}/api/inventory/${id}`, {
+  return resolveInventoryItemImage(await handleResponse(await fetch(`${BASE}/api/inventory/${id}`, {
     method: 'PUT', headers: authHeaders(token), body: JSON.stringify(data),
-  }));
+  })));
 }
 
 // ---- Ubicaciones ----
@@ -479,12 +489,16 @@ export async function getLocations(token: string): Promise<Location[]> {
   return handleResponse(await fetch(`${BASE}/api/locations`, { headers: authHeaders(token), cache: NO_STORE }));
 }
 
+function resolveLocationImages(location: Location & { items: InventoryItem[] }): Location & { items: InventoryItem[] } {
+  return { ...location, items: location.items.map(resolveInventoryItemImage) };
+}
+
 export async function getLocation(token: string, id: string): Promise<Location & { items: InventoryItem[] }> {
-  return handleResponse(await fetch(`${BASE}/api/locations/${id}`, { headers: authHeaders(token), cache: NO_STORE }));
+  return resolveLocationImages(await handleResponse(await fetch(`${BASE}/api/locations/${id}`, { headers: authHeaders(token), cache: NO_STORE })));
 }
 
 export async function getLocationByCode(token: string, code: string): Promise<Location & { items: InventoryItem[] }> {
-  return handleResponse(await fetch(`${BASE}/api/locations/by-code/${encodeURIComponent(code)}`, { headers: authHeaders(token), cache: NO_STORE }));
+  return resolveLocationImages(await handleResponse(await fetch(`${BASE}/api/locations/by-code/${encodeURIComponent(code)}`, { headers: authHeaders(token), cache: NO_STORE })));
 }
 
 export async function createLocation(token: string, data: { name: string; code?: string; description?: string; active?: boolean }): Promise<Location> {

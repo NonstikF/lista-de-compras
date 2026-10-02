@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma';
 import { resolveLocationSkuToId } from '../lib/locations';
+import { articleIdsWithImage, articleSummarySelect, withImageUrl } from '../lib/articleImages';
 
 const router = Router();
 
@@ -35,13 +36,14 @@ router.get('/', async (_req: Request, res: Response) => {
         await ensureInventoryForAllArticles();
         const items = await prisma.inventoryItem.findMany({
             include: {
-                article: { select: { id: true, name: true, image: true, category: true } },
+                article: { select: articleSummarySelect },
                 location: { select: { id: true, name: true, code: true } },
                 _count: { select: { movements: true } },
             },
             orderBy: { article: { name: 'asc' } },
         });
-        res.json(items);
+        const withImage = await articleIdsWithImage(items.map(i => i.articleId));
+        res.json(items.map(i => ({ ...i, article: withImageUrl(i.article, withImage) })));
     } catch (err) {
         console.error('Error al obtener inventario:', err);
         res.status(500).json({ error: 'Error al obtener inventario' });
@@ -74,12 +76,13 @@ router.put('/:id', async (req: Request, res: Response) => {
             where: { id: req.params.id },
             data,
             include: {
-                article: { select: { id: true, name: true, image: true, category: true } },
+                article: { select: articleSummarySelect },
                 location: { select: { id: true, name: true, code: true } },
                 _count: { select: { movements: true } },
             },
         });
-        res.json(item);
+        const withImage = await articleIdsWithImage([item.articleId]);
+        res.json({ ...item, article: withImageUrl(item.article, withImage) });
     } catch {
         res.status(404).json({ error: 'Item de inventario no encontrado' });
     }
