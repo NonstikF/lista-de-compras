@@ -1,7 +1,7 @@
 import { prisma } from './prisma';
 import { escapeHtml, getTelegramSettings, sendTelegramMessage, telegramToken } from './telegram';
 
-type NewOrder = {
+export type NewOrder = {
     id: number;
     customerName: string;
     notes: string;
@@ -17,7 +17,7 @@ const money = (n: number) => `$${n.toLocaleString('es-MX', { minimumFractionDigi
 // Telegram has no colours, so a highlighted order gets a 🚨 header, its
 // suppliers listed first and marked 🔴, and it is the only kind that rings —
 // regular orders arrive silently.
-export function buildNewOrderMessage(order: NewOrder, highlight: { ids: Set<string>; names: Set<string> }, appUrl?: string): { text: string; highlighted: boolean } {
+export function buildNewOrderMessage(order: NewOrder, highlight: HighlightRule, appUrl?: string): { text: string; highlighted: boolean } {
     const groups = new Map<string, { name: string; highlighted: boolean; items: NewOrder['items'] }>();
     for (const item of order.items) {
         const name = item.supplierName || 'Sin proveedor';
@@ -55,19 +55,22 @@ export function buildNewOrderMessage(order: NewOrder, highlight: { ids: Set<stri
     return { text: head.join('\n') + body + tail, highlighted: highlightedNames.length > 0 };
 }
 
+export type HighlightRule = { ids: Set<string>; names: Set<string> };
+
+export async function loadHighlightRule(highlightSupplierIds: string[]): Promise<HighlightRule> {
+    const suppliers = highlightSupplierIds.length > 0
+        ? await prisma.supplier.findMany({ where: { id: { in: highlightSupplierIds } }, select: { name: true } })
+        : [];
+    return { ids: new Set(highlightSupplierIds), names: new Set(suppliers.map(s => s.name.toLowerCase())) };
+}
+
 // Fire-and-forget: a Telegram outage must never fail the order itself.
 export function notifyNewOrder(order: NewOrder): void {
     void (async () => {
         if (!telegramToken()) return;
         const settings = await getTelegramSettings();
         if (!settings.chatId || !settings.notifyNewOrders) return;
-        const suppliers = settings.highlightSupplierIds.length > 0
-            ? await prisma.supplier.findMany({ where: { id: { in: settings.highlightSupplierIds } }, select: { name: true } })
-            : [];
-        const highlight = {
-            ids: new Set(settings.highlightSupplierIds),
-            names: new Set(suppliers.map(s => s.name.toLowerCase())),
-        };
+        const highlight = await loadHighlightRule(settings.highlightSupplierIds);
         const { text, highlighted } = buildNewOrderMessage(order, highlight, process.env.FRONTEND_URL);
         await sendTelegramMessage(settings.chatId, text, { silent: !highlighted });
     })().catch(err => console.error('Error al notificar pedido por Telegram:', err instanceof Error ? err.message : err));

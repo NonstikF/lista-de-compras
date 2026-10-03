@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import type { OrderReminder, TelegramChat, TelegramConfig } from '../../types';
-import { AuthError, detectTelegramChats, getTelegramConfig, sendTelegramTest, updateTelegramConfig } from '../../services/api';
+import { AuthError, detectTelegramChats, getTelegramConfig, sendTelegramTest, updateTelegramConfig, type TelegramTest } from '../../services/api';
 import { Button, Chip, Field, Input, MIcon, Select, Textarea, useToast } from '../ui';
 
 interface TelegramSettingsProps {
@@ -25,7 +25,8 @@ const TelegramSettings: React.FC<TelegramSettingsProps> = ({ authToken, onAuthEr
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [detecting, setDetecting] = useState(false);
-    const [testing, setTesting] = useState(false);
+    // Which test is being sent: 'connection', 'order', 'highlightedOrder', or `reminder-<i>` / `followUp-<i>`.
+    const [testing, setTesting] = useState<string | null>(null);
     const [chats, setChats] = useState<TelegramChat[] | null>(null);
 
     // Editable copy; saved together with "Guardar Telegram".
@@ -103,17 +104,21 @@ const TelegramSettings: React.FC<TelegramSettingsProps> = ({ authToken, onAuthEr
         }
     };
 
-    const handleTest = async () => {
-        setTesting(true);
+    const handleTest = async (key: string, test: TelegramTest) => {
+        setTesting(key);
         try {
-            await sendTelegramTest(authToken);
-            toast('success', 'Mensaje de prueba enviado');
+            await sendTelegramTest(authToken, test);
+            toast('success', 'Mensaje de prueba enviado al grupo');
         } catch (err) {
             handleError(err, 'Error al enviar prueba');
         } finally {
-            setTesting(false);
+            setTesting(null);
         }
     };
+
+    // The highlighted-order test uses the saved suppliers, so it waits for unsaved changes.
+    const savedHighlight = config?.highlightSupplierIds ?? [];
+    const highlightUnsaved = highlightIds.length !== savedHighlight.length || highlightIds.some(id => !savedHighlight.includes(id));
 
     if (loading) {
         return (
@@ -167,8 +172,8 @@ const TelegramSettings: React.FC<TelegramSettingsProps> = ({ authToken, onAuthEr
                                     <MIcon name="groups" size={18} />
                                     {config.chatTitle || config.chatId}
                                 </span>
-                                <Button variant="outline" size="sm" icon="send" onClick={handleTest} disabled={testing}>
-                                    {testing ? 'Enviando…' : 'Enviar prueba'}
+                                <Button variant="outline" size="sm" icon="send" onClick={() => handleTest('connection', { kind: 'connection' })} disabled={testing !== null}>
+                                    {testing === 'connection' ? 'Enviando…' : 'Enviar prueba'}
                                 </Button>
                                 <Button variant="text" size="sm" icon="refresh" onClick={handleDetect} disabled={detecting}>
                                     Cambiar grupo
@@ -216,6 +221,25 @@ const TelegramSettings: React.FC<TelegramSettingsProps> = ({ authToken, onAuthEr
                             />
                             Avisar en el grupo cada vez que se registre un pedido
                         </label>
+                        {config.chatId && (
+                            <div className="flex flex-wrap gap-2 mt-3">
+                                <Button variant="outline" size="sm" icon="science" onClick={() => handleTest('order', { kind: 'order' })} disabled={testing !== null}>
+                                    {testing === 'order' ? 'Enviando…' : 'Probar aviso de pedido'}
+                                </Button>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    icon="priority_high"
+                                    onClick={() => handleTest('highlightedOrder', { kind: 'highlightedOrder' })}
+                                    disabled={testing !== null || savedHighlight.length === 0 || highlightUnsaved}
+                                >
+                                    {testing === 'highlightedOrder' ? 'Enviando…' : 'Probar pedido resaltado'}
+                                </Button>
+                            </div>
+                        )}
+                        {config.chatId && (savedHighlight.length === 0 || highlightUnsaved) && (
+                            <p className="text-xs text-on-surface-variant mt-2">Para probar el pedido resaltado, marca y guarda los proveedores resaltados.</p>
+                        )}
                     </div>
 
                     {/* Proveedores resaltados */}
@@ -281,15 +305,41 @@ const TelegramSettings: React.FC<TelegramSettingsProps> = ({ authToken, onAuthEr
                                             />
                                             Activo
                                         </label>
-                                        <Button
-                                            variant="text"
-                                            size="sm"
-                                            icon="delete"
-                                            className="text-error hover:text-error"
-                                            onClick={() => setRems(prev => prev.filter((_, n) => n !== i))}
-                                        >
-                                            Eliminar
-                                        </Button>
+                                        <div className="flex flex-wrap justify-end gap-1">
+                                            {config.chatId && (
+                                                <>
+                                                    <Button
+                                                        variant="text"
+                                                        size="sm"
+                                                        icon="science"
+                                                        onClick={() => handleTest(`reminder-${i}`, { kind: 'reminder', message: r.message })}
+                                                        disabled={testing !== null || !r.message.trim()}
+                                                    >
+                                                        {testing === `reminder-${i}` ? 'Enviando…' : 'Probar'}
+                                                    </Button>
+                                                    {r.followUpTime && (
+                                                        <Button
+                                                            variant="text"
+                                                            size="sm"
+                                                            icon="schedule"
+                                                            onClick={() => handleTest(`followUp-${i}`, { kind: 'followUp', message: r.message })}
+                                                            disabled={testing !== null || !r.message.trim()}
+                                                        >
+                                                            {testing === `followUp-${i}` ? 'Enviando…' : 'Probar seguimiento'}
+                                                        </Button>
+                                                    )}
+                                                </>
+                                            )}
+                                            <Button
+                                                variant="text"
+                                                size="sm"
+                                                icon="delete"
+                                                className="text-error hover:text-error"
+                                                onClick={() => setRems(prev => prev.filter((_, n) => n !== i))}
+                                            >
+                                                Eliminar
+                                            </Button>
+                                        </div>
                                     </div>
                                 </div>
                             ))}

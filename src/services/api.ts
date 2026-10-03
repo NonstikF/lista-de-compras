@@ -504,8 +504,14 @@ export async function detectTelegramChats(token: string): Promise<TelegramChat[]
   return handleResponse(await fetch(`${BASE}/api/telegram/detect-chats`, { method: 'POST', headers: authHeaders(token) }));
 }
 
-export async function sendTelegramTest(token: string): Promise<void> {
-  await handleResponse(await fetch(`${BASE}/api/telegram/test`, { method: 'POST', headers: authHeaders(token) }));
+export type TelegramTest =
+  | { kind: 'connection' | 'order' | 'highlightedOrder' }
+  | { kind: 'reminder' | 'followUp'; message: string };
+
+export async function sendTelegramTest(token: string, test: TelegramTest = { kind: 'connection' }): Promise<void> {
+  await handleResponse(await fetch(`${BASE}/api/telegram/test`, {
+    method: 'POST', headers: authHeaders(token), body: JSON.stringify(test),
+  }));
 }
 
 // ---- Inventario ----

@@ -27,10 +27,19 @@ async function release(id: string, field: 'lastSentOn' | 'lastFollowUpOn', previ
     await prisma.orderReminder.update({ where: { id }, data: { [field]: previous } }).catch(() => undefined);
 }
 
+// Shared with the test buttons in Configuración so a preview matches the real thing.
+export function reminderText(message: string): string {
+    return `🗓️ <b>Hoy es día de pedido</b>\n${escapeHtml(message)}`;
+}
+
+export function followUpText(message: string): string {
+    return `⏰ <b>Todavía no se registra ningún pedido hoy</b>\n${escapeHtml(message)}`;
+}
+
 async function sendMorning(r: Reminder, chatId: string, clock: StoreClock) {
     if (!(await claim(r.id, 'lastSentOn', clock.date))) return;
     try {
-        await sendTelegramMessage(chatId, `🗓️ <b>Hoy es día de pedido</b>\n${escapeHtml(r.message)}`);
+        await sendTelegramMessage(chatId, reminderText(r.message));
     } catch (err) {
         // Let the next tick retry instead of losing today's reminder.
         await release(r.id, 'lastSentOn', r.lastSentOn);
@@ -43,7 +52,7 @@ async function sendFollowUp(r: Reminder, chatId: string, clock: StoreClock) {
     try {
         const ordersToday = await prisma.storeOrder.count({ where: { dateCreated: { gte: clock.startOfDay } } });
         if (ordersToday > 0) return;
-        await sendTelegramMessage(chatId, `⏰ <b>Todavía no se registra ningún pedido hoy</b>\n${escapeHtml(r.message)}`);
+        await sendTelegramMessage(chatId, followUpText(r.message));
     } catch (err) {
         await release(r.id, 'lastFollowUpOn', r.lastFollowUpOn);
         throw err;
