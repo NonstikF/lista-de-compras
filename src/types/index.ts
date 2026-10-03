@@ -206,6 +206,35 @@ export interface CompanySettings {
   updatedAt: string;
 }
 
+// ---------- Telegram ----------
+export interface OrderReminder {
+  id?: string;
+  weekday: number; // 0=Dom … 6=Sáb
+  time: string; // HH:MM, hora de la tienda
+  message: string;
+  followUpTime: string | null;
+  enabled: boolean;
+}
+
+export interface TelegramConfig {
+  tokenConfigured: boolean;
+  botUsername: string | null;
+  botError: string | null;
+  timezone: string;
+  chatId: string | null;
+  chatTitle: string;
+  notifyNewOrders: boolean;
+  highlightSupplierIds: string[];
+  suppliers: { id: string; name: string }[];
+  reminders: OrderReminder[];
+}
+
+export interface TelegramChat {
+  id: string;
+  title: string;
+  type: string;
+}
+
 // ---------- Recetas ----------
 export type RecipeType = 'alimento' | 'bebida' | 'otros';
 export type DrinkTemp = 'fria' | 'caliente';

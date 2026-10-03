@@ -14,6 +14,9 @@ import type {
   InventoryMovement,
   Location,
   CompanySettings,
+  TelegramConfig,
+  TelegramChat,
+  OrderReminder,
   UserPermissions,
 } from '../types';
 
@@ -464,6 +467,29 @@ export async function updateSettings(token: string, data: { name?: string; logo?
   return handleResponse(await fetch(`${BASE}/api/settings`, {
     method: 'PUT', headers: authHeaders(token), body: JSON.stringify(data),
   }));
+}
+
+// ---- Telegram ----
+
+export async function getTelegramConfig(token: string): Promise<TelegramConfig> {
+  return handleResponse(await fetch(`${BASE}/api/telegram`, { headers: authHeaders(token), cache: NO_STORE }));
+}
+
+export async function updateTelegramConfig(
+  token: string,
+  data: { chatId?: string | null; chatTitle?: string; notifyNewOrders?: boolean; highlightSupplierIds?: string[]; reminders?: OrderReminder[] },
+): Promise<TelegramConfig> {
+  return handleResponse(await fetch(`${BASE}/api/telegram`, {
+    method: 'PUT', headers: authHeaders(token), body: JSON.stringify(data),
+  }));
+}
+
+export async function detectTelegramChats(token: string): Promise<TelegramChat[]> {
+  return handleResponse(await fetch(`${BASE}/api/telegram/detect-chats`, { method: 'POST', headers: authHeaders(token) }));
+}
+
+export async function sendTelegramTest(token: string): Promise<void> {
+  await handleResponse(await fetch(`${BASE}/api/telegram/test`, { method: 'POST', headers: authHeaders(token) }));
 }
 
 // ---- Inventario ----

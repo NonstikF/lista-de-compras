@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma';
 import { articleImageSources, articleImageUrl } from '../lib/articleImages';
+import { notifyNewOrder } from '../lib/orderNotifications';
 
 const storeTicketSchema = z.object({
     supplierName: z.string().min(1, 'Proveedor requerido'),
@@ -220,6 +221,7 @@ router.post('/', async (req: Request, res: Response) => {
             data: { ...rest, total, items: { create: items } },
             include: { items: true },
         });
+        notifyNewOrder(order);
         const articleMap = await getArticleInfoMap(order.items.map(i => i.articleId));
         res.status(201).json(formatStoreOrder(order, articleMap));
     } catch (err) {

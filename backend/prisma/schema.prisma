@@ -217,6 +217,32 @@ model CompanySettings {
   updatedAt DateTime @updatedAt
 }
 
+// ---------- Telegram ----------
+// Singleton: el grupo al que escribe el bot y qué avisa. El token del bot es un
+// secreto y vive en la variable de entorno TELEGRAM_BOT_TOKEN, nunca aquí.
+model TelegramSettings {
+  id                   Int      @id @default(1)
+  chatId               String?
+  chatTitle            String   @default("")
+  notifyNewOrders      Boolean  @default(true)
+  highlightSupplierIds String   @default("[]") // JSON string[] de Supplier.id
+  updatedAt            DateTime @updatedAt
+}
+
+// Recordatorio semanal del día de pedido. Las horas son "HH:MM" en la zona
+// horaria de la tienda (APP_TIMEZONE, America/Tijuana por defecto).
+model OrderReminder {
+  id             String   @id @default(cuid())
+  weekday        Int      // 0=Dom … 6=Sáb
+  time           String
+  message        String
+  followUpTime   String?  // si a esta hora no hay pedido registrado ese día, se avisa de nuevo
+  enabled        Boolean  @default(true)
+  lastSentOn     String?  // "YYYY-MM-DD" del último recordatorio enviado
+  lastFollowUpOn String?  // "YYYY-MM-DD" de la última revisión de seguimiento
+  createdAt      DateTime @default(now())
+}
+
 // ---------- Tickets de proveedor ----------
 model SupplierTicket {
   id         String   @id @default(cuid())

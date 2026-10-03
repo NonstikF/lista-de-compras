@@ -18,6 +18,8 @@ import usersRouter from './routes/users';
 import inventoryRouter from './routes/inventory';
 import locationsRouter from './routes/locations';
 import settingsRouter from './routes/settings';
+import telegramRouter from './routes/telegram';
+import { startReminderScheduler } from './lib/reminders';
 
 declare global {
     namespace Express {
@@ -88,8 +90,10 @@ app.use('/api/users', requirePermission('users'), usersRouter);
 app.use('/api/inventory', requirePermission('inventory'), inventoryRouter);
 app.use('/api/locations', requirePermission('locations'), locationsRouter);
 app.use('/api/settings', requirePermission('settings'), settingsRouter);
+app.use('/api/telegram', requirePermission('settings'), telegramRouter);
 
 const port = process.env.PORT || 4000;
 app.listen(port, () => {
     console.log(`Servidor Backend escuchando en http://localhost:${port}`);
+    startReminderScheduler();
 });

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import type { CompanySettings } from '../../types';
 import { AuthError, getSettings, updateSettings } from '../../services/api';
 import { Button, Field, Input, MIcon, useToast } from '../ui';
+import TelegramSettings from './TelegramSettings';
 
 interface SettingsViewProps {
     authToken: string;
@@ -177,6 +178,10 @@ const SettingsView: React.FC<SettingsViewProps> = ({ authToken, onAuthError }) =
                         {saving ? 'Guardando…' : 'Guardar cambios'}
                     </Button>
                 </div>
+            </div>
+
+            <div className="mt-6">
+                <TelegramSettings authToken={authToken} onAuthError={onAuthError} />
             </div>
         </div>
     );
