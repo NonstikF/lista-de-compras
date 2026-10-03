@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import type { PermissionKey, UserPermissions } from '../../types';
+import { BRANDING_CHANGED, getBranding, type Branding } from '../../services/api';
 
 export type AppView = 'login' | 'dashboard' | 'orders' | 'articles' | 'recipes' | 'store' | 'suppliers' | 'users' | 'inventory' | 'locations' | 'settings';
 
@@ -27,6 +28,18 @@ interface SidebarProps {
 const Sidebar: React.FC<SidebarProps> = ({ onLogout, setView, currentView, permissions }) => {
   const [collapsed, setCollapsed] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
+  const [branding, setBranding] = useState<Branding | null>(null);
+
+  useEffect(() => {
+    const load = () => { getBranding().then(setBranding).catch(() => {}); };
+    load();
+    window.addEventListener(BRANDING_CHANGED, load);
+    return () => window.removeEventListener(BRANDING_CHANGED, load);
+  }, []);
+
+  // Fall back to the PlantArte mark until a name/logo is configured.
+  const companyName = branding?.name.trim() || 'PlantArte';
+  const logoUrl = branding?.logoUrl ?? null;
 
   const allowedItems = navItems.filter(n => n.view !== 'login' && permissions[n.view as PermissionKey]);
   const primaryItems = allowedItems.filter(n => PRIMARY_NAV.includes(n.view));
@@ -47,20 +60,24 @@ const Sidebar: React.FC<SidebarProps> = ({ onLogout, setView, currentView, permi
         }`}
       >
         {/* Logo */}
-        <div className={`flex items-center h-16 px-3 border-b border-surface-variant gap-2 ${collapsed ? 'justify-center' : ''}`}>
+        <div className={`flex items-center min-h-16 py-2 px-3 border-b border-surface-variant gap-2 ${collapsed ? 'justify-center' : ''}`}>
           <button
             onClick={() => setView('dashboard')}
-            className="w-9 h-9 rounded-lg bg-primary flex items-center justify-center shrink-0 overflow-hidden"
+            className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 overflow-hidden ${logoUrl ? 'bg-white border border-surface-variant' : 'bg-primary'}`}
             aria-label="Ir al panel"
+            title={companyName}
           >
-            <img src="/icon.png" alt="PlantArte" className="w-7 h-7 object-contain" />
+            {logoUrl
+              ? <img src={logoUrl} alt={companyName} className="w-full h-full object-contain" />
+              : <img src="/icon.png" alt={companyName} className="w-7 h-7 object-contain" />}
           </button>
           {!collapsed && (
             <span
               onClick={() => setView('dashboard')}
-              className="font-epilogue text-lg font-extrabold text-primary tracking-tight cursor-pointer select-none"
+              title={companyName}
+              className="font-epilogue text-sm font-extrabold text-primary tracking-tight leading-tight cursor-pointer select-none line-clamp-2 break-words"
             >
-              PlantArte
+              {companyName}
             </span>
           )}
         </div>

@@ -464,9 +464,25 @@ export async function getSettings(token: string): Promise<CompanySettings> {
 }
 
 export async function updateSettings(token: string, data: { name?: string; logo?: string | null }): Promise<CompanySettings> {
-  return handleResponse(await fetch(`${BASE}/api/settings`, {
+  const updated: CompanySettings = await handleResponse(await fetch(`${BASE}/api/settings`, {
     method: 'PUT', headers: authHeaders(token), body: JSON.stringify(data),
   }));
+  window.dispatchEvent(new Event(BRANDING_CHANGED));
+  return updated;
+}
+
+// Company name and logo shown in the sidebar. Readable by every user.
+export interface Branding {
+  name: string;
+  logoUrl: string | null;
+}
+
+// Fired after the settings are saved so the sidebar refreshes right away.
+export const BRANDING_CHANGED = 'branding-changed';
+
+export async function getBranding(): Promise<Branding> {
+  const branding: Branding = await handleResponse(await fetch(`${BASE}/api/branding`, { cache: NO_STORE }));
+  return { ...branding, logoUrl: resolveImageUrl(branding.logoUrl) };
 }
 
 // ---- Telegram ----
