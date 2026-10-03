@@ -9,50 +9,52 @@ export type NewOrder = {
     items: { articleId: string; name: string; qty: number; supplierName: string; supplierId: string | null }[];
 };
 
-// Telegram rejects messages over 4096 characters.
-const MAX_LENGTH = 3800;
-
 const money = (n: number) => `$${n.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
+const articles = (n: number) => `${n} artículo${n !== 1 ? 's' : ''}`;
+
+// The notice names the suppliers involved but never the products: a list in
+// the chat invited people to fill the order from Telegram, where it goes stale
+// and mistakes slip in. The order is managed in the app.
+//
 // Telegram has no colours, so a highlighted order gets a 🚨 header, its
 // suppliers listed first and marked 🔴, and it is the only kind that rings —
 // regular orders arrive silently.
 export function buildNewOrderMessage(order: NewOrder, highlight: HighlightRule, appUrl?: string): { text: string; highlighted: boolean } {
-    const groups = new Map<string, { name: string; highlighted: boolean; items: NewOrder['items'] }>();
+    const groups = new Map<string, { name: string; highlighted: boolean; articleIds: Set<string> }>();
     for (const item of order.items) {
         const name = item.supplierName || 'Sin proveedor';
         const key = name.toLowerCase();
         const isHighlighted = (!!item.supplierId && highlight.ids.has(item.supplierId)) || highlight.names.has(key);
-        const group = groups.get(key) ?? { name, highlighted: false, items: [] };
+        const group = groups.get(key) ?? { name, highlighted: false, articleIds: new Set<string>() };
         group.highlighted ||= isHighlighted;
-        group.items.push(item);
+        group.articleIds.add(item.articleId);
         groups.set(key, group);
     }
     const ordered = [...groups.values()].sort((a, b) => Number(b.highlighted) - Number(a.highlighted) || a.name.localeCompare(b.name));
     const highlightedNames = ordered.filter(g => g.highlighted).map(g => g.name);
     const articleCount = new Set(order.items.map(i => i.articleId)).size;
 
-    const head: string[] = [];
+    const lines: string[] = [];
     if (highlightedNames.length > 0) {
-        head.push(`🚨🚨 <b>PEDIDO CON ${escapeHtml(highlightedNames.join(' / ').toUpperCase())}</b> 🚨🚨`, '');
+        lines.push(`🚨🚨 <b>PEDIDO CON ${escapeHtml(highlightedNames.join(' / ').toUpperCase())}</b> 🚨🚨`, '');
     }
-    head.push(`🛒 <b>Nuevo pedido T-${order.id}</b>`);
-    head.push(`👤 ${escapeHtml(order.customerName)} · ${articleCount} artículo${articleCount !== 1 ? 's' : ''} · ${money(order.total)}`);
-    if (order.notes.trim()) head.push(`📝 ${escapeHtml(order.notes.trim())}`);
+    lines.push(`🛒 <b>Nuevo pedido T-${order.id}</b>`);
+    lines.push(`👤 ${escapeHtml(order.customerName)} · ${articles(articleCount)} · ${money(order.total)}`);
+    if (order.notes.trim()) lines.push(`📝 ${escapeHtml(order.notes.trim())}`);
 
-    const tail = appUrl ? `\n\n<a href="${escapeHtml(appUrl)}">Abrir en la app</a>` : '';
-    let body = '';
-    let omitted = 0;
+    lines.push('', '<b>Proveedores</b>');
     for (const g of ordered) {
-        const lines = [`\n<b>${g.highlighted ? '🔴 ' : ''}${escapeHtml(g.name)}</b>`, ...g.items.map(i => `• ${i.qty} × ${escapeHtml(i.name)}`)];
-        for (const line of lines) {
-            if (head.join('\n').length + body.length + line.length + tail.length + 40 > MAX_LENGTH) { omitted++; continue; }
-            body += `\n${line}`;
-        }
+        lines.push(g.highlighted
+            ? `🔴 <b>${escapeHtml(g.name)}</b> · ${articles(g.articleIds.size)}`
+            : `• ${escapeHtml(g.name)} · ${articles(g.articleIds.size)}`);
     }
-    if (omitted > 0) body += `\n… y más artículos, revisa el pedido en la app.`;
 
-    return { text: head.join('\n') + body + tail, highlighted: highlightedNames.length > 0 };
+    lines.push('', appUrl
+        ? `👉 <a href="${escapeHtml(appUrl)}">Abrir en la app</a>`
+        : '👉 Revisa el pedido en la app.');
+
+    return { text: lines.join('\n'), highlighted: highlightedNames.length > 0 };
 }
 
 export type HighlightRule = { ids: Set<string>; names: Set<string> };
