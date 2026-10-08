@@ -13,6 +13,14 @@ export function telegramToken(): string | null {
     return process.env.TELEGRAM_BOT_TOKEN?.trim() || null;
 }
 
+// When a group is upgraded to a supergroup its chat id changes, and Telegram
+// answers messages to the old id with the new one in migrate_to_chat_id.
+class TelegramError extends Error {
+    constructor(message: string, readonly migrateToChatId?: string) {
+        super(message);
+    }
+}
+
 async function callTelegram<T>(method: string, body: Record<string, unknown> = {}): Promise<T> {
     const token = telegramToken();
     if (!token) throw new Error('Falta la variable TELEGRAM_BOT_TOKEN');
@@ -28,8 +36,13 @@ async function callTelegram<T>(method: string, body: Record<string, unknown> = {
         // The request URL carries the token; never surface the raw error.
         throw new Error('No se pudo conectar con Telegram');
     }
-    const data = await res.json().catch(() => null) as { ok: boolean; result?: T; description?: string } | null;
-    if (!data?.ok) throw new Error(`Telegram: ${data?.description ?? `error ${res.status}`}`);
+    const data = await res.json().catch(() => null) as {
+        ok: boolean; result?: T; description?: string; parameters?: { migrate_to_chat_id?: number };
+    } | null;
+    if (!data?.ok) {
+        const migrateTo = data?.parameters?.migrate_to_chat_id;
+        throw new TelegramError(`Telegram: ${data?.description ?? `error ${res.status}`}`, migrateTo ? String(migrateTo) : undefined);
+    }
     return data.result as T;
 }
 
@@ -43,14 +56,23 @@ export async function getBotUsername(): Promise<string> {
 }
 
 // `silent` delivers without sound, so only highlighted messages ring.
+// A group upgraded to a supergroup is followed to its new id, which is saved
+// so later messages go straight there.
 export async function sendTelegramMessage(chatId: string, html: string, opts: { silent?: boolean } = {}): Promise<void> {
-    await callTelegram('sendMessage', {
-        chat_id: chatId,
+    const send = (to: string) => callTelegram('sendMessage', {
+        chat_id: to,
         text: html,
         parse_mode: 'HTML',
         disable_notification: opts.silent ?? false,
         link_preview_options: { is_disabled: true },
     });
+    try {
+        await send(chatId);
+    } catch (err) {
+        if (!(err instanceof TelegramError) || !err.migrateToChatId) throw err;
+        await prisma.telegramSettings.updateMany({ where: { chatId }, data: { chatId: err.migrateToChatId } });
+        await send(err.migrateToChatId);
+    }
 }
 
 export type TelegramChat = { id: string; title: string; type: string };
