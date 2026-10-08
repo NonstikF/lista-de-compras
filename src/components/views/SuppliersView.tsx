@@ -179,6 +179,7 @@ const SupplierEditModal: React.FC<{
                                 value={newLocation}
                                 onChange={e => { setNewLocation(e.target.value); setLocationError(''); }}
                                 placeholder="Link de Google Maps o descripción"
+                                className="min-w-0"
                                 onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addLocation(); } }}
                             />
                             <Button type="button" variant="tonal" icon="add" onClick={addLocation}>
@@ -217,6 +218,7 @@ const SupplierEditModal: React.FC<{
                                 value={newZone}
                                 onChange={e => { setNewZone(e.target.value); setZoneError(''); }}
                                 placeholder="Nombre de zona"
+                                className="min-w-0"
                                 onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addZone(); } }}
                             />
                             <Button type="button" variant="tonal" icon="add" onClick={addZone}>
@@ -347,20 +349,21 @@ const SupplierMapModal: React.FC<{
                 onClick={e => e.stopPropagation()}
             >
                 {/* Header */}
-                <div className="flex items-center justify-between px-5 py-4 border-b border-surface-variant">
-                    <div>
+                <div className="flex items-center justify-between gap-3 px-5 py-4 border-b border-surface-variant">
+                    <div className="min-w-0">
                         <p className="font-epilogue font-bold text-on-background">{supplier.name}</p>
                         {mapLocations.length > 0 && (
                             <p className="text-xs text-on-surface-variant mt-0.5 flex items-center gap-1">
-                                <MIcon name="location_on" size={13} className="text-error" />
-                                <span className="truncate max-w-[280px]">{activeLocation}</span>
+                                <MIcon name="location_on" size={13} className="text-error flex-shrink-0" />
+                                <span className="truncate min-w-0 max-w-[280px]">{activeLocation}</span>
                             </p>
                         )}
                     </div>
                     <button
                         type="button"
                         onClick={onClose}
-                        className="p-1.5 rounded-lg hover:bg-surface-container transition-colors text-on-surface-variant"
+                        className="p-1.5 rounded-lg hover:bg-surface-container transition-colors text-on-surface-variant flex-shrink-0"
+                        aria-label="Cerrar"
                     >
                         <MIcon name="close" />
                     </button>
@@ -684,10 +687,10 @@ const SupplierTicketsModal: React.FC<{
                 onClose={onClose}
                 title={
                     <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
+                        <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
                             <MIcon name="receipt_long" className="text-primary text-lg" fill />
                         </div>
-                        <div>
+                        <div className="min-w-0">
                             <span className="text-base font-bold text-on-background">{supplier.name}</span>
                             <p className="text-xs font-normal text-on-surface-variant leading-none mt-0.5">
                                 {totalCount} ticket{totalCount !== 1 ? 's' : ''} · {totalGroups} pedido{totalGroups !== 1 ? 's' : ''}
@@ -697,7 +700,7 @@ const SupplierTicketsModal: React.FC<{
                 }
                 maxWidth="max-w-3xl"
                 footer={
-                    <div className="flex items-center justify-between w-full">
+                    <div className="flex flex-wrap items-center justify-between gap-2 w-full">
                         <button
                             type="button"
                             onClick={() => fileRef.current?.click()}
@@ -769,7 +772,7 @@ const SupplierTicketsModal: React.FC<{
                                             className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all whitespace-nowrap ${isActive ? 'bg-primary text-on-primary' : 'bg-surface-container text-on-surface-variant'}`}
                                         >
                                             <MIcon name={allInvoiced ? 'check_circle' : 'receipt'} className="text-sm leading-none" fill={allInvoiced} />
-                                            {key || 'Sin ref.'}
+                                            <span className="truncate max-w-[160px]">{key || 'Sin ref.'}</span>
                                         </button>
                                     );
                                 })}
@@ -857,9 +860,9 @@ const SupplierTicketsModal: React.FC<{
                         <div className="flex-1 overflow-y-auto">
                             {activeGroup !== null && (
                                 <>
-                                    <div className="sticky top-0 z-10 bg-white/95 backdrop-blur-sm border-b border-surface-variant px-4 py-3 flex items-center justify-between">
-                                        <div>
-                                            <p className="font-semibold text-sm text-on-background">
+                                    <div className="sticky top-0 z-10 bg-white/95 backdrop-blur-sm border-b border-surface-variant px-4 py-3 flex items-center justify-between gap-2">
+                                        <div className="min-w-0">
+                                            <p className="font-semibold text-sm text-on-background truncate">
                                                 {isOrderGroup
                                                     ? `Pedido #${activeKey}`
                                                     : activeKey ? `Ref. ${activeKey}` : 'Sin referencia'}
@@ -872,12 +875,12 @@ const SupplierTicketsModal: React.FC<{
                                             </p>
                                         </div>
                                         {isOrderGroup && (
-                                            <span className="flex items-center gap-1 text-xs font-medium text-blue-500 bg-blue-50 px-2.5 py-1 rounded-full">
+                                            <span className="flex items-center gap-1 text-xs font-medium text-blue-500 bg-blue-50 px-2.5 py-1 rounded-full flex-shrink-0">
                                                 <MIcon name="shopping_cart" className="text-sm" /> Pedido
                                             </span>
                                         )}
                                         {!isOrderGroup && invoicedCount === activeSupplierTickets.length && activeSupplierTickets.length > 0 && (
-                                            <span className="flex items-center gap-1 text-xs font-semibold text-success bg-success/10 px-2.5 py-1 rounded-full">
+                                            <span className="flex items-center gap-1 text-xs font-semibold text-success bg-success/10 px-2.5 py-1 rounded-full flex-shrink-0">
                                                 <MIcon name="check_circle" className="text-sm" fill /> Completo
                                             </span>
                                         )}
@@ -970,27 +973,28 @@ const SupplierTicketsModal: React.FC<{
                                                         </div>
                                                         <div className={`px-3 py-2 ${ticket.invoiced ? 'bg-success/5' : 'bg-white'}`}>
                                                             <p className="text-xs text-on-surface-variant">{new Date(ticket.createdAt).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
-                                                            <div className="flex items-center justify-between mt-1.5">
-                                                                <div className="flex items-center gap-1.5">
+                                                            <div className="flex items-center justify-between gap-1 mt-1.5">
+                                                                <div className="flex items-center gap-1.5 min-w-0">
                                                                     <button
                                                                         type="button"
                                                                         role="switch"
                                                                         aria-checked={ticket.invoiced}
                                                                         disabled={togglingId === ticket.id}
                                                                         onClick={() => handleToggleInvoiced(ticket)}
-                                                                        className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none disabled:opacity-50 ${ticket.invoiced ? 'bg-success' : 'bg-surface-variant'}`}
+                                                                        className={`relative inline-flex h-5 w-9 flex-shrink-0 items-center rounded-full transition-colors focus:outline-none disabled:opacity-50 ${ticket.invoiced ? 'bg-success' : 'bg-surface-variant'}`}
                                                                     >
                                                                         <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-sm transition-transform ${ticket.invoiced ? 'translate-x-4.5' : 'translate-x-0.5'}`} />
                                                                     </button>
-                                                                    <span className={`text-[11px] font-semibold ${ticket.invoiced ? 'text-success' : 'text-on-surface-variant'}`}>
+                                                                    <span className={`text-[11px] font-semibold truncate ${ticket.invoiced ? 'text-success' : 'text-on-surface-variant'}`}>
                                                                         {togglingId === ticket.id ? '…' : ticket.invoiced ? 'Facturado' : 'Sin factura'}
                                                                     </span>
                                                                 </div>
                                                                 <button
                                                                     type="button"
                                                                     onClick={() => setConfirmDeleteId(ticket.id)}
-                                                                    className="p-1 rounded-lg text-on-surface-variant hover:text-error hover:bg-error/8 transition-colors"
+                                                                    className="p-1 rounded-lg text-on-surface-variant hover:text-error hover:bg-error/8 transition-colors flex-shrink-0"
                                                                     title="Eliminar"
+                                                                    aria-label="Eliminar ticket"
                                                                 >
                                                                     <MIcon name="delete" className="text-base leading-none" />
                                                                 </button>
@@ -1112,13 +1116,13 @@ const SupplierRow: React.FC<{
     onTickets: (s: Supplier) => void;
     onMap: (s: Supplier) => void;
 }> = ({ supplier, pendingInvoiced, onEdit, onDelete, onTickets, onMap }) => (
-    <div className="bg-white rounded-xl border border-surface-variant shadow-sm p-4 flex items-center gap-4 hover:shadow-md transition-shadow">
+    <div className="bg-white rounded-xl border border-surface-variant shadow-sm p-4 flex flex-wrap sm:flex-nowrap items-center gap-x-4 gap-y-3 sm:gap-4 hover:shadow-md transition-shadow">
         <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
             <MIcon name="local_shipping" className="text-primary" fill />
         </div>
         <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
-                <p className="font-epilogue font-semibold text-on-background truncate">{supplier.name}</p>
+                <p className="font-epilogue font-semibold text-on-background truncate min-w-0 max-w-full">{supplier.name}</p>
                 {pendingInvoiced > 0 && (
                     <span
                         title={`${pendingInvoiced} ticket${pendingInvoiced !== 1 ? 's' : ''} sin facturar`}
@@ -1185,12 +1189,12 @@ const SupplierRow: React.FC<{
                 })}
             </div>
         </div>
-        <div className="flex gap-1 flex-shrink-0">
+        <div className="flex gap-1 flex-shrink-0 w-full sm:w-auto justify-end">
             <Button variant="tonal" size="sm" icon="receipt_long" onClick={() => onTickets(supplier)}>
                 Tickets
             </Button>
             {(supplier.locations?.length ?? 0) > 0 && (
-                <Button variant="tonal" size="sm" icon="map" onClick={() => onMap(supplier)} />
+                <Button variant="tonal" size="sm" icon="map" onClick={() => onMap(supplier)} aria-label="Ver mapa" title="Ver mapa" />
             )}
             {supplier.name !== 'Sin Proveedor' && (
                 <>
@@ -1203,6 +1207,8 @@ const SupplierRow: React.FC<{
                         icon="delete"
                         className="text-error hover:bg-error/8"
                         onClick={() => onDelete(supplier)}
+                        aria-label="Eliminar proveedor"
+                        title="Eliminar proveedor"
                     />
                 </>
             )}
@@ -1293,8 +1299,8 @@ const SuppliersView: React.FC<SuppliersViewProps> = ({ authToken, onAuthError })
 
     return (
         <main className="max-w-3xl mx-auto px-4 md:px-6 py-8 pb-28 md:pb-10">
-            <div className="flex items-center justify-between mb-6">
-                <div>
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
+                <div className="min-w-0">
                     <h1 className="font-epilogue text-3xl font-bold text-on-background">Proveedores</h1>
                     <p className="text-on-surface-variant mt-0.5">
                         {isLoading ? 'Cargando…' : suppliers.length === 0 ? 'Sin proveedores' : `${suppliers.length} proveedor${suppliers.length !== 1 ? 'es' : ''}`}
