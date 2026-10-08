@@ -26,6 +26,14 @@ function readScanCodeFromUrl(): string | null {
   try { return decodeURIComponent(m[1]); } catch { return m[1]; }
 }
 
+// /pedido/187 opens store order T-187 (the link in the Telegram notice).
+const ORDER_PATH_RE = /^\/pedido\/(\d+)\/?$/;
+
+function readOrderFromUrl(): string | null {
+  const m = window.location.pathname.match(ORDER_PATH_RE);
+  return m ? `T-${m[1]}` : null;
+}
+
 const App: React.FC = () => {
   const [authToken, setAuthToken] = useState<string | null>(() => {
     return localStorage.getItem('authToken');
@@ -46,8 +54,11 @@ const App: React.FC = () => {
 
   const [scanCode, setScanCode] = useState<string | null>(() => readScanCodeFromUrl());
 
+  const [focusOrderId, setFocusOrderId] = useState<string | null>(() => readOrderFromUrl());
+
   const [view, setView] = useState<AppView>(() => {
     if (!localStorage.getItem('authToken')) return 'login';
+    if (readOrderFromUrl()) return 'orders';
     const saved = localStorage.getItem('lastView') as AppView | null;
     return saved && saved !== 'login' ? saved : 'dashboard';
   });
@@ -81,8 +92,17 @@ const App: React.FC = () => {
   };
 
   const goToView = (nextView: AppView) => {
+    setFocusOrderId(null);
     setView(canAccess(nextView) ? nextView : firstAllowedView());
   };
+
+  // The order link has done its job once the app is open on it; drop it from
+  // the address bar so a reload or a later visit starts normally.
+  useEffect(() => {
+    if (isAuthenticated && ORDER_PATH_RE.test(window.location.pathname)) {
+      window.history.replaceState({}, '', '/');
+    }
+  }, [isAuthenticated]);
 
   const handleLoginSuccess = (token: string, user: AuthUser) => {
     const normalizedUser = { ...user, permissions: normalizePermissions(user.permissions) };
@@ -90,7 +110,7 @@ const App: React.FC = () => {
     localStorage.setItem('authUser', JSON.stringify(normalizedUser));
     setAuthToken(token);
     setAuthUser(normalizedUser);
-    setView(firstAllowedView(normalizedUser));
+    setView(focusOrderId && normalizedUser.permissions.orders ? 'orders' : firstAllowedView(normalizedUser));
   };
 
   const handleLogout = () => {
@@ -165,7 +185,7 @@ const App: React.FC = () => {
       case 'orders':
         return (
           <div className="max-w-7xl mx-auto px-4 md:px-6 py-8 pb-28 md:pb-10">
-            <OrdersView authToken={authToken!} onAuthError={handleAuthError} />
+            <OrdersView authToken={authToken!} onAuthError={handleAuthError} focusOrderId={focusOrderId} />
           </div>
         );
       case 'articles':

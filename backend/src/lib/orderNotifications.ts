@@ -50,8 +50,9 @@ export function buildNewOrderMessage(order: NewOrder, highlight: HighlightRule, 
             : `• ${escapeHtml(g.name)} · ${articles(g.articleIds.size)}`);
     }
 
+    // /pedido/:id opens the app on this order (see ORDER_PATH_RE in App.tsx).
     lines.push('', appUrl
-        ? `👉 <a href="${escapeHtml(appUrl)}">Abrir en la app</a>`
+        ? `👉 <a href="${escapeHtml(`${appUrl.replace(/\/+$/, '')}/pedido/${order.id}`)}">Abrir pedido T-${order.id}</a>`
         : '👉 Revisa el pedido en la app.');
 
     return { text: lines.join('\n'), highlighted: highlightedNames.length > 0 };

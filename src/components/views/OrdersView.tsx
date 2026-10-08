@@ -32,6 +32,8 @@ function buildPageRange(current: number, total: number): (number | null)[] {
 interface OrdersViewProps {
   authToken: string;
   onAuthError: () => void;
+  // "T-187": a store order to open, from a /pedido/187 link.
+  focusOrderId?: string | null;
 }
 
 // --- Modal de Imagen ---
@@ -1006,8 +1008,16 @@ const StoreOrderCard: React.FC<{
     onItemUpdate: (orderId: string, itemId: number, isPurchased: boolean, quantityPurchased: number, quantityPurchasedByOthers?: number, notFound?: boolean) => void;
     onViewImage: (url: string, name: string) => void;
     onOrderEdited: (updated: StoreOrder) => void;
-}> = ({ order, authToken, onAuthError, onComplete, onItemUpdate, onViewImage, onOrderEdited }) => {
-    const [isExpanded, setIsExpanded] = useState(false);
+    focused?: boolean;
+}> = ({ order, authToken, onAuthError, onComplete, onItemUpdate, onViewImage, onOrderEdited, focused = false }) => {
+    const [isExpanded, setIsExpanded] = useState(focused);
+    const cardRef = useRef<HTMLElement>(null);
+    // Opened from a link (e.g. the Telegram notice): expand it and bring it into view.
+    useEffect(() => {
+        if (!focused) return;
+        setIsExpanded(true);
+        cardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, [focused]);
     const [ticketModalSupplier, setTicketModalSupplier] = useState<string | null>(null);
     const [editModal, setEditModal] = useState(false);
     const [ticketCounts, setTicketCounts] = useState<Record<string, number>>({});
@@ -1103,7 +1113,7 @@ const StoreOrderCard: React.FC<{
     };
 
     return (
-        <article aria-labelledby={`store-order-heading-${order.id}`} className="bg-white rounded-2xl shadow-sm border border-surface-variant overflow-hidden">
+        <article ref={cardRef} aria-labelledby={`store-order-heading-${order.id}`} className={`bg-white rounded-2xl shadow-sm border overflow-hidden scroll-mt-4 ${focused ? 'border-primary ring-2 ring-primary/40' : 'border-surface-variant'}`}>
             <button
                 type="button"
                 onClick={() => setIsExpanded(!isExpanded)}
@@ -2028,11 +2038,12 @@ const PendingItemsSection: React.FC<{
 };
 
 // --- COMPONENTE PRINCIPAL ---
-const OrdersView: React.FC<OrdersViewProps> = ({ authToken, onAuthError }) => {
+const OrdersView: React.FC<OrdersViewProps> = ({ authToken, onAuthError, focusOrderId = null }) => {
     const [error, setError] = useState<string | null>(null);
     const [tabMode, setTabMode] = useState<TabMode>('store');
     const [storeOrders, setStoreOrders] = useState<StoreOrder[]>([]);
     const [loadingStoreOrders, setLoadingStoreOrders] = useState(false);
+    const [storeOrdersLoaded, setStoreOrdersLoaded] = useState(false);
     // Completed orders live in their own paginated slice — the history grows without bound.
     const [completedOrders, setCompletedOrders] = useState<StoreOrder[]>([]);
     const [completedLoading, setCompletedLoading] = useState(false);
@@ -2101,6 +2112,7 @@ const OrdersView: React.FC<OrdersViewProps> = ({ authToken, onAuthError }) => {
                 const data = await getStoreOrders(authToken, 'pending');
                 if (!cancelled) {
                     setStoreOrders(prev => [...data, ...prev.filter(o => o.status !== 'pending')]);
+                    setStoreOrdersLoaded(true);
                 }
             } catch (err) {
                 if (err instanceof AuthError) { onAuthError(); return; }
@@ -2148,6 +2160,17 @@ const OrdersView: React.FC<OrdersViewProps> = ({ authToken, onAuthError }) => {
 
     const pendingStoreOrders = storeOrders.filter(o => o.status === 'pending');
 
+    // A linked order that isn't pending has been completed (or doesn't exist);
+    // say so instead of silently showing the list.
+    useEffect(() => {
+        if (!focusOrderId || !storeOrdersLoaded) return;
+        if (!storeOrders.some(o => o.id === focusOrderId && o.status === 'pending')) {
+            showToast('info', `El pedido ${focusOrderId} ya no está pendiente`);
+        }
+        // Only once per link, after the first load.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [focusOrderId, storeOrdersLoaded]);
+
     const pageNumbers = buildPageRange(completedPage, completedTotalPages);
 
     return (
@@ -2190,6 +2213,7 @@ const OrdersView: React.FC<OrdersViewProps> = ({ authToken, onAuthError }) => {
                         <StoreOrderCard
                             key={order.id}
                             order={order}
+                            focused={order.id === focusOrderId}
                             authToken={authToken}
                             onAuthError={onAuthError}
                             onComplete={handleCompleteStoreOrder}
