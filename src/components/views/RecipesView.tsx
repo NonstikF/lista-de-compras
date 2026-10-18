@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import type { Recipe, RecipeIngredient, RecipeSizeVariant, DrinkTemp, DrinkSize, RecipeType, RecipeStatus } from '../../types';
 import { AuthError, getRecipes, createRecipe, updateRecipe, deleteRecipe } from '../../services/api';
-import { Modal, Button, Field, Input, Select, Textarea, Chip, MIcon, useToast } from '../ui';
+import { Modal, Button, Field, Input, Select, Textarea, MIcon, useToast } from '../ui';
 
 interface RecipesViewProps {
     authToken: string;
@@ -959,7 +959,27 @@ const RecipeEditModal: React.FC<{
 };
 
 // ---------- Vista principal ----------
-type CategoryFilter = 'todas' | Recipe['category'];
+const STATUS_DOT: Record<RecipeStatus, string> = {
+    completa: 'bg-primary',
+    incompleta: 'bg-amber-500',
+    sin_receta: 'bg-error',
+};
+
+const FilterPill: React.FC<{ active: boolean; onClick: () => void; children: React.ReactNode; title?: string }> = ({ active, onClick, children, title }) => (
+    <button
+        type="button"
+        onClick={onClick}
+        title={title}
+        aria-pressed={active}
+        className={`flex-shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border transition whitespace-nowrap ${
+            active
+                ? 'bg-primary text-on-primary border-primary shadow-sm'
+                : 'bg-white text-on-surface-variant border-outline-variant hover:border-primary/40 hover:text-primary'
+        }`}
+    >
+        {children}
+    </button>
+);
 
 const RecipesView: React.FC<RecipesViewProps> = ({ authToken, onAuthError }) => {
     const [recipes, setRecipes] = useState<Recipe[]>([]);
@@ -970,7 +990,7 @@ const RecipesView: React.FC<RecipesViewProps> = ({ authToken, onAuthError }) => 
     const [viewing, setViewing] = useState<Recipe | null>(null);
     const [confirmDelete, setConfirmDelete] = useState<Recipe | null>(null);
     const [deleting, setDeleting] = useState(false);
-    const [catFilter, setCatFilter] = useState<CategoryFilter>('todas');
+    const [tempFilter, setTempFilter] = useState<DrinkTemp | null>(null);
     const [statusFilter, setStatusFilter] = useState<RecipeStatus | 'todas'>('todas');
     const [menuFilter, setMenuFilter] = useState('todas');
     const [query, setQuery] = useState('');
@@ -997,15 +1017,19 @@ const RecipesView: React.FC<RecipesViewProps> = ({ authToken, onAuthError }) => 
     // Menu categories keep the order in which recipes were first created (the
     // import follows the OlaClick menu order); uncategorized recipes go last.
     const menuCategories = [...new Set(recipes.map(r => r.menuCategory).filter(Boolean))];
-    const statusCount = (s: RecipeStatus) => recipes.filter(r => r.status === s).length;
 
     const q = searchKey(query.trim());
-    const filtered = recipes.filter(r =>
-        (catFilter === 'todas' || normalizeCategory(r.category) === catFilter) &&
-        (statusFilter === 'todas' || r.status === statusFilter) &&
+    // Everything except the status filter, so the status counts reflect the
+    // category, temperature and search currently selected.
+    const scoped = recipes.filter(r =>
         (menuFilter === 'todas' || r.menuCategory === menuFilter) &&
+        (!tempFilter || r.drinkTemps.includes(tempFilter)) &&
         (!q || searchKey(r.name).includes(q) || searchKey(r.description).includes(q))
     );
+    const statusCount = (s: RecipeStatus) => scoped.filter(r => r.status === s).length;
+    const filtered = statusFilter === 'todas' ? scoped : scoped.filter(r => r.status === statusFilter);
+    const hasFilters = menuFilter !== 'todas' || statusFilter !== 'todas' || tempFilter !== null || q !== '';
+    const clearFilters = () => { setMenuFilter('todas'); setStatusFilter('todas'); setTempFilter(null); setQuery(''); };
     const groups = [...menuCategories, '']
         .map(cat => ({ cat, items: filtered.filter(r => r.menuCategory === cat) }))
         .filter(g => g.items.length > 0);
@@ -1061,7 +1085,7 @@ const RecipesView: React.FC<RecipesViewProps> = ({ authToken, onAuthError }) => 
                     <h1 className="font-epilogue text-3xl font-bold text-on-background">Recetas</h1>
                     <p className="text-on-surface-variant mt-0.5">
                         {isLoading ? 'Cargando…' : recipes.length === 0 ? 'Sin recetas' : `${recipes.length} receta${recipes.length !== 1 ? 's' : ''}`}
-                        {!isLoading && statusCount('sin_receta') > 0 && ` · ${statusCount('sin_receta')} sin receta`}
+                        {!isLoading && recipes.some(r => r.status === 'sin_receta') && ` · ${recipes.filter(r => r.status === 'sin_receta').length} sin receta`}
                     </p>
                 </div>
                 <Button variant="filled" icon="add" onClick={handleNewRecipe}>
@@ -1070,36 +1094,87 @@ const RecipesView: React.FC<RecipesViewProps> = ({ authToken, onAuthError }) => 
             </div>
 
             {!isLoading && recipes.length > 0 && (
-                <div className="space-y-3 mb-6">
-                    <div className="flex gap-2 flex-wrap">
+                <div className="sticky top-0 z-30 -mx-4 md:-mx-6 px-4 md:px-6 py-3 mb-5 bg-background/95 backdrop-blur border-b border-surface-variant space-y-2.5">
+                    {/* Búsqueda */}
+                    <div className="relative">
+                        <MIcon name="search" size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant pointer-events-none" />
                         <Input
-                            type="search"
                             value={query}
                             onChange={e => setQuery(e.target.value)}
                             placeholder="Buscar receta…"
-                            className="flex-1 min-w-[180px]"
+                            className="w-full !pl-10 !pr-10 !bg-white"
                         />
-                        {menuCategories.length > 0 && (
-                            <Select value={menuFilter} onChange={e => setMenuFilter(e.target.value)} className="min-w-0 max-w-full">
-                                <option value="todas">Todas las categorías del menú</option>
-                                {menuCategories.map(c => <option key={c} value={c}>{c}</option>)}
-                            </Select>
+                        {query && (
+                            <button
+                                type="button"
+                                onClick={() => setQuery('')}
+                                aria-label="Borrar búsqueda"
+                                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-full text-on-surface-variant hover:bg-surface-container"
+                            >
+                                <MIcon name="close" size={16} />
+                            </button>
                         )}
                     </div>
-                    <div className="flex gap-2 flex-wrap">
-                        <Chip active={statusFilter === 'todas'} onClick={() => setStatusFilter('todas')} icon="apps" count={recipes.length}>Todas</Chip>
-                        {RECIPE_STATUSES.map(s => (
-                            <Chip key={s} active={statusFilter === s} onClick={() => setStatusFilter(s)} icon={STATUS_META[s].icon} count={statusCount(s)}>
-                                {STATUS_META[s].label}
-                            </Chip>
-                        ))}
+
+                    {/* Categorías del menú — scroll horizontal */}
+                    {menuCategories.length > 0 && (
+                        <div className="flex gap-1.5 overflow-x-auto scrollbar-hide -mx-4 px-4 md:mx-0 md:px-0">
+                            <FilterPill active={menuFilter === 'todas'} onClick={() => setMenuFilter('todas')}>
+                                Todas <span className="opacity-70">{recipes.length}</span>
+                            </FilterPill>
+                            {menuCategories.map(c => (
+                                <FilterPill key={c} active={menuFilter === c} onClick={() => setMenuFilter(menuFilter === c ? 'todas' : c)}>
+                                    {c} <span className="opacity-70">{recipes.filter(r => r.menuCategory === c).length}</span>
+                                </FilterPill>
+                            ))}
+                        </div>
+                    )}
+
+                    {/* Estado (segmentado) + temperatura */}
+                    <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide -mx-4 px-4 md:mx-0 md:px-0">
+                        <div className="flex-shrink-0 inline-flex p-0.5 rounded-full bg-surface-container border border-outline-variant">
+                            {(['todas', ...RECIPE_STATUSES] as const).map(s => {
+                                const active = statusFilter === s;
+                                return (
+                                    <button
+                                        key={s}
+                                        type="button"
+                                        onClick={() => setStatusFilter(s)}
+                                        aria-pressed={active}
+                                        className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold whitespace-nowrap transition ${
+                                            active ? 'bg-white text-on-background shadow-sm' : 'text-on-surface-variant hover:text-on-background'
+                                        }`}
+                                    >
+                                        {s !== 'todas' && <span className={`w-2 h-2 rounded-full ${STATUS_DOT[s]}`} />}
+                                        {s === 'todas' ? 'Todas' : STATUS_META[s].label}
+                                        <span className="opacity-60 tabular-nums">{s === 'todas' ? scoped.length : statusCount(s)}</span>
+                                    </button>
+                                );
+                            })}
+                        </div>
+                        <div className="flex-shrink-0 flex gap-1.5 ml-auto">
+                            {DRINK_TEMPS.map(t => (
+                                <FilterPill
+                                    key={t}
+                                    active={tempFilter === t}
+                                    onClick={() => setTempFilter(tempFilter === t ? null : t)}
+                                    title={t === 'fria' ? 'Solo bebidas frías' : 'Solo bebidas calientes'}
+                                >
+                                    <MIcon name={t === 'fria' ? 'ac_unit' : 'local_fire_department'} size={14} />
+                                    {t === 'fria' ? 'Fría' : 'Caliente'}
+                                </FilterPill>
+                            ))}
+                        </div>
                     </div>
-                    <div className="flex gap-2 flex-wrap">
-                        <Chip active={catFilter === 'todas'} onClick={() => setCatFilter('todas')} icon="apps">Todas</Chip>
-                        <Chip active={catFilter === 'caliente'} onClick={() => setCatFilter('caliente')} icon="local_fire_department">Caliente</Chip>
-                        <Chip active={catFilter === 'fria'} onClick={() => setCatFilter('fria')} icon="ac_unit">Fría</Chip>
-                        <Chip active={catFilter === 'especial'} onClick={() => setCatFilter('especial')} icon="auto_awesome">Especial</Chip>
-                    </div>
+
+                    {hasFilters && (
+                        <div className="flex items-center justify-between text-xs text-on-surface-variant">
+                            <span>{filtered.length} de {recipes.length} recetas</span>
+                            <button type="button" onClick={clearFilters} className="font-semibold text-primary hover:underline">
+                                Limpiar filtros
+                            </button>
+                        </div>
+                    )}
                 </div>
             )}
 
