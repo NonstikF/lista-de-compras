@@ -82,7 +82,7 @@ const normalizeRecipe = (recipe: Recipe): Recipe => ({
 const RecipeImage: React.FC<{ recipe: Recipe; className?: string }> = ({ recipe, className = '' }) => {
     const meta = getCategoryMeta(recipe.category);
     if (recipe.image) {
-        return <img src={recipe.image} alt={recipe.name} className={`w-full h-full object-cover ${className}`} />;
+        return <img src={recipe.image} alt={recipe.name} loading="lazy" className={`w-full h-full object-contain bg-surface-container-low ${className}`} />;
     }
     return (
         <div className={`w-full h-full flex items-center justify-center ${meta.color} ${className}`}>
@@ -119,11 +119,11 @@ const RecipeCard: React.FC<{
 
     return (
         <div className="bg-white rounded-2xl border border-surface-variant shadow-sm overflow-hidden flex flex-col hover:shadow-md transition-shadow">
-            <div className="h-40 overflow-hidden">
+            <button type="button" className="aspect-square overflow-hidden" onClick={() => onView(recipe)} aria-label={`Ver ${recipe.name}`}>
                 <RecipeImage recipe={recipe} />
-            </div>
-            <div className="p-4 flex-1 flex flex-col gap-2">
-                <div className="flex items-center gap-2 flex-wrap">
+            </button>
+            <div className="p-2.5 sm:p-4 flex-1 flex flex-col gap-1.5 sm:gap-2">
+                <div className="flex items-center gap-1 sm:gap-2 flex-wrap">
                     <StatusBadge status={recipe.status} />
                     <span className={`inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full ${typeColor}`}>
                         <MIcon name={typeIcon} className="text-sm" fill />
@@ -140,22 +140,22 @@ const RecipeCard: React.FC<{
                         </span>
                     )}
                 </div>
-                <h3 className="font-epilogue font-bold text-on-background leading-tight">{recipe.name}</h3>
+                <h3 className="font-epilogue font-bold text-sm sm:text-base text-on-background leading-tight">{recipe.name}</h3>
                 {recipe.description && (
-                    <p className="text-sm text-on-surface-variant line-clamp-2">{recipe.description}</p>
+                    <p className="text-xs sm:text-sm text-on-surface-variant line-clamp-2">{recipe.description}</p>
                 )}
                 {recipe.status !== 'completa' && recipe.notes && (
                     <p className="text-xs text-amber-800 line-clamp-2">{recipe.notes}</p>
                 )}
             </div>
-            <div className="flex gap-1 px-3 pb-3 border-t border-surface-variant pt-2">
-                <Button variant="outline" size="sm" icon="visibility" className="flex-1" onClick={() => onView(recipe)}>
-                    Ver
+            <div className="flex gap-1 px-2 sm:px-3 pb-2 sm:pb-3 border-t border-surface-variant pt-2">
+                <Button variant="outline" size="sm" icon="visibility" className="flex-1 !px-2 sm:!px-3" onClick={() => onView(recipe)} aria-label="Ver">
+                    <span className="hidden sm:inline">Ver</span>
                 </Button>
-                <Button variant="tonal" size="sm" icon="edit" onClick={() => onEdit(recipe)}>
-                    Editar
+                <Button variant="tonal" size="sm" icon="edit" className="flex-1 sm:flex-none !px-2 sm:!px-3" onClick={() => onEdit(recipe)} aria-label="Editar">
+                    <span className="hidden sm:inline">Editar</span>
                 </Button>
-                <Button variant="text" size="sm" icon="delete" className="text-error hover:bg-error/8" onClick={() => onDelete(recipe)} />
+                <Button variant="text" size="sm" icon="delete" className="text-error hover:bg-error/8 !px-2 sm:!px-3" onClick={() => onDelete(recipe)} aria-label="Eliminar" />
             </div>
         </div>
     );
@@ -197,7 +197,7 @@ const RecipeDetailModal: React.FC<{ recipe: Recipe; onClose: () => void; onEdit:
         >
             <div className="p-6 space-y-5">
                 {recipe.image && (
-                    <img src={recipe.image} alt={recipe.name} className="w-full h-52 object-cover rounded-xl" />
+                    <img src={recipe.image} alt={recipe.name} className="w-full max-h-96 object-contain rounded-xl bg-surface-container-low" />
                 )}
                 <div className="flex items-center gap-2 flex-wrap">
                     <StatusBadge status={recipe.status} large />
@@ -746,7 +746,7 @@ const RecipeEditModal: React.FC<{
                     onClick={() => fileRef.current?.click()}
                 >
                     {form.image
-                        ? <img src={form.image} alt="preview" className="w-full h-full object-cover" />
+                        ? <img src={form.image} alt="preview" className="w-full h-full object-contain" />
                         : (
                             <div className="flex flex-col items-center gap-1 text-on-surface-variant">
                                 <MIcon name="add_photo_alternate" size={36} />
@@ -1132,7 +1132,7 @@ const RecipesView: React.FC<RecipesViewProps> = ({ authToken, onAuthError }) => 
                             <span className="text-sm font-normal text-on-surface-variant">{items.length}</span>
                         </h2>
                     )}
-                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                    <div className="grid grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4">
                         {items.map(r => (
                             <RecipeCard
                                 key={r.id}
