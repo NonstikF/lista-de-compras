@@ -4,6 +4,7 @@ import type {
   Supplier,
   Article,
   Recipe,
+  RecipePhoto,
   StoreOrder,
   StoreOrderItem,
   SupplierTicket,
@@ -290,19 +291,37 @@ export async function bulkUpdateArticles(
 
 // ---- Recetas ----
 
+function resolveRecipePhotos(recipe: Recipe): Recipe {
+  return { ...recipe, photos: (recipe.photos ?? []).map(p => ({ ...p, url: resolveImageUrl(p.url) ?? p.url })) };
+}
+
 export async function getRecipes(token: string): Promise<Recipe[]> {
-  return handleResponse(await fetch(`${BASE}/api/recipes`, { headers: authHeaders(token), cache: NO_STORE }));
+  const recipes: Recipe[] = await handleResponse(await fetch(`${BASE}/api/recipes`, { headers: authHeaders(token), cache: NO_STORE }));
+  return recipes.map(resolveRecipePhotos);
 }
 
 export async function createRecipe(token: string, data: Omit<Recipe, 'id'>): Promise<Recipe> {
-  return handleResponse(await fetch(`${BASE}/api/recipes`, {
+  return resolveRecipePhotos(await handleResponse(await fetch(`${BASE}/api/recipes`, {
     method: 'POST', headers: authHeaders(token), body: JSON.stringify(data),
-  }));
+  })));
 }
 
 export async function updateRecipe(token: string, id: string, data: Omit<Recipe, 'id'>): Promise<Recipe> {
-  return handleResponse(await fetch(`${BASE}/api/recipes/${id}`, {
+  return resolveRecipePhotos(await handleResponse(await fetch(`${BASE}/api/recipes/${id}`, {
     method: 'PUT', headers: authHeaders(token), body: JSON.stringify(data),
+  })));
+}
+
+export async function uploadRecipePhoto(token: string, recipeId: string, image: string): Promise<RecipePhoto> {
+  const photo: RecipePhoto = await handleResponse(await fetch(`${BASE}/api/recipes/${recipeId}/photos`, {
+    method: 'POST', headers: authHeaders(token), body: JSON.stringify({ image }),
+  }));
+  return { ...photo, url: resolveImageUrl(photo.url) ?? photo.url };
+}
+
+export async function deleteRecipePhoto(token: string, recipeId: string, photoId: string): Promise<void> {
+  await handleResponse(await fetch(`${BASE}/api/recipes/${recipeId}/photos/${photoId}`, {
+    method: 'DELETE', headers: authHeaders(token),
   }));
 }
 

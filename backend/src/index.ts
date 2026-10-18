@@ -12,6 +12,7 @@ import itemStatusRouter from './routes/itemStatus';
 import suppliersRouter from './routes/suppliers';
 import articlesRouter from './routes/articles';
 import articleImagesRouter from './routes/articleImages';
+import recipePhotosRouter from './routes/recipePhotos';
 import brandingRouter from './routes/branding';
 import recipesRouter from './routes/recipes';
 import storeRouter from './routes/store';
@@ -53,9 +54,9 @@ app.use((err: unknown, _req: Request, res: Response, next: NextFunction) => {
 // or proxy cache them. Without this the browser applies its own heuristic and
 // may try to write them to its disk cache, which can fail the whole request
 // (Chrome: ERR_CACHE_WRITE_FAILURE).
-// Article images and the company logo are the exception: immutable content that sets its own
-// long-lived Cache-Control further down.
-const IMAGE_ROUTE = /^\/(articles\/[^/]+\/image|branding\/logo)$/;
+// Article images, recipe sheet photos and the company logo are the exception: immutable
+// content that sets its own long-lived Cache-Control further down.
+const IMAGE_ROUTE = /^\/(articles\/[^/]+\/image|recipe-photos\/[^/]+\/image|branding\/logo)$/;
 app.use('/api/', (req: Request, res: Response, next: NextFunction) => {
     if (!IMAGE_ROUTE.test(req.path)) res.set('Cache-Control', 'no-store');
     next();
@@ -70,6 +71,8 @@ app.use('/api', authRouter);
 // Article images are served unauthenticated so <img src> can load them — see
 // routes/articleImages.ts. Mounted before authenticateToken on purpose.
 app.use('/api/articles', articleImagesRouter);
+// Recipe sheet photos, same reasoning. See routes/recipePhotos.ts.
+app.use('/api/recipe-photos', recipePhotosRouter);
 // Company name and logo for the sidebar — every user sees them. See routes/branding.ts.
 app.use('/api/branding', brandingRouter);
 

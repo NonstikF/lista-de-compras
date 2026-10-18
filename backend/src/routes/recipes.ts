@@ -65,7 +65,11 @@ type PrismaRecipe = {
         size: string;
         ingredients: { name: string; quantity: string; unit: string }[];
     }[];
+    photos?: { id: string }[];
 };
+
+// Root-relative, resolved against the API base by the frontend (see resolveImageUrl).
+const photoUrl = (id: string) => `/api/recipe-photos/${id}/image`;
 
 function formatRecipe(recipe: PrismaRecipe) {
     return {
@@ -87,6 +91,7 @@ function formatRecipe(recipe: PrismaRecipe) {
             size: sv.size,
             ingredients: sv.ingredients ?? [],
         })),
+        photos: (recipe.photos ?? []).map(p => ({ id: p.id, url: photoUrl(p.id) })),
     };
 }
 
@@ -127,7 +132,12 @@ const recipeSchema = z.object({
 const includeAll = {
     ingredients: true,
     sizeVariants: { include: { ingredients: true } },
+    photos: { select: { id: true }, orderBy: { position: 'asc' as const } },
 };
+
+const photoSchema = z.object({
+    image: z.string().regex(/^data:image\/[a-zA-Z0-9.+-]+;base64,/, 'Imagen inválida'),
+});
 
 router.get('/', async (_req: Request, res: Response) => {
     try {
@@ -193,6 +203,35 @@ router.put('/:id', async (req: Request, res: Response) => {
     } catch (err) {
         console.error('Error al actualizar receta:', err);
         res.status(500).json({ error: 'Error al actualizar receta' });
+    }
+});
+
+router.post('/:id/photos', async (req: Request, res: Response) => {
+    const parsed = photoSchema.safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: parsed.error.issues[0].message }); return; }
+    try {
+        const recipe = await prisma.recipe.findUnique({ where: { id: req.params.id }, select: { id: true } });
+        if (!recipe) { res.status(404).json({ error: 'Receta no encontrada' }); return; }
+        const last = await prisma.recipePhoto.aggregate({ where: { recipeId: recipe.id }, _max: { position: true } });
+        const photo = await prisma.recipePhoto.create({
+            data: { recipeId: recipe.id, image: parsed.data.image, position: (last._max.position ?? -1) + 1 },
+            select: { id: true },
+        });
+        res.status(201).json({ id: photo.id, url: photoUrl(photo.id) });
+    } catch (err) {
+        console.error('Error al subir foto de receta:', err);
+        res.status(500).json({ error: 'Error al subir la foto' });
+    }
+});
+
+router.delete('/:id/photos/:photoId', async (req: Request, res: Response) => {
+    try {
+        const { count } = await prisma.recipePhoto.deleteMany({ where: { id: req.params.photoId, recipeId: req.params.id } });
+        if (count === 0) { res.status(404).json({ error: 'Foto no encontrada' }); return; }
+        res.json({ success: true });
+    } catch (err) {
+        console.error('Error al eliminar foto de receta:', err);
+        res.status(500).json({ error: 'Error al eliminar la foto' });
     }
 });
 

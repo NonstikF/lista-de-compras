@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import type { Recipe, RecipeIngredient, RecipeSizeVariant, DrinkTemp, DrinkSize, RecipeType, RecipeStatus } from '../../types';
-import { AuthError, getRecipes, createRecipe, updateRecipe, deleteRecipe } from '../../services/api';
+import { createPortal } from 'react-dom';
+import type { Recipe, RecipeIngredient, RecipeSizeVariant, DrinkTemp, DrinkSize, RecipeType, RecipeStatus, RecipePhoto } from '../../types';
+import { AuthError, getRecipes, createRecipe, updateRecipe, deleteRecipe, uploadRecipePhoto, deleteRecipePhoto } from '../../services/api';
 import { Modal, Button, Field, Input, Select, Textarea, MIcon, useToast } from '../ui';
 
 interface RecipesViewProps {
@@ -76,7 +77,93 @@ const normalizeRecipe = (recipe: Recipe): Recipe => ({
     status: normalizeStatus(recipe.status),
     menuCategory: recipe.menuCategory ?? '',
     notes: recipe.notes ?? '',
+    photos: Array.isArray(recipe.photos) ? recipe.photos : [],
 });
+
+// Phone photos of a recipe sheet are several MB; shrink them before upload so
+// they stay legible but fit the API body limit.
+const resizeImageFile = (file: File, maxSide = 1600, quality = 0.75): Promise<string> =>
+    new Promise((resolve, reject) => {
+        const url = URL.createObjectURL(file);
+        const img = new Image();
+        img.onload = () => {
+            const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
+            const canvas = document.createElement('canvas');
+            canvas.width = Math.round(img.width * scale);
+            canvas.height = Math.round(img.height * scale);
+            canvas.getContext('2d')!.drawImage(img, 0, 0, canvas.width, canvas.height);
+            URL.revokeObjectURL(url);
+            resolve(canvas.toDataURL('image/jpeg', quality));
+        };
+        img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('No se pudo leer la imagen')); };
+        img.src = url;
+    });
+
+// ---------- Visor de foto a pantalla completa ----------
+const PhotoViewer: React.FC<{ photos: RecipePhoto[]; index: number; title: string; onClose: () => void }> = ({ photos, index, title, onClose }) => {
+    const [i, setI] = useState(index);
+    useEffect(() => {
+        // Capture phase + stopPropagation so Escape closes only the viewer, not
+        // the recipe modal underneath (it listens on window in the bubble phase).
+        const onKey = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') { e.stopPropagation(); onClose(); }
+            if (e.key === 'ArrowRight') setI(n => Math.min(photos.length - 1, n + 1));
+            if (e.key === 'ArrowLeft') setI(n => Math.max(0, n - 1));
+        };
+        window.addEventListener('keydown', onKey, true);
+        return () => window.removeEventListener('keydown', onKey, true);
+    }, [photos.length, onClose]);
+    const nav = 'absolute top-1/2 -translate-y-1/2 p-2 rounded-full bg-white/15 text-white hover:bg-white/25 disabled:opacity-30';
+    return createPortal(
+        <div className="fixed inset-0 z-[100] bg-black/90 flex flex-col" onClick={onClose}>
+            <div className="flex items-center justify-between px-4 py-3 text-white" onClick={e => e.stopPropagation()}>
+                <span className="text-sm font-semibold truncate">{title} · Hoja {i + 1} de {photos.length}</span>
+                <div className="flex items-center gap-1">
+                    <a href={photos[i].url} target="_blank" rel="noreferrer" className="p-2 rounded-full hover:bg-white/15" aria-label="Abrir en otra pestaña">
+                        <MIcon name="open_in_new" size={20} />
+                    </a>
+                    <button type="button" onClick={onClose} className="p-2 rounded-full hover:bg-white/15" aria-label="Cerrar">
+                        <MIcon name="close" size={22} />
+                    </button>
+                </div>
+            </div>
+            <div className="relative flex-1 min-h-0 flex items-center justify-center px-2 pb-4">
+                <img src={photos[i].url} alt={`${title}, hoja ${i + 1}`} className="max-w-full max-h-full object-contain" onClick={e => e.stopPropagation()} />
+                {photos.length > 1 && (
+                    <>
+                        <button type="button" className={`${nav} left-2`} disabled={i === 0} aria-label="Anterior"
+                            onClick={e => { e.stopPropagation(); setI(i - 1); }}>
+                            <MIcon name="chevron_left" size={28} />
+                        </button>
+                        <button type="button" className={`${nav} right-2`} disabled={i === photos.length - 1} aria-label="Siguiente"
+                            onClick={e => { e.stopPropagation(); setI(i + 1); }}>
+                            <MIcon name="chevron_right" size={28} />
+                        </button>
+                    </>
+                )}
+            </div>
+        </div>,
+        document.body,
+    );
+};
+
+const PhotoThumbs: React.FC<{ photos: RecipePhoto[]; onOpen: (index: number) => void; onRemove?: (photo: RecipePhoto) => void }> = ({ photos, onOpen, onRemove }) => (
+    <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+        {photos.map((p, idx) => (
+            <div key={p.id} className="relative aspect-[3/4] rounded-xl overflow-hidden border border-surface-variant bg-surface-container-low">
+                <button type="button" className="w-full h-full" onClick={() => onOpen(idx)} aria-label={`Ver hoja ${idx + 1}`}>
+                    <img src={p.url} alt={`Hoja ${idx + 1}`} loading="lazy" className="w-full h-full object-cover" />
+                </button>
+                {onRemove && (
+                    <button type="button" onClick={() => onRemove(p)} aria-label={`Quitar hoja ${idx + 1}`}
+                        className="absolute top-1 right-1 p-1 rounded-full bg-white/90 text-error shadow hover:bg-white">
+                        <MIcon name="close" size={16} />
+                    </button>
+                )}
+            </div>
+        ))}
+    </div>
+);
 
 // ---------- Imagen o placeholder ----------
 const RecipeImage: React.FC<{ recipe: Recipe; className?: string }> = ({ recipe, className = '' }) => {
@@ -139,6 +226,12 @@ const RecipeCard: React.FC<{
                             {recipe.ingredients.length} ingrediente{recipe.ingredients.length !== 1 ? 's' : ''}
                         </span>
                     )}
+                    {recipe.photos.length > 0 && (
+                        <span className="inline-flex items-center gap-0.5 text-[11px] text-on-surface-variant bg-surface-container px-2 py-0.5 rounded-full" title="Fotos de la hoja de receta">
+                            <MIcon name="description" className="text-sm" />
+                            {recipe.photos.length}
+                        </span>
+                    )}
                 </div>
                 <h3 className="font-epilogue font-bold text-sm sm:text-base text-on-background leading-tight">{recipe.name}</h3>
                 {recipe.description && (
@@ -181,6 +274,7 @@ const RecipeDetailModal: React.FC<{ recipe: Recipe; onClose: () => void; onEdit:
         recipe.sizeVariants.length > 0 ? recipe.sizeVariants[0].size as DrinkSize : null
     );
     const activeVariant = recipe.sizeVariants.find(sv => sv.size === activeSize);
+    const [viewerIndex, setViewerIndex] = useState<number | null>(null);
 
     return (
         <Modal
@@ -312,7 +406,19 @@ const RecipeDetailModal: React.FC<{ recipe: Recipe; onClose: () => void; onEdit:
                         </p>
                     </div>
                 )}
+
+                {recipe.photos.length > 0 && (
+                    <div>
+                        <h4 className="font-epilogue font-semibold text-on-background mb-2">
+                            Hoja de receta <span className="text-sm font-normal text-on-surface-variant">({recipe.photos.length})</span>
+                        </h4>
+                        <PhotoThumbs photos={recipe.photos} onOpen={setViewerIndex} />
+                    </div>
+                )}
             </div>
+            {viewerIndex !== null && (
+                <PhotoViewer photos={recipe.photos} index={viewerIndex} title={recipe.name} onClose={() => setViewerIndex(null)} />
+            )}
         </Modal>
     );
 };
@@ -593,10 +699,13 @@ const RecipeEditModal: React.FC<{
     recipe: Recipe | 'new' | null;
     initialTypeSelection?: RecipeTypeSelection;
     menuCategories: string[];
+    authToken: string;
+    onPhotosChange: (recipeId: string, photos: RecipePhoto[]) => void;
     onClose: () => void;
     onSave: (data: RecipeForm) => Promise<void>;
-}> = ({ recipe, initialTypeSelection, menuCategories, onClose, onSave }) => {
+}> = ({ recipe, initialTypeSelection, menuCategories, authToken, onPhotosChange, onClose, onSave }) => {
     const isNew = recipe === 'new';
+    const toast = useToast();
 
     const buildBlank = (sel?: RecipeTypeSelection): RecipeForm => {
         const rt = sel?.recipeType ?? 'alimento';
@@ -610,7 +719,7 @@ const RecipeEditModal: React.FC<{
         return {
             name: '', description: '', recipeType: rt, category, drinkTemps: dts,
             image: null, ingredients: [], sizeVariants, instructions: '', servings: 1,
-            status: 'completa', menuCategory: '', notes: '',
+            status: 'completa', menuCategory: '', notes: '', photos: [],
         };
     };
 
@@ -633,6 +742,7 @@ const RecipeEditModal: React.FC<{
         status: normalizeStatus((recipe as Recipe).status),
         menuCategory: (recipe as Recipe).menuCategory ?? '',
         notes: (recipe as Recipe).notes ?? '',
+        photos: (recipe as Recipe).photos,
     };
 
     const [form, setForm] = useState<RecipeForm>(initial);
@@ -645,6 +755,48 @@ const RecipeEditModal: React.FC<{
         firstVariant ? variantKey(firstVariant.temp, firstVariant.size) : null
     );
     const fileRef = useRef<HTMLInputElement>(null);
+
+    // Sheet photos are saved right away (not on "Guardar"), so they need an
+    // existing recipe id.
+    const recipeId = isNew ? null : (recipe as Recipe).id;
+    const [photos, setPhotos] = useState<RecipePhoto[]>(initial.photos);
+    const [uploading, setUploading] = useState(false);
+    const [viewerIndex, setViewerIndex] = useState<number | null>(null);
+    const photoInputRef = useRef<HTMLInputElement>(null);
+
+    const changePhotos = (next: RecipePhoto[]) => {
+        setPhotos(next);
+        if (recipeId) onPhotosChange(recipeId, next);
+    };
+
+    const handlePhotoFiles = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const files = Array.from(e.target.files ?? []);
+        e.target.value = '';
+        if (!recipeId || files.length === 0) return;
+        setUploading(true);
+        let next = photos;
+        try {
+            for (const file of files) {
+                const photo = await uploadRecipePhoto(authToken, recipeId, await resizeImageFile(file));
+                next = [...next, photo];
+                changePhotos(next);
+            }
+        } catch (err) {
+            toast('error', err instanceof Error ? err.message : 'Error al subir la foto');
+        } finally {
+            setUploading(false);
+        }
+    };
+
+    const removePhoto = async (photo: RecipePhoto) => {
+        if (!recipeId) return;
+        try {
+            await deleteRecipePhoto(authToken, recipeId, photo.id);
+            changePhotos(photos.filter(p => p.id !== photo.id));
+        } catch (err) {
+            toast('error', err instanceof Error ? err.message : 'Error al quitar la foto');
+        }
+    };
 
     const isBebida = form.recipeType === 'bebida';
 
@@ -953,7 +1105,36 @@ const RecipeEditModal: React.FC<{
                         style={{ minHeight: '72px' }}
                     />
                 </Field>
+
+                <div>
+                    <div className="flex items-center justify-between mb-3">
+                        <span className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant">
+                            Hoja de receta {photos.length > 0 && `(${photos.length})`}
+                        </span>
+                        {recipeId && (
+                            <Button variant="tonal" size="sm" icon={uploading ? 'hourglass_top' : 'add_a_photo'} type="button"
+                                disabled={uploading} onClick={() => photoInputRef.current?.click()}>
+                                {uploading ? 'Subiendo…' : 'Agregar foto'}
+                            </Button>
+                        )}
+                    </div>
+                    {!recipeId && (
+                        <p className="text-sm text-on-surface-variant text-center py-3 bg-surface-container-low rounded-xl">
+                            Guarda la receta para poder agregarle fotos de la hoja.
+                        </p>
+                    )}
+                    {recipeId && photos.length === 0 && !uploading && (
+                        <p className="text-sm text-on-surface-variant text-center py-3 bg-surface-container-low rounded-xl">
+                            Sin fotos — toma una foto de la hoja escrita y agrégala aquí.
+                        </p>
+                    )}
+                    {photos.length > 0 && <PhotoThumbs photos={photos} onOpen={setViewerIndex} onRemove={removePhoto} />}
+                    <input ref={photoInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handlePhotoFiles} />
+                </div>
             </form>
+            {viewerIndex !== null && photos.length > 0 && (
+                <PhotoViewer photos={photos} index={Math.min(viewerIndex, photos.length - 1)} title={form.name || 'Receta'} onClose={() => setViewerIndex(null)} />
+            )}
         </Modal>
     );
 };
@@ -1038,6 +1219,9 @@ const RecipesView: React.FC<RecipesViewProps> = ({ authToken, onAuthError }) => 
         .filter(g => g.items.length > 0);
 
     const handleNewRecipe = () => setShowTypeModal(true);
+
+    const handlePhotosChange = (recipeId: string, photos: RecipePhoto[]) =>
+        setRecipes(prev => prev.map(r => r.id === recipeId ? { ...r, photos } : r));
 
     const handleTypeConfirm = (sel: RecipeTypeSelection) => {
         setTypeSelection(sel);
@@ -1211,6 +1395,8 @@ const RecipesView: React.FC<RecipesViewProps> = ({ authToken, onAuthError }) => 
                     recipe={editing}
                     initialTypeSelection={typeSelection ?? undefined}
                     menuCategories={menuCategories}
+                    authToken={authToken}
+                    onPhotosChange={handlePhotosChange}
                     onClose={() => { setEditing(null); setTypeSelection(null); }}
                     onSave={handleSave}
                 />

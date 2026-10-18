@@ -86,6 +86,20 @@ model Recipe {
   updatedAt    DateTime             @updatedAt
   ingredients  RecipeIngredient[]
   sizeVariants RecipeSizeVariant[]
+  photos       RecipePhoto[]
+}
+
+// Fotos de la hoja de receta (escrita a mano). Se guardan como data URI y se
+// sirven por URL desde routes/recipePhotos.ts para no inflar GET /api/recipes.
+model RecipePhoto {
+  id        String   @id @default(cuid())
+  recipeId  String
+  position  Int      @default(0)
+  image     String
+  createdAt DateTime @default(now())
+  recipe    Recipe   @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+
+  @@index([recipeId])
 }
 
 model RecipeIngredient {

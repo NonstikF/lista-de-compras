@@ -275,4 +275,11 @@ export interface Recipe {
   status: RecipeStatus;
   menuCategory: string;
   notes: string;
+  photos: RecipePhoto[];
+}
+
+// Foto de la hoja de receta; se sube y borra por separado del resto de la receta.
+export interface RecipePhoto {
+  id: string;
+  url: string;
 }
