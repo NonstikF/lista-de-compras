@@ -959,26 +959,29 @@ const RecipeEditModal: React.FC<{
 };
 
 // ---------- Vista principal ----------
-const STATUS_DOT: Record<RecipeStatus, string> = {
-    completa: 'bg-primary',
-    incompleta: 'bg-amber-500',
-    sin_receta: 'bg-error',
-};
-
-const FilterPill: React.FC<{ active: boolean; onClick: () => void; children: React.ReactNode; title?: string }> = ({ active, onClick, children, title }) => (
-    <button
-        type="button"
-        onClick={onClick}
-        title={title}
-        aria-pressed={active}
-        className={`flex-shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border transition whitespace-nowrap ${
-            active
-                ? 'bg-primary text-on-primary border-primary shadow-sm'
-                : 'bg-white text-on-surface-variant border-outline-variant hover:border-primary/40 hover:text-primary'
-        }`}
-    >
-        {children}
-    </button>
+// Compact native dropdown; highlighted while it holds a non-default value.
+const FilterSelect: React.FC<{
+    label: string;
+    value: string;
+    active: boolean;
+    onChange: (v: string) => void;
+    children: React.ReactNode;
+}> = ({ label, value, active, onChange, children }) => (
+    <label className="relative min-w-0">
+        <span className="sr-only">{label}</span>
+        <select
+            value={value}
+            onChange={e => onChange(e.target.value)}
+            className={`w-full appearance-none truncate pl-3 pr-7 py-2.5 rounded-xl border text-xs sm:text-sm font-semibold outline-none transition focus:ring-2 focus:ring-primary/20 ${
+                active
+                    ? 'bg-primary-fixed/60 border-primary text-on-primary-fixed'
+                    : 'bg-white border-outline-variant text-on-surface'
+            }`}
+        >
+            {children}
+        </select>
+        <MIcon name="expand_more" size={18} className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-on-surface-variant" />
+    </label>
 );
 
 const RecipesView: React.FC<RecipesViewProps> = ({ authToken, onAuthError }) => {
@@ -1116,55 +1119,25 @@ const RecipesView: React.FC<RecipesViewProps> = ({ authToken, onAuthError }) => 
                         )}
                     </div>
 
-                    {/* Categorías del menú — scroll horizontal */}
-                    {menuCategories.length > 0 && (
-                        <div className="flex gap-1.5 overflow-x-auto scrollbar-hide -mx-4 px-4 md:mx-0 md:px-0">
-                            <FilterPill active={menuFilter === 'todas'} onClick={() => setMenuFilter('todas')}>
-                                Todas <span className="opacity-70">{recipes.length}</span>
-                            </FilterPill>
+                    {/* Categoría · Estado · Temperatura */}
+                    <div className="grid grid-cols-3 gap-2">
+                        <FilterSelect label="Categoría del menú" value={menuFilter} active={menuFilter !== 'todas'} onChange={setMenuFilter}>
+                            <option value="todas">Categoría</option>
                             {menuCategories.map(c => (
-                                <FilterPill key={c} active={menuFilter === c} onClick={() => setMenuFilter(menuFilter === c ? 'todas' : c)}>
-                                    {c} <span className="opacity-70">{recipes.filter(r => r.menuCategory === c).length}</span>
-                                </FilterPill>
+                                <option key={c} value={c}>{c} ({recipes.filter(r => r.menuCategory === c).length})</option>
                             ))}
-                        </div>
-                    )}
-
-                    {/* Estado (segmentado) + temperatura */}
-                    <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide -mx-4 px-4 md:mx-0 md:px-0">
-                        <div className="flex-shrink-0 inline-flex p-0.5 rounded-full bg-surface-container border border-outline-variant">
-                            {(['todas', ...RECIPE_STATUSES] as const).map(s => {
-                                const active = statusFilter === s;
-                                return (
-                                    <button
-                                        key={s}
-                                        type="button"
-                                        onClick={() => setStatusFilter(s)}
-                                        aria-pressed={active}
-                                        className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold whitespace-nowrap transition ${
-                                            active ? 'bg-white text-on-background shadow-sm' : 'text-on-surface-variant hover:text-on-background'
-                                        }`}
-                                    >
-                                        {s !== 'todas' && <span className={`w-2 h-2 rounded-full ${STATUS_DOT[s]}`} />}
-                                        {s === 'todas' ? 'Todas' : STATUS_META[s].label}
-                                        <span className="opacity-60 tabular-nums">{s === 'todas' ? scoped.length : statusCount(s)}</span>
-                                    </button>
-                                );
-                            })}
-                        </div>
-                        <div className="flex-shrink-0 flex gap-1.5 ml-auto">
-                            {DRINK_TEMPS.map(t => (
-                                <FilterPill
-                                    key={t}
-                                    active={tempFilter === t}
-                                    onClick={() => setTempFilter(tempFilter === t ? null : t)}
-                                    title={t === 'fria' ? 'Solo bebidas frías' : 'Solo bebidas calientes'}
-                                >
-                                    <MIcon name={t === 'fria' ? 'ac_unit' : 'local_fire_department'} size={14} />
-                                    {t === 'fria' ? 'Fría' : 'Caliente'}
-                                </FilterPill>
+                        </FilterSelect>
+                        <FilterSelect label="Estado" value={statusFilter} active={statusFilter !== 'todas'} onChange={v => setStatusFilter(v as RecipeStatus | 'todas')}>
+                            <option value="todas">Estado</option>
+                            {RECIPE_STATUSES.map(s => (
+                                <option key={s} value={s}>{STATUS_META[s].label} ({statusCount(s)})</option>
                             ))}
-                        </div>
+                        </FilterSelect>
+                        <FilterSelect label="Temperatura" value={tempFilter ?? ''} active={tempFilter !== null} onChange={v => setTempFilter(v ? v as DrinkTemp : null)}>
+                            <option value="">Temperatura</option>
+                            <option value="fria">Fría</option>
+                            <option value="caliente">Caliente</option>
+                        </FilterSelect>
                     </div>
 
                     {hasFilters && (
