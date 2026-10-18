@@ -128,7 +128,7 @@ const PhotoViewer: React.FC<{ photos: RecipePhoto[]; index: number; title: strin
                 </div>
             </div>
             <div className="relative flex-1 min-h-0 flex items-center justify-center px-2 pb-4">
-                <img src={photos[i].url} alt={`${title}, hoja ${i + 1}`} className="max-w-full max-h-full object-contain" onClick={e => e.stopPropagation()} />
+                <img src={photos[i].url} alt={`${title}, hoja ${i + 1}`} className="max-w-full max-h-[calc(100dvh-5rem)] object-contain" onClick={e => e.stopPropagation()} />
                 {photos.length > 1 && (
                     <>
                         <button type="button" className={`${nav} left-2`} disabled={i === 0} aria-label="Anterior"
@@ -152,7 +152,7 @@ const PhotoThumbs: React.FC<{ photos: RecipePhoto[]; onOpen: (index: number) => 
         {photos.map((p, idx) => (
             <div key={p.id} className="relative aspect-[3/4] rounded-xl overflow-hidden border border-surface-variant bg-surface-container-low">
                 <button type="button" className="w-full h-full" onClick={() => onOpen(idx)} aria-label={`Ver hoja ${idx + 1}`}>
-                    <img src={p.url} alt={`Hoja ${idx + 1}`} loading="lazy" className="w-full h-full object-cover" />
+                    <img src={p.url} alt={`Hoja ${idx + 1}`} loading="lazy" className="w-full h-full object-contain" />
                 </button>
                 {onRemove && (
                     <button type="button" onClick={() => onRemove(p)} aria-label={`Quitar hoja ${idx + 1}`}
