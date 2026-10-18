@@ -79,6 +79,9 @@ model Recipe {
   image        String?
   instructions String               @default("")
   servings     Int                  @default(1)
+  status       String               @default("completa") // 'completa' | 'incompleta' | 'sin_receta'
+  menuCategory String               @default("")         // categoría del menú (OlaClick)
+  notes        String               @default("")         // dudas o pendientes de la receta
   createdAt    DateTime             @default(now())
   updatedAt    DateTime             @updatedAt
   ingredients  RecipeIngredient[]

@@ -239,6 +239,7 @@ export interface TelegramChat {
 export type RecipeType = 'alimento' | 'bebida' | 'otros';
 export type DrinkTemp = 'fria' | 'caliente';
 export type DrinkSize = '10oz' | '12oz' | '16oz';
+export type RecipeStatus = 'completa' | 'incompleta' | 'sin_receta';
 
 export interface RecipeIngredient {
   name: string;
@@ -271,4 +272,7 @@ export interface Recipe {
   sizeVariants: RecipeSizeVariant[];
   instructions: string;
   servings: number;
+  status: RecipeStatus;
+  menuCategory: string;
+  notes: string;
 }

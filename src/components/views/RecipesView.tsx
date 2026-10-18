@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import type { Recipe, RecipeIngredient, RecipeSizeVariant, DrinkTemp, DrinkSize, RecipeType } from '../../types';
+import type { Recipe, RecipeIngredient, RecipeSizeVariant, DrinkTemp, DrinkSize, RecipeType, RecipeStatus } from '../../types';
 import { AuthError, getRecipes, createRecipe, updateRecipe, deleteRecipe } from '../../services/api';
 import { Modal, Button, Field, Input, Select, Textarea, Chip, MIcon, useToast } from '../ui';
 
@@ -15,6 +15,14 @@ const CATEGORY_META = {
 } as const;
 
 type RecipeCategory = keyof typeof CATEGORY_META;
+
+const STATUS_META: Record<RecipeStatus, { label: string; icon: string; color: string }> = {
+    completa:   { label: 'Con receta', icon: 'check_circle', color: 'bg-primary-fixed/60 text-on-primary-fixed' },
+    incompleta: { label: 'Incompleta', icon: 'pending',      color: 'bg-amber-100 text-amber-800' },
+    sin_receta: { label: 'Sin receta', icon: 'error',        color: 'bg-error-container/70 text-error' },
+};
+
+const RECIPE_STATUSES = Object.keys(STATUS_META) as RecipeStatus[];
 
 const DRINK_SIZES: DrinkSize[] = ['10oz', '12oz', '16oz'];
 const DRINK_TEMPS: DrinkTemp[] = ['fria', 'caliente'];
@@ -36,7 +44,23 @@ const normalizeDrinkTemps = (raw: unknown): DrinkTemp[] => {
     return raw.filter((t): t is DrinkTemp => t === 'fria' || t === 'caliente');
 };
 
+const normalizeStatus = (s: unknown): RecipeStatus =>
+    RECIPE_STATUSES.includes(s as RecipeStatus) ? s as RecipeStatus : 'completa';
+
 const getCategoryMeta = (category: unknown) => CATEGORY_META[normalizeCategory(category)];
+
+const StatusBadge: React.FC<{ status: RecipeStatus; large?: boolean }> = ({ status, large }) => {
+    if (status === 'completa') return null;
+    const meta = STATUS_META[status];
+    return (
+        <span className={`inline-flex items-center gap-1 font-bold rounded-full ${large ? 'text-sm px-3 py-1' : 'text-[11px] px-2 py-0.5'} ${meta.color}`}>
+            <MIcon name={meta.icon} className={large ? 'text-base' : 'text-sm'} fill />
+            {meta.label}
+        </span>
+    );
+};
+
+const searchKey = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 
 const normalizeRecipe = (recipe: Recipe): Recipe => ({
     ...recipe,
@@ -49,6 +73,9 @@ const normalizeRecipe = (recipe: Recipe): Recipe => ({
     instructions: recipe.instructions ?? '',
     description: recipe.description ?? '',
     servings: Math.max(1, Number(recipe.servings) || 1),
+    status: normalizeStatus(recipe.status),
+    menuCategory: recipe.menuCategory ?? '',
+    notes: recipe.notes ?? '',
 });
 
 // ---------- Imagen o placeholder ----------
@@ -97,6 +124,7 @@ const RecipeCard: React.FC<{
             </div>
             <div className="p-4 flex-1 flex flex-col gap-2">
                 <div className="flex items-center gap-2 flex-wrap">
+                    <StatusBadge status={recipe.status} />
                     <span className={`inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full ${typeColor}`}>
                         <MIcon name={typeIcon} className="text-sm" fill />
                         {typeLabel}
@@ -115,6 +143,9 @@ const RecipeCard: React.FC<{
                 <h3 className="font-epilogue font-bold text-on-background leading-tight">{recipe.name}</h3>
                 {recipe.description && (
                     <p className="text-sm text-on-surface-variant line-clamp-2">{recipe.description}</p>
+                )}
+                {recipe.status !== 'completa' && recipe.notes && (
+                    <p className="text-xs text-amber-800 line-clamp-2">{recipe.notes}</p>
                 )}
             </div>
             <div className="flex gap-1 px-3 pb-3 border-t border-surface-variant pt-2">
@@ -169,6 +200,7 @@ const RecipeDetailModal: React.FC<{ recipe: Recipe; onClose: () => void; onEdit:
                     <img src={recipe.image} alt={recipe.name} className="w-full h-52 object-cover rounded-xl" />
                 )}
                 <div className="flex items-center gap-2 flex-wrap">
+                    <StatusBadge status={recipe.status} large />
                     <span className={`inline-flex items-center gap-1 text-sm font-bold px-3 py-1 rounded-full ${typeColor}`}>
                         <MIcon name={typeIcon} className="text-base" fill />
                         {typeLabel}
@@ -178,8 +210,28 @@ const RecipeDetailModal: React.FC<{ recipe: Recipe; onClose: () => void; onEdit:
                             {recipe.servings} porción{recipe.servings !== 1 ? 'es' : ''}
                         </span>
                     )}
+                    {recipe.menuCategory && (
+                        <span className="text-sm text-on-surface-variant bg-surface-container px-3 py-1 rounded-full">
+                            {recipe.menuCategory}
+                        </span>
+                    )}
                 </div>
                 {recipe.description && <p className="text-on-surface-variant">{recipe.description}</p>}
+
+                {recipe.status === 'sin_receta' && !recipe.notes && (
+                    <p className="text-sm text-error bg-error-container/30 rounded-xl p-4">
+                        Este producto todavía no tiene receta. Edítalo para agregarla.
+                    </p>
+                )}
+                {recipe.notes && (
+                    <div className="bg-amber-50 rounded-xl p-4">
+                        <h4 className="font-epilogue font-semibold text-amber-900 mb-1 flex items-center gap-1.5">
+                            <MIcon name="sticky_note_2" className="text-base" />
+                            Pendientes y notas
+                        </h4>
+                        <p className="text-sm text-amber-900 whitespace-pre-wrap leading-relaxed">{recipe.notes}</p>
+                    </div>
+                )}
 
                 {/* Bebida: size tabs */}
                 {isBebida && recipe.sizeVariants.length > 0 && (
@@ -540,9 +592,10 @@ type RecipeForm = Omit<Recipe, 'id'>;
 const RecipeEditModal: React.FC<{
     recipe: Recipe | 'new' | null;
     initialTypeSelection?: RecipeTypeSelection;
+    menuCategories: string[];
     onClose: () => void;
     onSave: (data: RecipeForm) => Promise<void>;
-}> = ({ recipe, initialTypeSelection, onClose, onSave }) => {
+}> = ({ recipe, initialTypeSelection, menuCategories, onClose, onSave }) => {
     const isNew = recipe === 'new';
 
     const buildBlank = (sel?: RecipeTypeSelection): RecipeForm => {
@@ -557,6 +610,7 @@ const RecipeEditModal: React.FC<{
         return {
             name: '', description: '', recipeType: rt, category, drinkTemps: dts,
             image: null, ingredients: [], sizeVariants, instructions: '', servings: 1,
+            status: 'completa', menuCategory: '', notes: '',
         };
     };
 
@@ -576,6 +630,9 @@ const RecipeEditModal: React.FC<{
         })),
         instructions: (recipe as Recipe).instructions,
         servings: (recipe as Recipe).servings,
+        status: normalizeStatus((recipe as Recipe).status),
+        menuCategory: (recipe as Recipe).menuCategory ?? '',
+        notes: (recipe as Recipe).notes ?? '',
     };
 
     const [form, setForm] = useState<RecipeForm>(initial);
@@ -741,6 +798,28 @@ const RecipeEditModal: React.FC<{
                     )}
                 </div>
 
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <Field label="Estado">
+                        <Select
+                            value={form.status}
+                            onChange={e => update('status', normalizeStatus(e.target.value))}
+                        >
+                            {RECIPE_STATUSES.map(s => <option key={s} value={s}>{STATUS_META[s].label}</option>)}
+                        </Select>
+                    </Field>
+                    <Field label="Categoría del menú">
+                        <Input
+                            value={form.menuCategory}
+                            onChange={e => update('menuCategory', e.target.value)}
+                            placeholder="Ej. Bebidas Frías"
+                            list="recipe-menu-categories"
+                        />
+                        <datalist id="recipe-menu-categories">
+                            {menuCategories.map(c => <option key={c} value={c} />)}
+                        </datalist>
+                    </Field>
+                </div>
+
                 <Field label="Descripción">
                     <Textarea
                         value={form.description}
@@ -865,6 +944,15 @@ const RecipeEditModal: React.FC<{
                         style={{ minHeight: '120px' }}
                     />
                 </Field>
+
+                <Field label="Pendientes y notas">
+                    <Textarea
+                        value={form.notes}
+                        onChange={e => update('notes', e.target.value)}
+                        placeholder="Dudas, cantidades por confirmar, lo que falta…"
+                        style={{ minHeight: '72px' }}
+                    />
+                </Field>
             </form>
         </Modal>
     );
@@ -883,6 +971,9 @@ const RecipesView: React.FC<RecipesViewProps> = ({ authToken, onAuthError }) => 
     const [confirmDelete, setConfirmDelete] = useState<Recipe | null>(null);
     const [deleting, setDeleting] = useState(false);
     const [catFilter, setCatFilter] = useState<CategoryFilter>('todas');
+    const [statusFilter, setStatusFilter] = useState<RecipeStatus | 'todas'>('todas');
+    const [menuFilter, setMenuFilter] = useState('todas');
+    const [query, setQuery] = useState('');
     const toast = useToast();
 
     useEffect(() => {
@@ -903,7 +994,21 @@ const RecipesView: React.FC<RecipesViewProps> = ({ authToken, onAuthError }) => 
         return () => { cancelled = true; };
     }, [authToken]);
 
-    const filtered = catFilter === 'todas' ? recipes : recipes.filter(r => normalizeCategory(r.category) === catFilter);
+    // Menu categories keep the order in which recipes were first created (the
+    // import follows the OlaClick menu order); uncategorized recipes go last.
+    const menuCategories = [...new Set(recipes.map(r => r.menuCategory).filter(Boolean))];
+    const statusCount = (s: RecipeStatus) => recipes.filter(r => r.status === s).length;
+
+    const q = searchKey(query.trim());
+    const filtered = recipes.filter(r =>
+        (catFilter === 'todas' || normalizeCategory(r.category) === catFilter) &&
+        (statusFilter === 'todas' || r.status === statusFilter) &&
+        (menuFilter === 'todas' || r.menuCategory === menuFilter) &&
+        (!q || searchKey(r.name).includes(q) || searchKey(r.description).includes(q))
+    );
+    const groups = [...menuCategories, '']
+        .map(cat => ({ cat, items: filtered.filter(r => r.menuCategory === cat) }))
+        .filter(g => g.items.length > 0);
 
     const handleNewRecipe = () => setShowTypeModal(true);
 
@@ -956,6 +1061,7 @@ const RecipesView: React.FC<RecipesViewProps> = ({ authToken, onAuthError }) => 
                     <h1 className="font-epilogue text-3xl font-bold text-on-background">Recetas</h1>
                     <p className="text-on-surface-variant mt-0.5">
                         {isLoading ? 'Cargando…' : recipes.length === 0 ? 'Sin recetas' : `${recipes.length} receta${recipes.length !== 1 ? 's' : ''}`}
+                        {!isLoading && statusCount('sin_receta') > 0 && ` · ${statusCount('sin_receta')} sin receta`}
                     </p>
                 </div>
                 <Button variant="filled" icon="add" onClick={handleNewRecipe}>
@@ -964,11 +1070,36 @@ const RecipesView: React.FC<RecipesViewProps> = ({ authToken, onAuthError }) => 
             </div>
 
             {!isLoading && recipes.length > 0 && (
-                <div className="flex gap-2 flex-wrap mb-6">
-                    <Chip active={catFilter === 'todas'} onClick={() => setCatFilter('todas')} icon="apps">Todas</Chip>
-                    <Chip active={catFilter === 'caliente'} onClick={() => setCatFilter('caliente')} icon="local_fire_department">Caliente</Chip>
-                    <Chip active={catFilter === 'fria'} onClick={() => setCatFilter('fria')} icon="ac_unit">Fría</Chip>
-                    <Chip active={catFilter === 'especial'} onClick={() => setCatFilter('especial')} icon="auto_awesome">Especial</Chip>
+                <div className="space-y-3 mb-6">
+                    <div className="flex gap-2 flex-wrap">
+                        <Input
+                            type="search"
+                            value={query}
+                            onChange={e => setQuery(e.target.value)}
+                            placeholder="Buscar receta…"
+                            className="flex-1 min-w-[180px]"
+                        />
+                        {menuCategories.length > 0 && (
+                            <Select value={menuFilter} onChange={e => setMenuFilter(e.target.value)} className="min-w-0 max-w-full">
+                                <option value="todas">Todas las categorías del menú</option>
+                                {menuCategories.map(c => <option key={c} value={c}>{c}</option>)}
+                            </Select>
+                        )}
+                    </div>
+                    <div className="flex gap-2 flex-wrap">
+                        <Chip active={statusFilter === 'todas'} onClick={() => setStatusFilter('todas')} icon="apps" count={recipes.length}>Todas</Chip>
+                        {RECIPE_STATUSES.map(s => (
+                            <Chip key={s} active={statusFilter === s} onClick={() => setStatusFilter(s)} icon={STATUS_META[s].icon} count={statusCount(s)}>
+                                {STATUS_META[s].label}
+                            </Chip>
+                        ))}
+                    </div>
+                    <div className="flex gap-2 flex-wrap">
+                        <Chip active={catFilter === 'todas'} onClick={() => setCatFilter('todas')} icon="apps">Todas</Chip>
+                        <Chip active={catFilter === 'caliente'} onClick={() => setCatFilter('caliente')} icon="local_fire_department">Caliente</Chip>
+                        <Chip active={catFilter === 'fria'} onClick={() => setCatFilter('fria')} icon="ac_unit">Fría</Chip>
+                        <Chip active={catFilter === 'especial'} onClick={() => setCatFilter('especial')} icon="auto_awesome">Especial</Chip>
+                    </div>
                 </div>
             )}
 
@@ -993,23 +1124,31 @@ const RecipesView: React.FC<RecipesViewProps> = ({ authToken, onAuthError }) => 
                 </div>
             )}
 
-            {!isLoading && filtered.length > 0 && (
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                    {filtered.map(r => (
-                        <RecipeCard
-                            key={r.id}
-                            recipe={r}
-                            onView={setViewing}
-                            onEdit={setEditing}
-                            onDelete={setConfirmDelete}
-                        />
-                    ))}
-                </div>
-            )}
+            {!isLoading && groups.map(({ cat, items }) => (
+                <section key={cat || '__none__'} className="mb-8">
+                    {(menuCategories.length > 0) && (
+                        <h2 className="font-epilogue text-lg font-bold text-on-background mb-3 flex items-baseline gap-2">
+                            {cat || 'Sin categoría del menú'}
+                            <span className="text-sm font-normal text-on-surface-variant">{items.length}</span>
+                        </h2>
+                    )}
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                        {items.map(r => (
+                            <RecipeCard
+                                key={r.id}
+                                recipe={r}
+                                onView={setViewing}
+                                onEdit={setEditing}
+                                onDelete={setConfirmDelete}
+                            />
+                        ))}
+                    </div>
+                </section>
+            ))}
 
             {!isLoading && filtered.length === 0 && recipes.length > 0 && (
                 <div className="text-center py-16 text-on-surface-variant">
-                    Sin recetas en esta categoría.
+                    Ninguna receta coincide con los filtros.
                 </div>
             )}
 
@@ -1023,6 +1162,7 @@ const RecipesView: React.FC<RecipesViewProps> = ({ authToken, onAuthError }) => 
                 <RecipeEditModal
                     recipe={editing}
                     initialTypeSelection={typeSelection ?? undefined}
+                    menuCategories={menuCategories}
                     onClose={() => { setEditing(null); setTypeSelection(null); }}
                     onSave={handleSave}
                 />

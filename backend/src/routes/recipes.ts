@@ -15,6 +15,13 @@ type DrinkTemp = typeof drinkTempValues[number];
 
 const drinkSizes = ['10oz', '12oz', '16oz'] as const;
 
+const recipeStatuses = ['completa', 'incompleta', 'sin_receta'] as const;
+type RecipeStatus = typeof recipeStatuses[number];
+
+function normalizeRecipeStatus(s: unknown): RecipeStatus {
+    return recipeStatuses.includes(s as RecipeStatus) ? s as RecipeStatus : 'completa';
+}
+
 function normalizeRecipeCategory(category: unknown): RecipeCategory {
     return recipeCategories.includes(category as RecipeCategory) ? category as RecipeCategory : 'especial';
 }
@@ -46,6 +53,9 @@ type PrismaRecipe = {
     image: string | null;
     instructions: string;
     servings: number;
+    status: string;
+    menuCategory: string;
+    notes: string;
     createdAt: Date;
     updatedAt: Date;
     ingredients: { name: string; quantity: string; unit: string }[];
@@ -67,6 +77,9 @@ function formatRecipe(recipe: PrismaRecipe) {
         description: recipe.description ?? '',
         instructions: recipe.instructions ?? '',
         servings: Math.max(1, Number(recipe.servings) || 1),
+        status: normalizeRecipeStatus(recipe.status),
+        menuCategory: recipe.menuCategory ?? '',
+        notes: recipe.notes ?? '',
         ingredients: recipe.ingredients ?? [],
         sizeVariants: (recipe.sizeVariants ?? []).map(sv => ({
             id: sv.id,
@@ -100,6 +113,9 @@ const recipeSchema = z.object({
     image: z.string().nullable().default(null),
     instructions: z.string().default(''),
     servings: z.number().int().min(1).default(1),
+    status: z.string().default('completa').transform(normalizeRecipeStatus),
+    menuCategory: z.string().default(''),
+    notes: z.string().default(''),
     ingredients: z.array(z.object({
         name: z.string(),
         quantity: z.string(),
