@@ -1,9 +1,10 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma';
-import { STORE_TIMEZONE } from '../lib/storeTime';
+import { STORE_TIMEZONE, storeClock } from '../lib/storeTime';
+import { nextSmartDay } from '../lib/smartDay';
 import { buildNewOrderMessage, loadHighlightRule, type NewOrder } from '../lib/orderNotifications';
-import { followUpText, reminderText } from '../lib/reminders';
+import { followUpText, reminderText, smartDayArticleCount, smartDayText } from '../lib/reminders';
 import { escapeHtml, getBotUsername, getRecentChats, getTelegramSettings, sendTelegramMessage, telegramToken } from '../lib/telegram';
 
 const router = Router();
@@ -24,6 +25,8 @@ const updateSchema = z.object({
     chatTitle: z.string().optional(),
     notifyNewOrders: z.boolean().optional(),
     highlightSupplierIds: z.array(z.string()).optional(),
+    smartDayReminders: z.boolean().optional(),
+    smartDayTime: HHMM.optional(),
     reminders: z.array(reminderSchema).optional(),
 });
 
@@ -31,8 +34,12 @@ async function buildConfig() {
     const [settings, reminders, suppliers] = await Promise.all([
         getTelegramSettings(),
         prisma.orderReminder.findMany({ orderBy: [{ weekday: 'asc' }, { time: 'asc' }] }),
-        prisma.supplier.findMany({ select: { id: true, name: true }, orderBy: { name: 'asc' } }),
+        prisma.supplier.findMany({
+            select: { id: true, name: true, smartDayEnabled: true, smartDayWeekday: true, smartDayWeek: true, smartDayLeadDays: true },
+            orderBy: { name: 'asc' },
+        }),
     ]);
+    const today = storeClock().date;
     const tokenConfigured = !!telegramToken();
     let botUsername: string | null = null;
     let botError: string | null = null;
@@ -45,7 +52,12 @@ async function buildConfig() {
         botError,
         timezone: STORE_TIMEZONE,
         ...settings,
-        suppliers,
+        suppliers: suppliers.map(s => ({ id: s.id, name: s.name })),
+        // Suppliers with a Smart Day rule (edited in Proveedores) and their next date.
+        smartDaySuppliers: suppliers.flatMap(s => {
+            const next = nextSmartDay(s, today);
+            return next ? [{ id: s.id, name: s.name, weekday: s.smartDayWeekday as number, week: s.smartDayWeek as string, leadDays: s.smartDayLeadDays, ...next }] : [];
+        }),
         reminders: reminders.map(r => ({
             id: r.id, weekday: r.weekday, time: r.time, message: r.message,
             followUpTime: r.followUpTime, enabled: r.enabled,
@@ -106,6 +118,7 @@ const testSchema = z.discriminatedUnion('kind', [
     z.object({ kind: z.literal('highlightedOrder') }),
     z.object({ kind: z.literal('reminder'), message: z.string().trim().min(1, 'El recordatorio necesita un mensaje').max(1000) }),
     z.object({ kind: z.literal('followUp'), message: z.string().trim().min(1, 'El recordatorio necesita un mensaje').max(1000) }),
+    z.object({ kind: z.literal('smartDay'), supplierId: z.string() }),
 ]);
 
 const TEST_BANNER = '🧪 <i>Mensaje de prueba — así se verá en el grupo</i>\n\n';
@@ -155,6 +168,12 @@ router.post('/test', async (req: Request, res: Response) => {
             const { text, highlighted } = buildNewOrderMessage(order, highlight, process.env.FRONTEND_URL);
             // Same sound setting as the real message, so the test also shows whether it rings.
             await sendTelegramMessage(settings.chatId, TEST_BANNER + text, { silent: !highlighted });
+        } else if (test.kind === 'smartDay') {
+            const supplier = await prisma.supplier.findUnique({ where: { id: test.supplierId } });
+            const next = supplier && nextSmartDay(supplier, storeClock().date);
+            if (!supplier || !next) { res.status(400).json({ error: 'El proveedor no tiene Smart Day activo' }); return; }
+            const text = smartDayText(supplier.name, next.date, next.daysLeft, await smartDayArticleCount(supplier.id), process.env.FRONTEND_URL);
+            await sendTelegramMessage(settings.chatId, TEST_BANNER + text);
         } else {
             const text = test.kind === 'reminder' ? reminderText(test.message) : followUpText(test.message);
             await sendTelegramMessage(settings.chatId, TEST_BANNER + text);

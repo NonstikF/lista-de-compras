@@ -269,7 +269,7 @@ const SupplierEditModal: React.FC<{
                                     </select>
                                 </Field>
                             </div>
-                            <Field label="Avisar con anticipación (días)" hint="Días antes del Smart Day en que se separan los productos en la Tienda.">
+                            <Field label="Avisar con anticipación (días)" hint="Días antes del Smart Day en que se separan los productos en la Tienda y se avisa en Telegram.">
                                 <Input
                                     type="number"
                                     min="0"

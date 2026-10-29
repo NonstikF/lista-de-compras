@@ -1,7 +1,7 @@
 import type { Supplier, SmartDayWeek } from '../types';
 
 // Cálculo de "Smart Day": fecha recurrente de oferta de un proveedor
-// (ej. Smart & Final = último miércoles de cada mes) y ventana de aviso.
+// (ej. Smart & Final = tercer miércoles de cada mes) y ventana de aviso.
 
 const WEEKDAY_LABELS = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
 const WEEK_LABELS: Record<SmartDayWeek, string> = {

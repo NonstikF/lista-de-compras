@@ -1,10 +1,12 @@
 import { prisma } from './prisma';
 import { storeClock, type StoreClock } from './storeTime';
-import { escapeHtml, getTelegramSettings, sendTelegramMessage, telegramToken } from './telegram';
+import { escapeHtml, getTelegramSettings, sendTelegramMessage, telegramToken, type TelegramSettingsRow } from './telegram';
+import { nextSmartDay, smartDayDateLabel } from './smartDay';
 
-// Weekly order-day reminders. A one-minute tick checks the store's wall clock;
-// each send is claimed in the database first (lastSentOn / lastFollowUpOn), so
-// a restart or a second instance during a redeploy never sends it twice.
+// Weekly order-day reminders and Smart Day notices. A one-minute tick checks
+// the store's wall clock; each send is claimed in the database first
+// (lastSentOn / lastFollowUpOn / smartDayNotifiedOn), so a restart or a second
+// instance during a redeploy never sends it twice.
 
 const TICK_MS = 60_000;
 
@@ -59,12 +61,61 @@ async function sendFollowUp(r: Reminder, chatId: string, clock: StoreClock) {
     }
 }
 
+// Like new-order notices, it names no products: the Smart Day list lives in
+// the Tienda, where it stays current.
+export function smartDayText(supplierName: string, date: string, daysLeft: number, articleCount: number, appUrl?: string): string {
+    const name = escapeHtml(supplierName);
+    const header = daysLeft <= 0 ? `⚡ <b>¡Hoy es Smart Day de ${name}!</b>`
+        : daysLeft === 1 ? `⚡ <b>Mañana es Smart Day de ${name}</b>`
+        : `⚡ <b>Smart Day de ${name} en ${daysLeft} días</b>`;
+    const label = smartDayDateLabel(date);
+    const lines = [header, `📅 ${label.charAt(0).toUpperCase()}${label.slice(1)}`];
+    if (articleCount > 0) lines.push(`🏷️ ${articleCount} artículo${articleCount !== 1 ? 's' : ''} marcado${articleCount !== 1 ? 's' : ''} como Smart Day`);
+    lines.push(daysLeft <= 0 ? 'Hoy se hacen las compras de Smart Day.' : 'Revisen qué hace falta y agréguenlo al pedido en la Tienda.');
+    if (appUrl) lines.push('', `👉 <a href="${escapeHtml(appUrl.replace(/\/+$/, ''))}">Abrir PlantArte Compras</a>`);
+    return lines.join('\n');
+}
+
+export function smartDayArticleCount(supplierId: string): Promise<number> {
+    return prisma.article.count({ where: { smartDay: true, suppliers: { some: { supplierId } } } });
+}
+
+// Every day from smartDayLeadDays before the supplier's Smart Day up to the
+// day itself, once a day from smartDayTime on.
+async function runSmartDayNotices(settings: TelegramSettingsRow, chatId: string, clock: StoreClock) {
+    if (!settings.smartDayReminders || clock.time < settings.smartDayTime) return;
+    const suppliers = await prisma.supplier.findMany({
+        where: { smartDayEnabled: true, OR: [{ smartDayNotifiedOn: null }, { smartDayNotifiedOn: { not: clock.date } }] },
+    });
+    for (const s of suppliers) {
+        const next = nextSmartDay(s, clock.date);
+        if (!next || next.daysLeft > s.smartDayLeadDays) continue;
+        try {
+            const { count } = await prisma.supplier.updateMany({
+                where: { id: s.id, OR: [{ smartDayNotifiedOn: null }, { smartDayNotifiedOn: { not: clock.date } }] },
+                data: { smartDayNotifiedOn: clock.date },
+            });
+            if (count !== 1) continue;
+            try {
+                const text = smartDayText(s.name, next.date, next.daysLeft, await smartDayArticleCount(s.id), process.env.FRONTEND_URL);
+                await sendTelegramMessage(chatId, text);
+            } catch (err) {
+                await prisma.supplier.update({ where: { id: s.id }, data: { smartDayNotifiedOn: s.smartDayNotifiedOn } }).catch(() => undefined);
+                throw err;
+            }
+        } catch (err) {
+            console.error('Error al enviar aviso de Smart Day:', err instanceof Error ? err.message : err);
+        }
+    }
+}
+
 export async function runReminderTick(now: Date = new Date()): Promise<void> {
     if (!telegramToken()) return;
     const settings = await getTelegramSettings();
     if (!settings.chatId) return;
 
     const clock = storeClock(now);
+    await runSmartDayNotices(settings, settings.chatId, clock);
     const reminders = await prisma.orderReminder.findMany({ where: { enabled: true, weekday: clock.weekday } });
     for (const r of reminders) {
         try {

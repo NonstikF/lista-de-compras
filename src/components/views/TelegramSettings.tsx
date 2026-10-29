@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import type { OrderReminder, TelegramChat, TelegramConfig } from '../../types';
 import { AuthError, detectTelegramChats, getTelegramConfig, sendTelegramTest, updateTelegramConfig, type TelegramTest } from '../../services/api';
 import { Button, Chip, Field, Input, MIcon, Select, Textarea, useToast } from '../ui';
+import { weekdayLabel, weekLabel } from '../../utils/smartDay';
 
 interface TelegramSettingsProps {
     authToken: string;
@@ -9,6 +10,16 @@ interface TelegramSettingsProps {
 }
 
 const WEEKDAYS = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+
+const MONTHS = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+
+// "18 de noviembre" from "2026-11-18", without going through the browser's time zone.
+const dateLabel = (date: string) => {
+    const [, m, d] = date.split('-').map(Number);
+    return `${d} de ${MONTHS[m - 1]}`;
+};
+
+const daysLeftLabel = (n: number) => (n <= 0 ? 'hoy' : n === 1 ? 'mañana' : `en ${n} días`);
 
 const NEW_REMINDER: OrderReminder = {
     weekday: 0, time: '08:00', followUpTime: '22:00', enabled: true,
@@ -25,13 +36,15 @@ const TelegramSettings: React.FC<TelegramSettingsProps> = ({ authToken, onAuthEr
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [detecting, setDetecting] = useState(false);
-    // Which test is being sent: 'connection', 'order', 'highlightedOrder', or `reminder-<i>` / `followUp-<i>`.
+    // Which test is being sent: 'connection', 'order', 'highlightedOrder', `reminder-<i>` / `followUp-<i>` or `smartDay-<supplierId>`.
     const [testing, setTesting] = useState<string | null>(null);
     const [chats, setChats] = useState<TelegramChat[] | null>(null);
 
     // Editable copy; saved together with "Guardar Telegram".
     const [notifyNewOrders, setNotifyNewOrders] = useState(true);
     const [highlightIds, setHighlightIds] = useState<string[]>([]);
+    const [smartDayReminders, setSmartDayReminders] = useState(true);
+    const [smartDayTime, setSmartDayTime] = useState('09:00');
     const [reminders, setReminders] = useState<OrderReminder[]>([]);
     const [dirty, setDirty] = useState(false);
 
@@ -44,6 +57,8 @@ const TelegramSettings: React.FC<TelegramSettingsProps> = ({ authToken, onAuthEr
         setConfig(c);
         setNotifyNewOrders(c.notifyNewOrders);
         setHighlightIds(c.highlightSupplierIds);
+        setSmartDayReminders(c.smartDayReminders);
+        setSmartDayTime(c.smartDayTime);
         setReminders(c.reminders);
         setDirty(false);
     };
@@ -61,6 +76,8 @@ const TelegramSettings: React.FC<TelegramSettingsProps> = ({ authToken, onAuthEr
     };
     const setNotify = edit(setNotifyNewOrders);
     const setHighlight = edit(setHighlightIds);
+    const setSmartDayOn = edit(setSmartDayReminders);
+    const setSmartDayAt = edit(setSmartDayTime);
     const setRems = edit(setReminders);
 
     const updateReminder = (index: number, patch: Partial<OrderReminder>) =>
@@ -68,9 +85,10 @@ const TelegramSettings: React.FC<TelegramSettingsProps> = ({ authToken, onAuthEr
 
     const handleSave = async () => {
         if (reminders.some(r => !r.message.trim())) { toast('error', 'Cada recordatorio necesita un mensaje'); return; }
+        if (!smartDayTime) { toast('error', 'Indica la hora del aviso de Smart Day'); return; }
         setSaving(true);
         try {
-            apply(await updateTelegramConfig(authToken, { notifyNewOrders, highlightSupplierIds: highlightIds, reminders }));
+            apply(await updateTelegramConfig(authToken, { notifyNewOrders, highlightSupplierIds: highlightIds, smartDayReminders, smartDayTime, reminders }));
             toast('success', 'Telegram guardado');
         } catch (err) {
             handleError(err, 'Error al guardar Telegram');
@@ -137,7 +155,7 @@ const TelegramSettings: React.FC<TelegramSettingsProps> = ({ authToken, onAuthEr
                     <MIcon name="send" className="text-primary" />
                     Telegram
                 </h2>
-                <p className="text-on-surface-variant text-sm mt-0.5">Avisos de pedidos nuevos y recordatorios de los días de pedido</p>
+                <p className="text-on-surface-variant text-sm mt-0.5">Avisos de pedidos nuevos, recordatorios de los días de pedido y Smart Day</p>
             </div>
 
             {/* Bot */}
@@ -347,6 +365,64 @@ const TelegramSettings: React.FC<TelegramSettingsProps> = ({ authToken, onAuthEr
                         <Button variant="outline" size="sm" icon="add" className="mt-3" onClick={() => setRems(prev => [...prev, { ...NEW_REMINDER }])}>
                             Agregar recordatorio
                         </Button>
+                    </div>
+
+                    {/* Smart Day */}
+                    <div>
+                        <SectionLabel>Smart Day</SectionLabel>
+                        <p className="text-sm text-on-surface-variant mb-3">
+                            Avisa en el grupo cada día desde los días de anticipación de cada proveedor hasta el Smart Day.
+                            El día del mes y la anticipación se configuran en Proveedores.
+                        </p>
+                        <div className="flex flex-wrap items-end gap-4">
+                            <label className="flex items-center gap-3 text-sm text-on-surface cursor-pointer pb-2.5">
+                                <input
+                                    type="checkbox"
+                                    checked={smartDayReminders}
+                                    onChange={e => setSmartDayOn(e.target.checked)}
+                                    className="w-4 h-4 accent-primary"
+                                />
+                                Avisar los días previos al Smart Day
+                            </label>
+                            <div className="w-36">
+                                <Field label="Hora del aviso">
+                                    <Input type="time" value={smartDayTime} onChange={e => setSmartDayAt(e.target.value)} disabled={!smartDayReminders} required />
+                                </Field>
+                            </div>
+                        </div>
+                        {config.smartDaySuppliers.length === 0 ? (
+                            <p className="text-sm text-on-surface-variant mt-3">Ningún proveedor tiene Smart Day activo.</p>
+                        ) : (
+                            <div className={`mt-3 rounded-xl border border-outline-variant divide-y divide-surface-variant ${smartDayReminders ? '' : 'opacity-60'}`}>
+                                {config.smartDaySuppliers.map(s => (
+                                    <div key={s.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-sm">
+                                        <div>
+                                            <p className="font-semibold text-on-surface flex items-center gap-1.5">
+                                                <MIcon name="bolt" size={16} fill className="text-primary" />
+                                                {s.name}
+                                            </p>
+                                            <p className="text-xs text-on-surface-variant mt-0.5">
+                                                {weekLabel(s.week).replace(/^./, c => c.toUpperCase())} {weekdayLabel(s.weekday).toLowerCase()} de cada mes · avisa desde {s.leadDays} día{s.leadDays !== 1 ? 's' : ''} antes
+                                            </p>
+                                            <p className="text-xs text-on-surface-variant">
+                                                Próximo: {dateLabel(s.date)} ({daysLeftLabel(s.daysLeft)})
+                                            </p>
+                                        </div>
+                                        {config.chatId && (
+                                            <Button
+                                                variant="text"
+                                                size="sm"
+                                                icon="science"
+                                                onClick={() => handleTest(`smartDay-${s.id}`, { kind: 'smartDay', supplierId: s.id })}
+                                                disabled={testing !== null}
+                                            >
+                                                {testing === `smartDay-${s.id}` ? 'Enviando…' : 'Probar'}
+                                            </Button>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
                     </div>
 
                     <div className="flex justify-end pt-2">

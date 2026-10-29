@@ -225,8 +225,22 @@ export interface TelegramConfig {
   chatTitle: string;
   notifyNewOrders: boolean;
   highlightSupplierIds: string[];
+  smartDayReminders: boolean;
+  smartDayTime: string; // HH:MM, hora de la tienda
   suppliers: { id: string; name: string }[];
+  smartDaySuppliers: TelegramSmartDaySupplier[];
   reminders: OrderReminder[];
+}
+
+// Proveedor con regla de Smart Day (se edita en Proveedores) y su próxima fecha.
+export interface TelegramSmartDaySupplier {
+  id: string;
+  name: string;
+  weekday: number;
+  week: SmartDayWeek;
+  leadDays: number;
+  date: string; // YYYY-MM-DD
+  daysLeft: number;
 }
 
 export interface TelegramChat {

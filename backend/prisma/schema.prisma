@@ -33,6 +33,7 @@ model Supplier {
   smartDayWeekday  Int?        // 0=Dom … 6=Sáb
   smartDayWeek     String?     // 'first' | 'second' | 'third' | 'fourth' | 'last'
   smartDayLeadDays Int         @default(7)
+  smartDayNotifiedOn String?   // "YYYY-MM-DD" del último aviso de Smart Day enviado a Telegram
   createdAt DateTime          @default(now())
   updatedAt DateTime          @updatedAt
   articles  ArticleSupplier[]
@@ -243,6 +244,8 @@ model TelegramSettings {
   chatTitle            String   @default("")
   notifyNewOrders      Boolean  @default(true)
   highlightSupplierIds String   @default("[]") // JSON string[] de Supplier.id
+  smartDayReminders    Boolean  @default(true)  // avisar en los días previos al Smart Day de cada proveedor
+  smartDayTime         String   @default("09:00")
   updatedAt            DateTime @updatedAt
 }
 

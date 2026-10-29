@@ -512,7 +512,10 @@ export async function getTelegramConfig(token: string): Promise<TelegramConfig> 
 
 export async function updateTelegramConfig(
   token: string,
-  data: { chatId?: string | null; chatTitle?: string; notifyNewOrders?: boolean; highlightSupplierIds?: string[]; reminders?: OrderReminder[] },
+  data: {
+    chatId?: string | null; chatTitle?: string; notifyNewOrders?: boolean; highlightSupplierIds?: string[];
+    smartDayReminders?: boolean; smartDayTime?: string; reminders?: OrderReminder[];
+  },
 ): Promise<TelegramConfig> {
   return handleResponse(await fetch(`${BASE}/api/telegram`, {
     method: 'PUT', headers: authHeaders(token), body: JSON.stringify(data),
@@ -525,7 +528,8 @@ export async function detectTelegramChats(token: string): Promise<TelegramChat[]
 
 export type TelegramTest =
   | { kind: 'connection' | 'order' | 'highlightedOrder' }
-  | { kind: 'reminder' | 'followUp'; message: string };
+  | { kind: 'reminder' | 'followUp'; message: string }
+  | { kind: 'smartDay'; supplierId: string };
 
 export async function sendTelegramTest(token: string, test: TelegramTest = { kind: 'connection' }): Promise<void> {
   await handleResponse(await fetch(`${BASE}/api/telegram/test`, {

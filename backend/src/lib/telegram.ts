@@ -104,6 +104,8 @@ export type TelegramSettingsRow = {
     chatTitle: string;
     notifyNewOrders: boolean;
     highlightSupplierIds: string[];
+    smartDayReminders: boolean;
+    smartDayTime: string;
 };
 
 export async function getTelegramSettings(): Promise<TelegramSettingsRow> {
@@ -113,5 +115,8 @@ export async function getTelegramSettings(): Promise<TelegramSettingsRow> {
         const parsed: unknown = JSON.parse(row.highlightSupplierIds);
         if (Array.isArray(parsed)) highlightSupplierIds = parsed.filter((v): v is string => typeof v === 'string');
     } catch { /* keep empty */ }
-    return { chatId: row.chatId, chatTitle: row.chatTitle, notifyNewOrders: row.notifyNewOrders, highlightSupplierIds };
+    return {
+        chatId: row.chatId, chatTitle: row.chatTitle, notifyNewOrders: row.notifyNewOrders, highlightSupplierIds,
+        smartDayReminders: row.smartDayReminders, smartDayTime: row.smartDayTime,
+    };
 }
