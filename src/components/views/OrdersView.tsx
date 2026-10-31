@@ -2,7 +2,7 @@
 import type { Order, LineItem, StoreOrder, StoreOrderItem, OrderTicket, Supplier, Article } from '../../types';
 import { getOrders, saveItemStatus, completeOrder, AuthError, type OrderStatusType, getSuppliers, getArticles } from '../../services/api';
 import { getStoreOrders, completeStoreOrder, getOrderTickets, getOrderTicketContent, createOrderTicket, deleteOrderTicket, getOrderTicketCounts, updateStoreItemStatus, getStoreOrderTickets, getStoreOrderTicketContent, createStoreOrderTicket, deleteStoreOrderTicket, getStoreOrderTicketCounts, addStoreOrderItem, deleteStoreOrderItem, editStoreOrderItem, getPendingStoreItems, resolvePendingStoreItems, getStoreOrdersPaged, type PendingItemGroup } from '../../services/api';
-import { Modal, Input, Button } from '../ui';
+import { Modal, Input, Button, ImageViewer } from '../ui';
 import { CheckCircleIcon, ChevronDownIcon, XMarkIcon, EyeIcon } from '../ui/icons';
 import { showToast } from '../ui/Toast';
 import { fmt } from '../ui';
@@ -512,15 +512,7 @@ const StoreOrderTicketModal: React.FC<{
                 </div>
             )}
             {viewingContent && (
-                <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4" onClick={() => setViewingContent(null)}>
-                    <div className="relative max-w-2xl w-full" onClick={e => e.stopPropagation()}>
-                        <button className="absolute -top-9 right-0 text-white text-sm flex items-center gap-1 hover:opacity-80" onClick={() => setViewingContent(null)}>
-                            <XMarkIcon className="w-4 h-4" /> Cerrar
-                        </button>
-                        <img src={viewingContent} alt={viewingFilename ?? 'Ticket'} className="w-full rounded-xl object-contain max-h-[80vh]" />
-                        <p className="text-center text-white/60 text-xs mt-2">{viewingFilename}</p>
-                    </div>
-                </div>
+                <ImageViewer src={viewingContent} alt={viewingFilename ?? 'Ticket'} caption={viewingFilename} onClose={() => setViewingContent(null)} />
             )}
         </>
     );
@@ -1670,15 +1662,7 @@ const OrderTicketModal: React.FC<{
 
             {/* Visor de imagen */}
             {viewingContent && (
-                <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4" onClick={() => setViewingContent(null)}>
-                    <div className="relative max-w-2xl w-full" onClick={e => e.stopPropagation()}>
-                        <button className="absolute -top-9 right-0 text-white text-sm flex items-center gap-1 hover:opacity-80" onClick={() => setViewingContent(null)}>
-                            <XMarkIcon className="w-4 h-4" /> Cerrar
-                        </button>
-                        <img src={viewingContent} alt={viewingFilename ?? 'Ticket'} className="w-full rounded-xl object-contain max-h-[80vh]" />
-                        <p className="text-center text-white/60 text-xs mt-2">{viewingFilename}</p>
-                    </div>
-                </div>
+                <ImageViewer src={viewingContent} alt={viewingFilename ?? 'Ticket'} caption={viewingFilename} onClose={() => setViewingContent(null)} />
             )}
         </>
     );

@@ -9,7 +9,7 @@ import {
     updateSupplierTicketInvoiced, getSupplierOrderTickets, getOrderTicketContent, updateOrderTicketInvoiced,
     getSupplierPendingInvoicedCounts,
 } from '../../services/api';
-import { Modal, Button, Field, Input, MIcon, useToast } from '../ui';
+import { Modal, Button, Field, Input, MIcon, ImageViewer, useToast } from '../ui';
 
 // Fix leaflet default marker icons when bundled with Vite
 delete (L.Icon.Default.prototype as unknown as Record<string, unknown>)._getIconUrl;
@@ -1083,25 +1083,12 @@ const SupplierTicketsModal: React.FC<{
             )}
 
             {viewingContent && (
-                <div
-                    className="fixed inset-0 z-[200] bg-black/80 flex items-center justify-center p-4"
-                    onClick={() => setViewingContent(null)}
-                >
-                    <div className="relative max-w-3xl w-full" onClick={e => e.stopPropagation()}>
-                        <button
-                            className="absolute -top-10 right-0 text-white flex items-center gap-1 text-sm hover:opacity-80"
-                            onClick={() => setViewingContent(null)}
-                        >
-                            <MIcon name="close" /> Cerrar
-                        </button>
-                        <img
-                            src={viewingContent}
-                            alt={viewingFilename ?? 'Ticket'}
-                            className="w-full rounded-xl object-contain max-h-[80vh]"
-                        />
-                        <p className="text-center text-white/70 text-xs mt-2">{viewingFilename}</p>
-                    </div>
-                </div>
+                <ImageViewer
+                    src={viewingContent}
+                    alt={viewingFilename ?? 'Ticket'}
+                    caption={viewingFilename}
+                    onClose={() => setViewingContent(null)}
+                />
             )}
         </>
     );
